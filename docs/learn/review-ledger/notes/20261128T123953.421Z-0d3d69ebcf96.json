@@ -1,0 +1,13 @@
+{
+  "revision": "6df12f12334ab5c51608df8e84dc23db21bfa337",
+
+  "notes": [
+    {"path":"scripts/AGENTS.md","note":"Reviewed the testing-guide delta against script evidence instructions: thresholded Event Timing is additional opt-in journey output, not a new gate or resource lane. The existing runner validates positive interaction IDs, counts, phase timestamps and null unsupported/empty results. Focused contract tests, real keyboard stall injection and restored Home/reply captures preserve the distinction between a passing receipt and product/device qualification. Child-process policy, failure classification and shared-slot instructions remain unchanged.","inputs":["scripts/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Reviewed the additive inputTiming paragraph against fixture and user-action requirements. Existing Home pressSequentially and reply keyboard actions remain unmodified; instrumentation observes positive-ID browser events without synthetic dispatch, text/key retention or product seams. Clean restored Home and 4x-throttled reply captures completed, e2e types and fixture policy passed. Thresholded observations do not certify every key, field INP or physical phones; test instruction claims remain accurate.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Reviewed the inputTiming guide addition against UI scope rules. The change is opt-in test instrumentation and receipt validation only: no UI production source, layout, motion, focus, touch targets or component ownership changes. The testing guide still requires real behavior evidence and preserves draft/focus, reader position and navigation intent. No new user-facing capability or Feature Preview is introduced; existing UI completion instructions are unchanged.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Reviewed the new testing-guide paragraph against server scope instructions. Browser Event Timing adds local fixture-journey observations only; no server routes, capabilities, logger seams, request batching or contracts change. The existing server instructions explicitly distinguish diagnostic browser counters from server/device performance claims, which the new paragraph preserves. No server performance or live-provider qualification is claimed.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

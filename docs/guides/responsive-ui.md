@@ -53,6 +53,11 @@ by themselves produce a complete visual dialog.
 - the phone-sheet drag handle, behind the Sheet gestures device preview
   (see [Sheet drag handle](#sheet-drag-handle)).
 
+Compact composer popovers may opt into `preserveComposerFocus`. If a pointer
+press leaves the draft textarea focused, the surface opens without moving focus
+and Escape dismisses it from the draft. A keyboard-focused trigger opens the
+modal surface with its usual focus management.
+
 A consumer may keep its content mounted with `open={false}` to preserve a
 pending decision. The closed surface is hidden, is not a `dialog` (no role, no
 modal claim, `inert`), and releases dialog history and focus; reopening reuses
@@ -309,7 +314,9 @@ opens the saved conversation list.
 Project choice belongs to the start composer on phone and desktop; the dock
 header has no project picker, including while empty or showing Chats. Chat creation shares [NewChatAction](../../src-ui/src/components/NewChatAction.tsx)
 across the desktop inbox, the collapsed dock bar (icon only) and
-the open, empty dock. The mobile bar composes the same conversation-plus glyph
+the open, empty dock on a phone or in a full-screen layout, and while there
+are no Agents. An open desktop dock with no chat otherwise shows the start
+composer itself, ready to type ([no empty pane](../design/chat-composer.md)). The mobile bar composes the same conversation-plus glyph
 with its toolbar button styles. Both forms retain a 44px minimum target and
 an accessible name. It opens the start composer, in the dock as a draft in the
 dock body (full screen on a phone). New-chat and running-chat controls share

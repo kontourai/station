@@ -1,0 +1,15 @@
+{
+  "revision": "72a416c8bf3e8118ced38f6cc820b4862611c6e0",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the development guide addition. The isolated Vite storyboard entry only adds a fixture-based visual review workflow. Existing build, testing, deployment and service guidance is unaffected.","inputs":["docs/guides/development.md"]},
+
+    {"path":"docs/design/process-supervisor.md","note":"Reviewed the development guide addition. The isolated Vite storyboard entry only adds a fixture-based visual review workflow. Existing build, testing, deployment and service guidance is unaffected.","inputs":["docs/guides/development.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed the development guide addition. The isolated Vite storyboard entry only adds a fixture-based visual review workflow. Existing build, testing, deployment and service guidance is unaffected.","inputs":["docs/guides/development.md"]},
+
+    {"path":"packages/shared/README.md","note":"Reviewed the development guide addition. The isolated Vite storyboard entry only adds a fixture-based visual review workflow. Existing build, testing, deployment and service guidance is unaffected.","inputs":["docs/guides/development.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Reviewed the development guide addition. The isolated Vite storyboard entry only adds a fixture-based visual review workflow. Existing build, testing, deployment and service guidance is unaffected.","inputs":["docs/guides/development.md"]}
+  ]
+}

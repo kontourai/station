@@ -68,6 +68,7 @@ additional first-run, workspace, approval, contribution, and preview settings.
 |---|---|---|
 | `defaultModel` | string | Fallback model ID on the selected Model connection when no closer choice supplies one. New homes seed an empty string; the model must exist on that connection. |
 | `defaultLLMProvider` | string | ID of an existing Model connection used when no closer choice names one. This does not create a connection. |
+| `newChatDefault` | `{ agent, reason }` | The Agent new chats start with when nothing closer names one; `reason` is `first-signed-in` or `chosen`. Written only through [`POST /config/new-chat-default`](api.md#default-for-new-chats): `PUT /config/app` and `station config set`, online or `--offline`, refuse it (as they refuse `firstRun`), and settings export skips it. |
 | `invokeModel` | string | Preferred model for the global `/invoke` tool-calling pass; falls back to `defaultModel`. |
 | `structureModel` | string | Preferred model for the global `/invoke` structured-output pass; falls back to the resolved invoke model, then `defaultModel`. This is separate from a named Agent's `/agents/:slug/invoke`. |
 
@@ -106,7 +107,7 @@ additional first-run, workspace, approval, contribution, and preview settings.
 | `terminalHistoryMaxAgeDays` | integer 1–3650 | `30` | Days after a terminal ends before its history is deleted. |
 | `terminalHistoryMaxTerminalMiB` | integer 1–1024 | `16` | History each terminal keeps; the oldest output goes first. |
 | `terminalHistoryMaxTotalMiB` | integer 16–1048576 | `1024` | History all terminals keep together, and at least the per-terminal size; the oldest ended terminals go first. Values outside any of these ranges are refused, not clamped. |
-| `attachedSessionsOutsideProjects` | boolean | `false` for new homes; legacy absence remains `true` | Whether Station follows Claude Code, Codex, Grok and OpenCode conversations on this machine (and, with `STATION_EXTERNAL_ACP_SESSIONS=1`, the sessions ACP engines list) whose folder belongs to no project (listed under No project). `false` stops following them from the next two-second poll, including transcripts already listed (their new messages stop arriving); nothing already imported is removed from history, from the search index or from paired devices' reach. Seeded off only when `config/app.json` is first created; existing files and explicit choices are preserved. Read every poll by [`attachedSessionsOutsideProjectsEnabled`](../../src-server/services/orchestration/attached-session-follow-service.ts); an unreadable configuration counts as `false`. Transcripts inside a project are followed either way, and a hosted Station never follows these. Settings → Advanced → Conversations outside projects (Host options). |
+| `attachedSessionsOutsideProjects` | boolean | `false` for new homes; legacy absence remains `true` | Whether Station follows Claude Code, Codex, Grok and OpenCode conversations on this machine (and, with `STATION_EXTERNAL_ACP_SESSIONS=1`, the sessions ACP engines list) whose folder belongs to no project (listed under No project). `false` stops following them from the next check, including transcripts already listed (their new messages stop arriving); nothing already imported is removed from history, from the search index or from paired devices' reach. Seeded off only when `config/app.json` is first created; existing files and explicit choices are preserved. Read every poll by [`attachedSessionsOutsideProjectsEnabled`](../../src-server/services/orchestration/attached-session-follow-service.ts); an unreadable configuration counts as `false`. Transcripts inside a project are followed either way, and a hosted Station never follows these. Settings → Advanced → Conversations outside projects (Host options). |
 | `knowledgeStores` | boolean | `false` | Whether a personal Station adds past conversations to Knowledge as the read-only `root:conversations` source. Read once at [startup](../../src-server/knowledge-store/conversation-root-bootstrap.ts), so a change applies after a restart. The conversations become searchable after a Knowledge reindex, which needs an embedding connection and the local operator. Turning it off does not remove the root, and the root cannot be deleted. Hosted Stations never register it. Settings → My knowledge store → Past conversations in Knowledge. |
 | `claudeArtifactsEnabled` | boolean | `false` | Turns on Claude Code's Artifact tool, which publishes a local HTML or Markdown file as a page on claude.ai. Read when each Claude session starts, so a running session keeps its value. [`claudeArtifactsSpawnEnv`](../../src-server/providers/adapters/claude-adapter.ts) sets `CLAUDE_CODE_ARTIFACT=1` when on and `CLAUDE_CODE_ARTIFACT=0` when off, overriding Station's own environment and the connection's `env`, so the setting decides. The engine offers the tool only to a claude.ai subscription login; API-key, Bedrock and Vertex sessions do not get it. A publish shows in chat as a link to its claude.ai page, taken from the tool's structured output and shown only for an `https://claude.ai` address. Settings → Agent runs → Claude Code artifacts. |
 
@@ -412,6 +413,15 @@ The write side above has a matching self-read path — Station can answer "what 
 - **`read_logs`** MCP tool (station-control) — calls the same HTTP handler. Its caller binding determines redaction; the internal hop alone is insufficient. Its tool schema accepts integer limits 1–1000, while the HTTP route clamps an out-of-range value.
 - **Redaction on egress:** without bound owner authority (home-possession or owner-device standing), the reader applies `redactDeep` to secret-named fields and secret-pattern redaction to string leaves, including message and error text. Both filtering and output use this rendering. With bound owner authority, the reader uses the unredacted stored entry. This differs from stdout, where write-time redaction remains in place.
 
+On a personal Station, enable **Server log approvals in chat** under
+**Settings → Advanced → Feature previews** to approve a log query from its
+active conversation. The approval card shows the severity, time bounds, and
+maximum entries. Station checks the operator's authority when the operator
+answers. Choose **Allow** for one query or **Allow all read_logs calls for this
+session** for subsequent active turns in the same session. The card expires
+after one minute. Both choices return redacted results. The session grant is
+held in memory and ends when the session stops, resets, or the server restarts.
+
 Agent log reads are denied by default, including calls made with the internal
 token and no verified caller. An operator may grant one verified **bound**
 session through `POST /api/agents/unattended-grants` as the owner in person (the
@@ -618,7 +628,7 @@ but not prompts, credentials, endpoints, connection IDs, or model configuration.
 
 Each candidate's evidence level comes from its model connection's
 live readiness state (`discovered` → `prerequisite-ready` → `catalog-ready` →
-`smoke-passed`, the same ladder shown on the Connections page), mapped onto
+`smoke-passed`, the same ladder shown in Customize → Providers), mapped onto
 Dispatch's three-level scale:
 
 | Connection evidence | Dispatch level | Meaning |
@@ -640,10 +650,10 @@ same live grading: `abort`/`usage` are present once a candidate has any live
 evidence at all. `"structured-tools"` (station#1430) is present once a
 candidate additionally has any live evidence AND its bound model's own
 provider catalog genuinely reported tool-calling support — the same
-`toolSurface` shown on the Connections page's model inventory, resolved
+`toolSurface` shown in the Providers item's model inventory, resolved
 fresh every TTL window through the same deterministic, compute-on-demand
 inventory accessor as the rest of this grading (never a cache that depends
-on whether the Connections page happened to be open). It is satisfiable
+on whether the Providers item happened to be open). It is satisfiable
 today, but only for a connection whose provider adapter actually reports
 this: as of station#1430, that is Ollama (`/api/show`'s `capabilities`
 array) — Bedrock, OpenAI-compatible, Anthropic, and Google all leave it
@@ -662,7 +672,7 @@ within a 60-second window a call reuses the last grade (still one batched
 connection-readiness lookup, covering every candidate connection, not one
 per candidate); once the window elapses, the next call re-resolves live
 evidence the same batched way. So: running an explicit smoke on a connection
-(Connections page, or the smoke API) and then waiting up to 60 seconds is now
+(Customize → Providers, or the smoke API) and then waiting up to 60 seconds is now
 enough — no rebuild required — for an agent's `minimumEvidence: "confirmed"`
 policy to start admitting that candidate. A connection or agent configuration
 save still triggers a full agent rebuild as before (saving a connection

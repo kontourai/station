@@ -820,7 +820,7 @@ export function mapStationAgentStreamEvent(options: {
         ? { description: stringField(event.toolDescription) }
         : {}),
       payload: {
-        ...(toolName ? { toolName } : {}),
+        ...(toolName ? { toolName } : { suppressAlwaysAllowRule: true }),
         ...(stringField(event.server)
           ? { server: stringField(event.server) }
           : {}),
@@ -844,7 +844,7 @@ export function mapStationAgentStreamEvent(options: {
       requestType: 'approval',
       title: `${form.requester} needs your input`,
       ...(form.message ? { description: form.message } : {}),
-      payload: { inputRequest: form },
+      payload: { inputRequest: form, suppressAlwaysAllowRule: true },
     });
     return { approvalOpened: { requestId, elicitation: true } };
   }

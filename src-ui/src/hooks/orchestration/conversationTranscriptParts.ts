@@ -164,6 +164,7 @@ export function conversationMessageToChatMessage(
     sessionId: metadata?.sessionId,
     sourceEventId: metadata?.sourceEventId,
     steerInterruptedRun: metadata?.steerInterruptedRun,
+    steer: metadata?.steer,
     stationCheckBack: metadata?.stationCheckBack,
     stationMemoryContinuation: metadata?.stationMemoryContinuation,
     stationRestartContinuation: metadata?.stationRestartContinuation,

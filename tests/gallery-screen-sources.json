@@ -8,6 +8,22 @@
     "src-ui/src/components/ServerOlderLaunchCheck.tsx"
   ],
   "screens": {
+    "external-history-dark-desktop": [
+      "src-ui/src/components/chat/ConversationHistory.tsx",
+      "src-ui/src/components/chat/ExternalSessionHistory.tsx"
+    ],
+    "external-history-light-desktop": [
+      "src-ui/src/components/chat/ConversationHistory.tsx",
+      "src-ui/src/components/chat/ExternalSessionHistory.tsx"
+    ],
+    "external-history-dark-mobile": [
+      "src-ui/src/components/chat/ConversationHistory.tsx",
+      "src-ui/src/components/chat/ExternalSessionHistory.tsx"
+    ],
+    "external-history-light-mobile": [
+      "src-ui/src/components/chat/ConversationHistory.tsx",
+      "src-ui/src/components/chat/ExternalSessionHistory.tsx"
+    ],
     "member-project-channels-light": [
       "src-ui/src/views/ProjectPage.tsx",
       "src-ui/src/views/project-page/MemberProjectPage.tsx"
@@ -236,26 +252,40 @@
     ],
     "home": ["src-ui/src/views/HomeView.tsx"],
     "agents": ["src-ui/src/views/AgentsView.tsx"],
-    "skills": ["src-ui/src/views/GuidanceView.tsx"],
-    "registry": ["src-ui/src/views/RegistryView.tsx"],
-    "connections": ["src-ui/src/views/ConnectionsHub.tsx"],
+    "skills": [
+      "src-ui/src/views/GuidanceView.tsx",
+      "src-ui/src/views/SkillsView.tsx"
+    ],
+    "registry": [
+      "src-ui/src/views/apps/AppsView.tsx",
+      "src-ui/src/views/apps/DiscoverView.tsx",
+      "src-ui/src/views/apps/AppsLoadFailure.tsx"
+    ],
+    "connections": [
+      "src-ui/src/views/customize/CustomizeLanding.tsx",
+      "src-ui/src/views/customize/CustomizeNav.tsx"
+    ],
     "connections-models": [
-      "src-ui/src/views/ConnectionsSectionFrame.tsx",
+      "src-ui/src/views/CustomizeSectionFrame.tsx",
       "src-ui/src/views/ProviderSettingsView.tsx"
     ],
     "connections-agent-apps": [
-      "src-ui/src/views/ConnectionsSectionFrame.tsx",
+      "src-ui/src/views/CustomizeSectionFrame.tsx",
       "src-ui/src/views/AgentConnectionView.tsx"
     ],
     "connections-tools": [
-      "src-ui/src/views/ConnectionsSectionFrame.tsx",
+      "src-ui/src/views/CustomizeSectionFrame.tsx",
       "src-ui/src/views/IntegrationsView.tsx"
     ],
     "connections-knowledge": [
-      "src-ui/src/views/ConnectionsSectionFrame.tsx",
+      "src-ui/src/views/CustomizeSectionFrame.tsx",
       "src-ui/src/views/KnowledgeConnectionView.tsx"
     ],
-    "plugins": ["src-ui/src/views/PluginManagementView.tsx"],
+    "plugins": [
+      "src-ui/src/views/apps/AppsView.tsx",
+      "src-ui/src/views/PluginManagementView.tsx",
+      "src-ui/src/views/apps/AppsLoadFailure.tsx"
+    ],
     "schedule": ["src-ui/src/views/ScheduleView.tsx"],
     "developer-telemetry": ["src-ui/src/views/DeveloperView.tsx"],
     "profile": ["src-ui/src/pages/ProfilePage.tsx"],
@@ -332,7 +362,7 @@
       "src-ui/src/views/HomeView.tsx",
       "src-ui/src/components/chat-dock/ChatDock.tsx"
     ],
-    "mobile-connections": ["src-ui/src/views/ConnectionsHub.tsx"],
+    "mobile-connections": ["src-ui/src/views/customize/CustomizeLanding.tsx"],
     "mobile-agent-editor": ["src-ui/src/views/AgentsView.tsx"],
     "mobile-onboarding-setup": ["src-ui/src/views/HomeView.tsx"],
     "inventory-drilldown-read-dark-desktop": [

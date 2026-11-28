@@ -15,6 +15,7 @@
  */
 
 import { agentId } from '@kontourai/station-contracts/agent-identity';
+import type { ClientOriginSender } from '@kontourai/station-contracts/client-origin';
 import { _setApiBase } from '@kontourai/station-sdk';
 import { frameAgentMessage } from '@kontourai/station-shared/agent-message-frame';
 import {
@@ -427,6 +428,86 @@ describe('another agent’s message in the recipient’s transcript (#3419)', ()
     expect(document.body.textContent).not.toContain('sender unknown');
     // Nothing to open: no Session sent it.
     expect(row?.querySelector('a')).toBeNull();
+  });
+
+  /**
+   * Two results Station delivered (#5606): the newer sender records the
+   * finished chat; the older one predates that and has only its Agent.
+   */
+  function deliveredResultEvents() {
+    const result = (sender: ClientOriginSender, turnId: string) => [
+      runtimeEvent({
+        method: 'turn.started',
+        turnId,
+        prompt: frameAgentMessage(
+          sender,
+          '[Station: the result of a task this Session delegated.]',
+        ),
+        clientOrigin: agentOrigin({ ...sender }),
+      }),
+      runtimeEvent({ method: 'turn.completed', turnId }),
+    ];
+    return [
+      ...result(
+        {
+          kind: 'delegation-result',
+          sessionId: SENDER_THREAD,
+          title: 'Check the Inbox row',
+          engine: 'claude',
+          requestKey: 'wake-1',
+        },
+        't1',
+      ),
+      ...result(
+        {
+          kind: 'delegation-result',
+          sessionId: 'other-sender',
+          agent: 'Reviewer',
+          requestKey: 'wake-2',
+        },
+        't2',
+      ),
+    ];
+  }
+
+  test('a delivered result names the chat it came from, while an older one keeps its Agent', async () => {
+    windowEvents.current = deliveredResultEvents();
+    renderTranscript();
+    const rows = await waitFor(() => {
+      const found = document.querySelectorAll('.agent-incoming');
+      expect(found).toHaveLength(2);
+      return [...found];
+    });
+    expect(rows.map((row) => row.getAttribute('aria-label'))).toEqual([
+      'Task result from Check the Inbox row',
+      'Task result from Reviewer',
+    ]);
+    expect(
+      rows[0]?.querySelector('.agent-incoming__header')?.textContent,
+    ).toContain('Task result from Check the Inbox row · Claude Code');
+    expect(
+      rows[1]?.querySelector('.agent-incoming__header')?.textContent,
+    ).toContain('Task result from Session other-se · Reviewer');
+  });
+
+  test('a delivered result names the chat it came from on the phone cause row', async () => {
+    mobile.current = true;
+    windowEvents.current = deliveredResultEvents();
+    renderTranscript();
+    const disclosures = await waitFor(() => {
+      const found = document.querySelectorAll<HTMLDetailsElement>(
+        'details.agent-cause-disclosure',
+      );
+      expect(found).toHaveLength(2);
+      return [...found];
+    });
+    expect(disclosures.map((row) => row.open)).toEqual([true, true]);
+    expect(
+      disclosures.map((row) => row.querySelector('summary')?.textContent),
+    ).toEqual([
+      'Task result from Check the Inbox row',
+      'Task result from Reviewer',
+    ]);
   });
 
   test('the header links to the Session that sent it', async () => {

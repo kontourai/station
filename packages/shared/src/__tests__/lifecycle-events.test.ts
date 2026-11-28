@@ -1,10 +1,12 @@
 import { spawn, spawnSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import {
   chmodSync,
   existsSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
+  renameSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -12,11 +14,14 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
+import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
 import {
   acquireFileMutationLock,
   appendLifecycleEvent,
   classifyLifecycleExit,
+  DEFAULT_LIFECYCLE_JOURNAL_MAX_BYTES,
   type LifecycleIdentity,
   readLifecycleEvents,
   type StopIntent,
@@ -25,6 +30,14 @@ import {
   lookupProcessBirthFingerprint,
   probeExactProcessIdentity,
 } from '../process-identity.mjs';
+import { openWindowsPrivateFile } from '../windows-file-security.js';
+import {
+  assertWindowsPathsTrusted,
+  encodePowerShellCommand,
+  hardenWindowsPathsTrusted,
+  runWindowsTrustCommand,
+  windowsSystemUtilityPath,
+} from '../windows-path-trust.js';
 
 const identity: LifecycleIdentity = {
   instanceId: 'phone',
@@ -36,6 +49,32 @@ const identity: LifecycleIdentity = {
 const PROCESS_INTEGRATION_TEST_TIMEOUT_MS = 15_000;
 const CHILD_READY_TIMEOUT_MS = 5_000;
 const CHILD_CLEANUP_TIMEOUT_MS = 1_000;
+const makeTempDir = trackTempDirs();
+
+function createJournalRoot(prefix: string): string {
+  const root = makeTempDir(prefix);
+  hardenWindowsPathsTrusted(runWindowsTrustCommand, [
+    { path: root, kind: 'directory' },
+  ]);
+  return root;
+}
+
+function allowUnrelatedJournalAccess(file: string): void {
+  if (process.platform !== 'win32') {
+    chmodSync(file, 0o666);
+    return;
+  }
+  const path = Buffer.from(file).toString('base64');
+  const command = encodePowerShellCommand(
+    `$ErrorActionPreference='Stop'; $file=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${path}')); $acl=[IO.File]::GetAccessControl($file); $sid=New-Object Security.Principal.SecurityIdentifier('S-1-1-0'); $rule=New-Object Security.AccessControl.FileSystemAccessRule($sid,[Security.AccessControl.FileSystemRights]::FullControl,[Security.AccessControl.AccessControlType]::Allow); $acl.AddAccessRule($rule); [IO.File]::SetAccessControl($file,$acl)`,
+  );
+  const result = runWindowsTrustCommand(
+    windowsSystemUtilityPath('powershell'),
+    ['-NoProfile', '-NonInteractive', '-EncodedCommand', command],
+  );
+  expect(result.error).toBeUndefined();
+  expect(result.status, result.stderr).toBe(0);
+}
 
 function currentProcessBirthFingerprint(): string {
   const root = mkdtempSync(join(tmpdir(), 'station-journal-birth-'));
@@ -227,7 +266,7 @@ describe('lifecycle event journal', () => {
   });
 
   it('appends privately and rotates atomically without losing prior evidence', () => {
-    const root = mkdtempSync(join(tmpdir(), 'station-journal-'));
+    const root = createJournalRoot('station-journal-');
     const file = join(root, 'events.jsonl');
     appendLifecycleEvent(
       file,
@@ -246,12 +285,337 @@ describe('lifecycle event journal', () => {
       },
       { maxBytes: 200 },
     );
-    expect(statSync(file).mode & 0o777).toBe(0o600);
+    if (process.platform === 'win32') {
+      assertWindowsPathsTrusted(runWindowsTrustCommand, [
+        { kind: 'file', path: file },
+        { kind: 'file', path: `${file}.previous` },
+      ]);
+    } else {
+      expect(statSync(file).mode & 0o777).toBe(0o600);
+    }
     expect(readFileSync(`${file}.previous`, 'utf8')).toContain(
       '"type":"started"',
     );
     expect(readLifecycleEvents(file)).toHaveLength(2);
   });
+
+  it.runIf(process.platform === 'win32')(
+    'migrates an inherited owner-only journal without losing existing bytes',
+    () => {
+      const root = createJournalRoot('station-journal-inherited-');
+      const file = join(root, 'events.jsonl');
+      const event = {
+        ...identity,
+        version: 1 as const,
+        type: 'started' as const,
+        timestamp: '2026-07-10T12:00:00.000Z',
+      };
+      const original = `${JSON.stringify(event)}\n`;
+      try {
+        writeFileSync(file, original, { mode: 0o600 });
+        const encodedPath = Buffer.from(file).toString('base64');
+        const inspect = () => {
+          const result = runWindowsTrustCommand(
+            windowsSystemUtilityPath('powershell'),
+            [
+              '-NoProfile',
+              '-NonInteractive',
+              '-EncodedCommand',
+              encodePowerShellCommand(
+                `$ErrorActionPreference='Stop'; $file=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${encodedPath}')); $acl=[IO.File]::GetAccessControl($file); $sid=[Security.Principal.WindowsIdentity]::GetCurrent().User; $rules=@($acl.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier])); if ($acl.GetOwner([Security.Principal.SecurityIdentifier]).Value -ne $sid.Value -or $rules.Count -ne 1 -or $rules[0].IdentityReference.Value -ne $sid.Value -or $rules[0].AccessControlType -ne 'Allow' -or $rules[0].FileSystemRights -ne [Security.AccessControl.FileSystemRights]::FullControl) { throw 'Fixture is not owner-only FullControl' }; @{ protected=$acl.AreAccessRulesProtected; inherited=$rules[0].IsInherited } | ConvertTo-Json -Compress`,
+              ),
+            ],
+          );
+          expect(result.error).toBeUndefined();
+          expect(result.status, result.stderr).toBe(0);
+          return JSON.parse(result.stdout ?? '');
+        };
+        expect(inspect()).toEqual({ protected: false, inherited: true });
+        expect(readLifecycleEvents(file)).toEqual([event]);
+        expect(readFileSync(file, 'utf8')).toBe(original);
+        expect(inspect()).toEqual({ protected: true, inherited: false });
+        appendLifecycleEvent(file, { ...event, type: 'process_exit' });
+        expect(readFileSync(file, 'utf8').startsWith(original)).toBe(true);
+        expect(readLifecycleEvents(file)).toHaveLength(2);
+        allowUnrelatedJournalAccess(file);
+        const beforeRefusal = readFileSync(file, 'utf8');
+        expect(() => readLifecycleEvents(file)).toThrow(/private file/);
+        expect(() => appendLifecycleEvent(file, event)).toThrow(/private file/);
+        expect(readFileSync(file, 'utf8')).toBe(beforeRefusal);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.each(['current', 'retained'] as const)(
+    'refuses unrelated-principal access to the %s journal without rewriting it',
+    (generation) => {
+      const root = createJournalRoot('station-journal-acl-');
+      const file = join(root, 'events.jsonl');
+      try {
+        const event = {
+          ...identity,
+          type: 'started' as const,
+          timestamp: '2026-07-10T12:00:00.000Z',
+        };
+        appendLifecycleEvent(file, event, { maxBytes: 200 });
+        appendLifecycleEvent(file, event, { maxBytes: 200 });
+        const target = generation === 'current' ? file : `${file}.previous`;
+        allowUnrelatedJournalAccess(target);
+        const before = readFileSync(target, 'utf8');
+        expect(() => readLifecycleEvents(file)).toThrow(/private/);
+        if (process.platform === 'win32') {
+          expect(() =>
+            appendLifecycleEvent(file, event, { maxBytes: 200 }),
+          ).toThrow(/private file/);
+        }
+        expect(readFileSync(target, 'utf8')).toBe(before);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.runIf(process.platform === 'win32').each(['read', 'append'] as const)(
+    'holds the %s journal generation against pathname replacement',
+    (operation) => {
+      const root = mkdtempSync(join(tmpdir(), 'station-journal-binding-'));
+      const file = join(root, 'events.jsonl');
+      const unrelated = join(root, 'unrelated');
+      let descriptor: ReturnType<typeof openWindowsPrivateFile> | undefined;
+      try {
+        appendLifecycleEvent(file, {
+          ...identity,
+          type: 'started',
+          timestamp: '2026-07-10T12:00:00.000Z',
+        });
+        writeFileSync(unrelated, 'unrelated control');
+        descriptor = openWindowsPrivateFile(file, operation);
+        expect(() => renameSync(file, join(root, 'moved'))).toThrow();
+        expect(() => renameSync(root, `${root}-moved`)).toThrow();
+        expect(() => renameSync(unrelated, file)).toThrow();
+        expect(readFileSync(unrelated, 'utf8')).toBe('unrelated control');
+        descriptor.close();
+        descriptor = undefined;
+        renameSync(root, `${root}-moved`);
+        renameSync(`${root}-moved`, root);
+      } finally {
+        descriptor?.close();
+        rmSync(root, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.runIf(process.platform === 'win32')(
+    'rechecks the DACL on a retained handle without relying on file metadata',
+    () => {
+      const root = mkdtempSync(join(tmpdir(), 'station-journal-acl-change-'));
+      const file = join(root, 'events.jsonl');
+      let journal: ReturnType<typeof openWindowsPrivateFile> | undefined;
+      try {
+        appendLifecycleEvent(file, {
+          ...identity,
+          type: 'started',
+          timestamp: '2026-07-10T12:00:00.000Z',
+        });
+        journal = openWindowsPrivateFile(file, 'read');
+        expect(
+          journal.read(DEFAULT_LIFECYCLE_JOURNAL_MAX_BYTES).length,
+        ).toBeGreaterThan(0);
+        const before = statSync(file);
+        allowUnrelatedJournalAccess(file);
+        const after = statSync(file);
+        expect([after.size, after.mtimeMs]).toEqual([
+          before.size,
+          before.mtimeMs,
+        ]);
+        expect(() =>
+          journal?.read(DEFAULT_LIFECYCLE_JOURNAL_MAX_BYTES),
+        ).toThrow(/private file/);
+      } finally {
+        journal?.close();
+        rmSync(root, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it
+    .runIf(process.platform === 'win32')
+    .each(Array.from({ length: 16 }, (_, index) => index + 1))(
+    'renames a retained UTF-16 filename with %i suffix code units without extra bytes',
+    (suffixLength) => {
+      const root = createJournalRoot('station-journal-rename-');
+      try {
+        const file = join(root, `events-${'x'.repeat(suffixLength)}`);
+        const target = `${file}.previous`;
+        const journal = openWindowsPrivateFile(file, 'create');
+        try {
+          journal.write(Buffer.from('retained evidence'));
+          journal.rename(target);
+          expect(readFileSync(target, 'utf8')).toBe('retained evidence');
+          expect(existsSync(file)).toBe(false);
+        } finally {
+          journal.close();
+        }
+        expect(readdirSync(root)).toEqual([
+          `events-${'x'.repeat(suffixLength)}.previous`,
+        ]);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.runIf(process.platform === 'win32')(
+    'retires only its unpublished rotation file when the retained generation is held open',
+    () => {
+      const root = createJournalRoot('station-journal-rotation-refusal-');
+      const file = join(root, 'events.jsonl');
+      let retained: ReturnType<typeof openWindowsPrivateFile> | undefined;
+      try {
+        const event = {
+          ...identity,
+          type: 'started' as const,
+          timestamp: '2026-07-10T12:00:00.000Z',
+        };
+        appendLifecycleEvent(file, event, { maxBytes: 200 });
+        appendLifecycleEvent(file, event, { maxBytes: 200 });
+        const current = readFileSync(file, 'utf8');
+        retained = openWindowsPrivateFile(`${file}.previous`, 'read');
+        const previous = retained.read(DEFAULT_LIFECYCLE_JOURNAL_MAX_BYTES);
+        expect(() =>
+          appendLifecycleEvent(file, event, { maxBytes: 200 }),
+        ).toThrow(/rename failed/);
+        expect(retained.read(DEFAULT_LIFECYCLE_JOURNAL_MAX_BYTES)).toEqual(
+          previous,
+        );
+        expect(readFileSync(file, 'utf8')).toBe(current);
+        expect(
+          readdirSync(root).filter((name) =>
+            name.startsWith('.lifecycle-journal-'),
+          ),
+        ).toEqual([]);
+        retained.close();
+        retained = undefined;
+        appendLifecycleEvent(file, event, { maxBytes: 200 });
+        expect(readLifecycleEvents(file)).toHaveLength(2);
+      } finally {
+        retained?.close();
+        rmSync(root, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.runIf(process.platform === 'win32')(
+    'preserves both generations when an unrelated SID can replace directory entries',
+    () => {
+      const root = createJournalRoot('station-journal-directory-refusal-');
+      const file = join(root, 'events.jsonl');
+      try {
+        const event = {
+          ...identity,
+          type: 'started' as const,
+          timestamp: '2026-07-10T12:00:00.000Z',
+        };
+        appendLifecycleEvent(file, event, { maxBytes: 200 });
+        appendLifecycleEvent(file, event, { maxBytes: 200 });
+        const current = readFileSync(file, 'utf8');
+        const previous = readFileSync(`${file}.previous`, 'utf8');
+        allowUnrelatedJournalAccess(root);
+        expect(() =>
+          appendLifecycleEvent(file, event, { maxBytes: 200 }),
+        ).toThrow(/unrelated SID/);
+        expect(readFileSync(file, 'utf8')).toBe(current);
+        expect(readFileSync(`${file}.previous`, 'utf8')).toBe(previous);
+        expect(
+          readdirSync(root).filter((name) =>
+            name.startsWith('.lifecycle-journal-'),
+          ),
+        ).toEqual([]);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.runIf(process.platform === 'win32')(
+    'retains full-size journals and accepts configured thresholds and oversized records',
+    () => {
+      const root = createJournalRoot('station-journal-capacity-');
+      const file = join(root, 'events.jsonl');
+      try {
+        const event = appendLifecycleEvent(file, {
+          ...identity,
+          type: 'started',
+          timestamp: '2026-07-10T12:00:00.000Z',
+        });
+        const line = `${JSON.stringify(event)}\n`;
+        const count = Math.floor(
+          DEFAULT_LIFECYCLE_JOURNAL_MAX_BYTES / Buffer.byteLength(line),
+        );
+        const records = Array.from({ length: count }, () => ({
+          ...event,
+          eventId: randomUUID(),
+        }));
+        const content = records
+          .map((record) => `${JSON.stringify(record)}\n`)
+          .join('');
+        writeFileSync(file, content);
+        const appended = appendLifecycleEvent(file, {
+          ...identity,
+          type: 'process_exit',
+          exitCode: 0,
+          timestamp: '2026-07-10T12:00:01.000Z',
+        });
+        expect(statSync(`${file}.previous`).size).toBe(
+          Buffer.byteLength(line) * count,
+        );
+        expect(readFileSync(`${file}.previous`, 'utf8')).toBe(content);
+        expect(readLifecycleEvents(file, records.length + 1)).toEqual([
+          ...records,
+          appended,
+        ]);
+        writeFileSync(file, content);
+        const configured = appendLifecycleEvent(
+          file,
+          {
+            ...identity,
+            type: 'process_exit',
+            exitCode: 0,
+            timestamp: '2026-07-10T12:00:02.000Z',
+          },
+          { maxBytes: DEFAULT_LIFECYCLE_JOURNAL_MAX_BYTES * 2 },
+        );
+        expect(statSync(file).size).toBeGreaterThan(
+          DEFAULT_LIFECYCLE_JOURNAL_MAX_BYTES,
+        );
+        expect(readLifecycleEvents(file, records.length + 1)).toEqual([
+          ...records,
+          configured,
+        ]);
+        const oversized = appendLifecycleEvent(file, {
+          ...identity,
+          type: 'process_exit',
+          signal: 'x'.repeat(DEFAULT_LIFECYCLE_JOURNAL_MAX_BYTES),
+          timestamp: '2026-07-10T12:00:03.000Z',
+        });
+        expect(readLifecycleEvents(file, 1)).toEqual([oversized]);
+        appendLifecycleEvent(file, event);
+        expect(readLifecycleEvents(file, 2)).toEqual([oversized, event]);
+        const retained = openWindowsPrivateFile(`${file}.previous`, 'read');
+        try {
+          expect(() =>
+            retained.read(DEFAULT_LIFECYCLE_JOURNAL_MAX_BYTES),
+          ).toThrow(/exceeds its read bound/);
+        } finally {
+          retained.close();
+        }
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    },
+  );
 
   it('rejects a symlink journal', () => {
     const root = mkdtempSync(join(tmpdir(), 'station-journal-link-'));
@@ -272,49 +636,102 @@ describe('lifecycle event journal', () => {
   it(
     'serializes concurrent process writers and reads both retained generations',
     async () => {
-      const root = mkdtempSync(join(tmpdir(), 'station-journal-concurrent-'));
+      const deadline =
+        Date.now() +
+        PROCESS_INTEGRATION_TEST_TIMEOUT_MS -
+        CHILD_CLEANUP_TIMEOUT_MS;
+      const root = createJournalRoot('station-journal-concurrent-');
       const file = join(root, 'events.jsonl');
-      const tsx = resolve(
-        import.meta.dirname,
-        '..',
-        '..',
-        '..',
-        '..',
-        'node_modules',
-        'tsx',
-        'dist',
-        'cli.mjs',
-      );
       const modulePath = resolve(
         import.meta.dirname,
         '..',
         'lifecycle-events.ts',
       );
-      const source = `import {appendLifecycleEvent} from ${JSON.stringify(modulePath)}; for(let i=0;i<10;i++) appendLifecycleEvent(process.env.FILE,{instanceId:'phone',sha:'${'a'.repeat(40)}',bootId:process.env.BOOT,pid:Number(process.env.PID),type:'started',timestamp:new Date(Date.now()+i).toISOString()},{maxBytes:4000});`;
+      const source = `import {appendLifecycleEvent} from ${JSON.stringify(pathToFileURL(modulePath).href)}; for(let index=0;index<4;index++) appendLifecycleEvent(process.env.FILE,{instanceId:'phone',sha:'${'a'.repeat(40)}',bootId:process.env.BOOT,pid:Number(process.env.PID),type:'started',timestamp:new Date(Date.now()+index).toISOString()},{maxBytes:1200});`;
       const children = [1, 2].map((index) =>
-        spawn(process.execPath, [tsx, '-e', source], {
-          env: {
-            ...process.env,
-            FILE: file,
-            BOOT: `${String(index).padStart(8, '0')}-1111-4111-8111-111111111111`,
-            PID: String(5000 + index),
+        spawn(
+          process.execPath,
+          ['--import', 'tsx', '--input-type=module', '--eval', source],
+          {
+            env: {
+              ...process.env,
+              FILE: file,
+              BOOT: `${String(index).padStart(8, '0')}-1111-4111-8111-111111111111`,
+              PID: String(5000 + index),
+            },
           },
-        }),
-      );
-      const exits = await Promise.all(
-        children.map(
-          (child) =>
-            new Promise<number | null>((resolveExit) =>
-              child.once('exit', resolveExit),
-            ),
         ),
       );
-      expect(exits).toEqual([0, 0]);
-      const events = readLifecycleEvents(file, 100);
-      expect(new Set(events.map((event) => event.eventId)).size).toBe(
-        events.length,
+      const diagnostics = [`journal=${file}\n`, `journal=${file}\n`];
+      children.forEach((child, index) => {
+        child.stderr.on('data', (chunk) => {
+          diagnostics[index] += String(chunk);
+        });
+      });
+      const exits = Promise.all(
+        children.map(
+          (child) =>
+            new Promise<number | null>((resolveExit, rejectExit) => {
+              child.once('exit', resolveExit);
+              child.once('error', rejectExit);
+            }),
+        ),
       );
-      expect(events).toHaveLength(20);
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        expect(
+          await Promise.race([
+            exits,
+            new Promise<never>((_, rejectTimeout) => {
+              timer = setTimeout(
+                () =>
+                  rejectTimeout(
+                    new Error(
+                      `Journal writers did not settle: ${diagnostics.join('\n')}`,
+                    ),
+                  ),
+                Math.max(0, deadline - Date.now()),
+              );
+            }),
+          ]),
+          diagnostics.join('\n'),
+        ).toEqual([0, 0]);
+        const events = readLifecycleEvents(file, 100);
+        expect(new Set(events.map((event) => event.eventId)).size).toBe(
+          events.length,
+        );
+        expect(events).toHaveLength(8);
+        for (const index of [1, 2]) {
+          expect(
+            events.filter((event) => event.pid === 5000 + index),
+          ).toHaveLength(4);
+        }
+        expect(
+          readFileSync(`${file}.previous`, 'utf8').trim().split('\n'),
+        ).toHaveLength(4);
+        expect(readFileSync(file, 'utf8').trim().split('\n')).toHaveLength(4);
+      } finally {
+        clearTimeout(timer);
+        for (const child of children) {
+          if (child.exitCode === null && child.signalCode === null)
+            child.kill('SIGKILL');
+        }
+        try {
+          await Promise.race([
+            exits,
+            new Promise<never>((_, rejectCleanup) => {
+              timer = setTimeout(
+                () =>
+                  rejectCleanup(new Error('Journal writers did not retire')),
+                CHILD_CLEANUP_TIMEOUT_MS,
+              );
+            }),
+          ]);
+        } finally {
+          clearTimeout(timer);
+          rmSync(root, { recursive: true, force: true });
+        }
+      }
     },
     PROCESS_INTEGRATION_TEST_TIMEOUT_MS,
   );

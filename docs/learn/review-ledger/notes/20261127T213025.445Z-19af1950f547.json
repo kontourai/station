@@ -1,0 +1,13 @@
+{
+  "revision": "cb78fc388e1280ecfc6a3a780e9782b685a2d4dc",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Checked that streaming-safe inbox steering uses the existing orchestration route. Dispatch authority and the historical rollout decision are unchanged.","inputs":["docs/reference/session-api.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked the mounted route matrix against the listing and submission paths. Both the legacy event head and the new turn head are read from the route before a keyed submission.","inputs":["src-server/routes/orchestration/__tests__/thread-inbox.routes.test.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked the mounted route matrix against the listing and submission paths. Both the legacy event head and the new turn head are read from the route before a keyed submission.","inputs":["src-server/routes/orchestration/__tests__/thread-inbox.routes.test.ts"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Checked that the original live smoke cases remain selected by default. The separately selected CLIProxy diagnostic sends real composer input and verifies transcript ordering and the final queued reply.","inputs":["tests/agents-new-cli-turn.spec.ts"]}
+  ]
+}

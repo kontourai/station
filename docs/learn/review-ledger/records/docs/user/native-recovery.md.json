@@ -46,7 +46,9 @@
 
     "src-ui/src/platform/native/bundledLocalProfileBootstrap.ts",
 
-    "src-desktop/src/native_secure_entry.rs"
+    "src-desktop/src/native_secure_entry.rs",
+
+    "src-ui/src/platform/native/__tests__/bundledLocalProfileBootstrap.test.ts"
   ],
 
   "checks": [

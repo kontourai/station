@@ -61,6 +61,8 @@ export const STATION_TOOL_FAMILY_MEMBERS = {
     'search_sessions',
     'send_message',
     'send_to_session',
+    'watch_pull_request_status',
+    'cancel_coordination_subscription',
     'settle_conversation',
     'wait_session',
   ],

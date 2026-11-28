@@ -780,7 +780,8 @@ curl --silent --show-error https://<device-fqdn>:<public-port>/api/system/status
 
 Consent decisions are served by a separate listener (`API + 3`, or
 `STATION_CONSENT_PORT`) so a decision page is a different browser origin from
-the app. By default its review URLs are plain `http://<host>:<consent port>`,
+the app. With **Dynamic HTTPS routes** off (the default), its review URLs are
+plain `http://<host>:<consent port>` unless the legacy environment override is set,
 which a remote browser on the tailnet cannot use as a secure context. To issue
 an HTTPS review URL, add a second Tailscale Serve mapping from an HTTPS name to
 the **consent** port (not the UI port), and tell Station the exact origin:
@@ -801,8 +802,65 @@ This is in addition to the existing port-pinned
 `http://<host>:<consent port>` path, which keeps working. The HTTPS consent
 name must be the same hostname as the app's (with Tailscale, both are the device
 FQDN): the consent session cookie is host-scoped and is not sent across
-hostnames, so a different name fails closed with `unauthenticated`. Unset, the
-behavior is unchanged. The origin is never added to `ALLOWED_ORIGINS`.
+hostnames, so a different name fails closed with `unauthenticated`. With the
+preview off and the environment value unset, the HTTP fallback is unchanged.
+The origin is never added to `ALLOWED_ORIGINS`.
+
+For live publication, opt into the Station-wide **Dynamic HTTPS routes** preview
+(`dynamic-route-publications`, **off by default**) under Settings → Advanced →
+Feature previews. Station reads existing Tailscale Serve mappings separately:
+app/API mappings are connection routes, while the separate consent-listener
+mapping is an approval origin, never an app route. Automatic approval selection
+requires exactly one compatible mapping on the same hostname as an app origin.
+Missing or ambiguous mappings leave HTTPS approval unavailable; this preview
+does not substitute a request host or an HTTP review URL.
+
+The local operator can save **Approval HTTPS origin** in the Routes settings
+(`trustedConsentOrigin`, persisted in Station configuration) without restarting.
+It has the same exact HTTPS DNS-origin requirements as the environment value.
+An absent setting falls back to `STATION_TRUSTED_CONSENT_ORIGIN`; an explicitly
+saved empty setting selects automatic discovery instead of that fallback.
+An origin discovered as an app mapping is refused for the approval role.
+Disabling the preview restores the legacy startup environment/HTTP behavior.
+Publication status reports discovery/configuration, not proof of reachability.
+
+Create or repair Serve mappings on the Station host: the browser neither
+provisions Tailscale Serve nor installs/signs in to Tailscale. Saving an origin
+does not create a proxy mapping, TLS certificate, or permission grant. Keep the
+app and approval mappings distinct and preserve other applications' listeners.
+
+With LAN publication enabled, the preview can advertise a single discovered
+HTTPS app origin as Nearby Stations TXT `appOrigin`. Native discovery treats it
+only as an untrusted address hint after validating the resolved private LAN
+endpoint; rejected hints retain the legacy LAN URL. It grants no trust or
+consent and does not bypass Request Access or the identity handshake. Physical
+Android/iOS validation is still needed for multicast visibility, OS permissions,
+TLS, lifecycle and pairing; unit tests do not qualify those journeys or native
+multi-route failover. See the [route design](../design/station-routes.md#dynamic-https-publications-preview).
+
+Native alternate HTTPS admission is an **in-progress** extension, not qualified
+installed-device failover. The native host fetches authenticated routes through
+the saved profile's already-authorized canonical anchor. Candidates must be
+owned published HTTPS `appOrigins` also present in that route list. The host
+compares fresh public nonce proofs from the anchor and candidate before sending
+any saved bearer to the candidate. Proof requests carry no bearer or cookies
+and must not follow redirects. Approval origins and Nearby hints confer no
+authority. The public HMAC proof can be relayed: the authenticated anchor's
+exact HTTPS origin advertisement is the authority, not a matching public
+environment ID or proof alone. No cloud account is needed.
+
+Admission stays in native host memory for at most ten minutes, scoped to the
+binding epoch, profile revision, canonical origin, and environment. Only an
+unexpired admitted origin may receive the saved credential during failover;
+the UI cannot authorize one itself. Restart or a changed binding/profile needs
+fresh admission. An unreachable canonical anchor cannot renew it, so this is
+not indefinite offline recovery. Existing pairing and permissions still apply.
+The desktop's owned loopback HTTP endpoint and local lifecycle remain canonical;
+this does not authorize LAN HTTP alternates, replace the profile endpoint,
+persist alternate credentials, or provision Serve from the browser. Native
+shell execution, physical Android/iOS behavior, and end-to-end failover remain
+**NOT_VERIFIED** until separately exercised. See the
+[native admission threat model](../design/station-routes.md#native-host-authorized-alternate-origins).
 
 With this origin set, a paired browser can enroll an operator passkey and sign
 in; see [Operator passkeys](operator-passkeys.md). The host-scoped session
@@ -1138,6 +1196,32 @@ short-lived operation ID and expiry plus a completed, already-absent, or failed
 result; failed, orphaned, and expired operations cannot classify later exits as
 expected.
 
+On Windows, the journal uses retained native file handles rather than POSIX
+mode bits: a file must belong to the current user and grant only that user
+FullControl. An existing inherited owner-only DACL is verified through the
+retained handle, protected on that same handle, then reverified before content
+is read or appended; existing bytes are preserved. Existing broader file ACLs
+are refused, not silently repaired. New files start with a protected DACL.
+Handles retain non-reparse ancestors and deny concurrent
+write/delete sharing; reads check file identity and the handle's DACL before
+and after reading. The default rotation threshold is 10 MiB, not a record-size
+or read limit: configured larger thresholds and single larger records remain
+readable, subject to Node's existing whole-file read size ceiling (2 GiB minus
+one byte). Content is transferred in bounded chunks, not command-line arguments.
+Rotation copies and flushes the
+current generation before atomically replacing the previous generation; its
+parent must also pass Station's execution-safe Windows directory policy. This
+check first verifies a protected current-user-only DACL on the retained parent
+handle. Other ACL shapes use the existing synchronous PowerShell trust runner
+with its 120-second timeout; rotation is not universally all-native or
+constant-latency. This
+does not harden arbitrary existing parent directories or defend against the
+same user or an administrator. POSIX ownership/mode checks remain unchanged.
+The separate runtime log and instance-state files use the same native
+private-file owner, with different publication and append policies described
+in [development](development.md). These source guarantees do not establish
+that an installed Nightly build contains or exercises them.
+
 The terminal and voice `/__station/health` upgrades are identity-only: they
 close before registering a business client, allocating a terminal, starting a
 voice provider, or creating a voice session. Managed instance state also pins
@@ -1146,9 +1230,10 @@ Station verifies that fingerprint immediately before signaling; absent
 processes are already stopped, while reused PIDs and unrelated port owners are
 reported and never killed. Recovery stops on failed proof before rotating logs
 or starting another process. Modern instance state is an owned mode-0600 file
-inside an owned mode-0700 directory; publication fsyncs the exact record and
-directory, verifies the final inode and bytes, and guarded removal quarantines
-only the securely read record.
+inside an owned mode-0700 directory on POSIX. Windows verifies current-user-only
+DACLs on both boundaries and rejects reparse paths. Publication fsyncs the exact
+record (and its directory on supported platforms), verifies final file identity
+and bytes, and guarded removal quarantines only the securely read record.
 For dependency/build failure, `active` was never stopped. For start, local
 health, provenance, or tailnet health failure, `active` still names the prior
 release after that release has been restarted and verified. If rollback itself

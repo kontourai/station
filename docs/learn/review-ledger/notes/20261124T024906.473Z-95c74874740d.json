@@ -1,0 +1,7 @@
+{
+  "revision": "32c2bcd30e4c5809d189cb03cb43a9180295bef9",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Re-read against this change: CommandPalette accepts a destination's retired ids for plugin navigate commands; no SDK hook or documented signature changed.","inputs":["docs/reference/sdk.md","src-ui/src/components/CommandPalette.tsx"]}
+  ]
+}

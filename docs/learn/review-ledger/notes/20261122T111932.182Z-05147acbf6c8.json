@@ -1,0 +1,7 @@
+{
+  "revision": "c0eeea5ee41188c63199ea4c8fd702db3aa30408",
+
+  "notes": [
+    {"path":"docs/patterns/frontend.md","note":"Cites the responsive action inventory generally; the new dialog uses Dialog, Button, Checkbox, Badge and ErrorState as the patterns require.","inputs":["docs/patterns/frontend.md","docs/ui/responsive-action-surfaces.txt"]}
+  ]
+}

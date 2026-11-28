@@ -304,8 +304,11 @@ address (`connectionRouteKind`, `CONNECTION_ROUTE_LABELS`) and backs three
 report only when its `environmentId` matches the saved one, marking learned
 endpoints `source: 'advertised'` and pruning those it stops reporting except
 the one in use; `addRoute` and `removeRoute` change the routes a user added.
-Relay, SSH-tunnel and native shared profiles keep their single route
-([Station routes](../design/station-routes.md)).
+Relay and SSH-tunnel profiles keep their single route. Native shared profiles
+persist one canonical endpoint; their runtime projection can additionally expose
+temporary HTTPS routes admitted by the native host, not by advertisement merging
+or a matching public identity alone
+([Station routes](../design/station-routes.md#native-host-authorized-alternate-origins)).
 Each completed probe run, success or failure, also stamps `checkedAt`, so a
 surface can say how old the status it shows is; Station's switcher prints it as
 "checked 2m ago" beside the active Station. A managed-loopback server is
@@ -1174,6 +1177,14 @@ suggestion. A failing provider is isolated from healthy providers. Provider regi
 reactive: removal or replacement cancels stale scan results. Scans default to an
 18-second outer deadline. Providers distinguish available, empty,
 permission-required, permission-denied, unavailable, timed-out, cancelled and failed.
+
+Trusted Windows Tauri shells register the native DNS-SD provider and separately
+check the selected authorized controller's default-off `desktop-nearby` Feature
+Preview before preparation and browsing.
+The browse window is five seconds with up to 1.5 seconds for confirmed shutdown;
+unconfirmed shutdown blocks another scan until restart. Windows returns at most
+32 untrusted private/link-local IPv4 hints through the same registry and access
+review. macOS/Linux desktop browsing is not enabled.
 
 Native iOS and Android 14+ shells register the system DNS-SD provider for
 `_station._tcp.local.`. It validates TXT version/transport and resolved private

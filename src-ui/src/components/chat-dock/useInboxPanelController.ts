@@ -1,3 +1,4 @@
+import { linkedPullRequestMatches } from '@kontourai/station-contracts/conversation-pull-request-links';
 import {
   type RefObject,
   useCallback,
@@ -13,6 +14,7 @@ import { navigationStore } from '../../contexts/navigation-store';
 import { useCoarseNow } from '../../hooks/useCoarseNow';
 import { migrateSnoozeKey } from '../../utils/activity-snooze-store';
 import { migrateInboxDismissal } from '../../utils/inbox-dismissal-store';
+import { migrateInboxPin } from '../../utils/inbox-pin-store';
 import {
   chatTaskSessionId,
   type HomeWorkItem,
@@ -36,6 +38,7 @@ import { useInboxGroups } from './useInboxGroups';
 
 export interface InboxPanelControllerOptions extends WorkItemOpenHandlers {
   items: HomeWorkItem[];
+  taskQuestionsEnabled?: boolean;
   open: boolean;
   panelRef: RefObject<HTMLElement | null>;
   authority?: ReturnType<typeof useHostRequestAuthorityScope>;
@@ -61,12 +64,41 @@ export function useInboxPanelController(options: InboxPanelControllerOptions) {
         item.chatSessionId,
       );
       migrateSnoozeKey(oldId, item.id, now, namespace);
+      migrateInboxPin(oldId, item.id, namespace);
       migrateInboxDismissal(oldId, item.id, namespace);
     }
   }, [items, workFacts, now, namespace]);
   const [query, setQuery] = useState('');
   const scope = useInboxScope(items, now, workFacts);
-  const groups = useInboxGroups(scope.items, now, workFacts, query);
+  const inboxGroups = useInboxGroups(scope.items, now, workFacts, query);
+  const groups = useMemo(() => {
+    if (scope.pullRequestFilter !== 'priority') return inboxGroups;
+    const states = ['failing', 'awaiting-review', 'ready', 'merged'] as const;
+    const ranks = new Map(
+      scope.items.map((item) => {
+        const links = workFacts?.get(item.id)?.pullRequests ?? [];
+        const rank = states.findIndex((state) =>
+          links.some(
+            ({ status }) =>
+              status.state === 'current' &&
+              linkedPullRequestMatches(status, state),
+          ),
+        );
+        return [item.id, rank < 0 ? states.length : rank];
+      }),
+    );
+    const compare = (a: HomeWorkItem, b: HomeWorkItem) =>
+      (ranks.get(a.id) ?? states.length) - (ranks.get(b.id) ?? states.length);
+    return inboxGroups.map((group) =>
+      group.id === 'pinned'
+        ? group
+        : {
+            ...group,
+            items: [...group.items].sort(compare),
+            ...(group.older ? { older: [...group.older].sort(compare) } : {}),
+          },
+    );
+  }, [inboxGroups, scope.items, scope.pullRequestFilter, workFacts]);
   const openChatIds = useMemo(
     () =>
       new Set(
@@ -87,7 +119,7 @@ export function useInboxPanelController(options: InboxPanelControllerOptions) {
   const latest = useRef({
     open,
     authorityKey,
-    filter: scope.value,
+    filter: JSON.stringify([scope.value, scope.pullRequestFilter]),
     query,
     items,
     workFacts,
@@ -95,7 +127,7 @@ export function useInboxPanelController(options: InboxPanelControllerOptions) {
   latest.current = {
     open,
     authorityKey,
-    filter: scope.value,
+    filter: JSON.stringify([scope.value, scope.pullRequestFilter]),
     query,
     items,
     workFacts,
@@ -108,12 +140,23 @@ export function useInboxPanelController(options: InboxPanelControllerOptions) {
     void open;
     void authorityKey;
     void scope.value;
+    void scope.pullRequestFilter;
     void query;
     invalidate();
     return invalidate;
-  }, [open, authorityKey, scope.value, query, invalidate]);
+  }, [
+    open,
+    authorityKey,
+    scope.value,
+    scope.pullRequestFilter,
+    query,
+    invalidate,
+  ]);
 
-  const activate = async (item: HomeWorkItem) => {
+  const activate = async (
+    item: HomeWorkItem,
+    taskView: 'overview' | 'plan' = 'overview',
+  ) => {
     invalidate();
     if (!open || authority === null || authority?.isCurrent() === false) return;
     const generation = selection.current.generation;
@@ -136,7 +179,8 @@ export function useInboxPanelController(options: InboxPanelControllerOptions) {
       generation === selection.current.generation &&
       latest.current.open &&
       latest.current.authorityKey === authorityKey &&
-      latest.current.filter === scope.value &&
+      latest.current.filter ===
+        JSON.stringify([scope.value, scope.pullRequestFilter]) &&
       latest.current.query === query &&
       authority?.isCurrent() !== false &&
       latest.current.items.some(
@@ -151,7 +195,7 @@ export function useInboxPanelController(options: InboxPanelControllerOptions) {
           chat: null,
           maximize: null,
           surface: null,
-          taskView: 'overview',
+          taskView,
         });
         if (current()) options.onActivated?.();
         return;
@@ -214,6 +258,11 @@ export function useInboxPanelController(options: InboxPanelControllerOptions) {
       onActivate: (item: HomeWorkItem) => {
         void activate(item);
       },
+      onOpenTaskQuestions: options.taskQuestionsEnabled
+        ? (item: HomeWorkItem) => {
+            void activate(item, 'plan');
+          }
+        : undefined,
       onSnoozeWake: (
         item: HomeWorkItem,
         wakeAt: number | null,
@@ -235,6 +284,20 @@ export function useInboxPanelController(options: InboxPanelControllerOptions) {
       // A settled row stays listed (under Settled) and keeps its focus.
       onSettle: (conversationId: string, settled: boolean) =>
         dismissals.settle(conversationId, settled),
+      canCloseChat: (item: HomeWorkItem) =>
+        Boolean(
+          onCloseChat &&
+            item.chatSessionId &&
+            openChatIds.has(item.chatSessionId),
+        ),
+      onCloseChat: onCloseChat
+        ? (item: HomeWorkItem, action: HTMLButtonElement) => {
+            if (!item.chatSessionId || !openChatIds.has(item.chatSessionId))
+              return;
+            beforeRemoval(action);
+            onCloseChat(item.chatSessionId);
+          }
+        : undefined,
       onDraftDiscarded: (item: HomeWorkItem, action: HTMLButtonElement) => {
         if (action.closest('.inbox-row')?.contains(document.activeElement))
           beforeRemoval(action);

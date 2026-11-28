@@ -26,7 +26,7 @@ const UNPAIRED_SAMPLE_SURFACES = {
   },
   customize: {
     title: 'Customize Station',
-    eyebrow: 'Agents, skills, engines, and plugins',
+    eyebrow: 'Agents, skills, engines, providers and tools',
     body: 'Choose what powers your work. Pair a Station to customize its agents and tools.',
   },
 } as const;

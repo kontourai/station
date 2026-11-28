@@ -131,6 +131,15 @@ ships compiled JavaScript plus its external runtime dependencies, native
 libraries, schemas, skills, and licenses. Desktop staging omits backend source
 maps while retaining them in the original build output for diagnostics. It also
 removes reviewed SDK source/test trees and unused browser Cedar WASM variants.
+The dependency planner places each conflicting version at the shallowest safe
+ancestor, without changing any previously planned Node dependency resolution.
+This reduces duplicate runtime trees while preserving required and peer versions,
+including npm aliases. Windows staging rejects dependency paths that would exceed
+Win32 file or directory limits beneath a 45-character installation root; shallow
+WiX/NSIS source aliases alone do not protect installed paths. The NSIS preinstall
+hook enforces the maximum installation-root length computed from all staged
+resource destinations before its runtime cleanup. Longer custom roots
+must be shortened. This does not require changing the machine's long-path policy.
 RxJS keeps its Node CommonJS exports (also used by Node ESM imports), metadata
 and license; its browser distributions and TypeScript sources are omitted.
 The OTLP transformer likewise retains its Node `build/src` implementation,

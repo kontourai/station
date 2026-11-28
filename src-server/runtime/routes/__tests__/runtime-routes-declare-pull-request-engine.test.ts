@@ -31,6 +31,7 @@ import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { registerPullRequestProvider } from '../../../providers/registries/registry.js';
 import { AsyncEventQueue } from '../../../providers/sessions/async-event-queue.js';
 import { __resetStationServerSelfAttestationForTests } from '../../../security/station-server-scope.js';
+import { FeaturePreviewRegistry } from '../../../services/feature-previews/feature-preview-registry.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
 import { NotificationService } from '../../../services/notifications/notification-service.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
@@ -48,6 +49,7 @@ import {
   INTERNAL_API_TOKEN_HEADER,
   INTERNAL_PROXY_CALLER_HEADER,
 } from '../../../utils/internal-api-token.js';
+import { createLogger } from '../../../utils/logger.js';
 import {
   __resetStationControlMcpTokensForTests,
   mintStationControlMcpToken,
@@ -332,7 +334,12 @@ describe('an external engine declares a pull request: the Task shows it, a merge
       locality: 'home-possession',
       mintKind: 'local-grant',
     }).credential;
+    const logger = createLogger({
+      name: 'pull-request-route-test',
+      level: 'error',
+    });
     const context = deepStub({
+      featurePreviews: new FeaturePreviewRegistry(homeDir, logger),
       projectSharedTasks: undefined,
       deploymentAuthentication: undefined,
       localAccounts: undefined,
@@ -344,7 +351,7 @@ describe('an external engine declares a pull request: the Task shows it, a merge
         getProjectHomeDir: () => homeDir,
         loadAppConfig: () => ({}),
       },
-      logger: { debug() {}, info() {}, warn() {}, error() {} },
+      logger,
       activeAgents: new Map(),
       agentService: { listAgents: () => [] },
       agentMetadataMap: new Map(),
@@ -675,6 +682,9 @@ describe('an external engine declares a pull request: the Task shows it, a merge
     await vi.waitFor(() =>
       expect(e.taskGraph.readTask(task.id)?.status).toBe('done'),
     );
+    // #4554: close-on-merge writes the end time in the same write as done.
+    const closed = e.taskGraph.readTask(task.id)!;
+    expect(closed.endedAt).toBe(closed.updatedAt);
     // Clean, and its branch has no commit of its own: removed and forgotten.
     await vi.waitFor(() => {
       expect(existsSync(worktree.path)).toBe(false);

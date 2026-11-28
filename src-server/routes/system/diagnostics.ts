@@ -16,7 +16,10 @@ import {
   isBoundRuntimeOwner,
   resolveClientOriginForRequest,
 } from '../../security/runtime-request-security.js';
-import { stationControlRequestAuthority } from '../../security/station-control-request-authority.js';
+import {
+  stationControlRequestAuthority,
+  stationControlRequestCurrent,
+} from '../../security/station-control-request-authority.js';
 import type { DiagnosticsService } from '../../services/infra/diagnostics-service.js';
 import {
   MAX_SERVER_LOG_QUERY_LIMIT,
@@ -43,6 +46,11 @@ export function createDiagnosticsRoutes(
   logReader: ServerLogReader,
   access?: {
     agentGrant?: (sessionId: string) => boolean;
+    requestLogRead?: (
+      sessionId: string,
+      description: string,
+      signal: AbortSignal,
+    ) => Promise<boolean>;
     /** #4470: absent leaves the troubleshoot prepare route unmounted. */
     troubleshoot?: TroubleshootService;
     /**
@@ -168,8 +176,7 @@ export function createDiagnosticsRoutes(
           if (
             authority?.kind !== 'caller' ||
             authority.caller.assurance !== 'bound' ||
-            !authority.caller.principal?.elevationEligible ||
-            !hasAgentGrant(authority.caller.sessionId)
+            !authority.caller.principal?.elevationEligible
           )
             return c.json(
               { error: 'Diagnostics log access is not granted' },
@@ -224,6 +231,29 @@ export function createDiagnosticsRoutes(
 
       const q = c.req.query('q');
 
+      let approvedInChat = false;
+      if (agentSessionId && !hasAgentGrant(agentSessionId)) {
+        const description = [
+          `Severity: ${rawLevel ?? 'all levels'}`,
+          `From: ${since ? new Date(since).toISOString() : 'no lower bound'}`,
+          `To: ${until ? new Date(until).toISOString() : 'no upper bound'}`,
+          `Maximum entries: ${limit ?? 200}`,
+          ...(q ? ['A text filter applies.'] : []),
+          'The result may contain private conversation content.',
+        ].join('\n');
+        approvedInChat =
+          (await access?.requestLogRead?.(
+            agentSessionId,
+            description,
+            c.req.raw.signal,
+          )) === true;
+        if (!approvedInChat || !stationControlRequestCurrent(c.req.raw))
+          return c.json(
+            { error: 'Diagnostics log access is not granted' },
+            403,
+          );
+      }
+
       const options: ServerLogQueryOptions = {
         ...(rawLevel !== undefined ? { level: rawLevel } : {}),
         ...(since !== undefined ? { since } : {}),
@@ -233,11 +263,15 @@ export function createDiagnosticsRoutes(
         // One derivation, bound by the auth boundary: the owner (mint-time
         // `locality: 'home-possession'` or owner-device standing). Absent (or a
         // second call that skipped the boundary) fails closed to redacted.
-        redact: !isBoundRuntimeOwner(c.req.raw),
+        redact: approvedInChat || !isBoundRuntimeOwner(c.req.raw),
       };
 
       const result = await logReader.query(options);
-      if (agentSessionId && !hasAgentGrant(agentSessionId))
+      if (
+        agentSessionId &&
+        (!stationControlRequestCurrent(c.req.raw) ||
+          (!approvedInChat && !hasAgentGrant(agentSessionId)))
+      )
         return c.json({ error: 'Diagnostics log access is not granted' }, 403);
       serverLogsRead.add(1, { surface: 'route' });
       return c.json(result);

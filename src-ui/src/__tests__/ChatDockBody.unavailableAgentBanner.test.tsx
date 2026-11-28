@@ -333,7 +333,7 @@ describe('ChatDockBody unavailable-agent banner (station#3136)', () => {
       screen.getByRole('button', { name: 'Open engine settings' }),
     );
     expect(navigateSpy).toHaveBeenCalledWith(
-      '/connections/engines/engine%2Fcodex',
+      '/customize/engines/engine%2Fcodex',
     );
   });
 

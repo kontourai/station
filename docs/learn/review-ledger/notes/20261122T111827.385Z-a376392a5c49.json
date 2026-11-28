@@ -1,0 +1,7 @@
+{
+  "revision": "c0eeea5ee41188c63199ea4c8fd702db3aa30408",
+
+  "notes": [
+    {"path":"docs/patterns/backend.md","note":"Cites the responsive action inventory generally; removing the deleted stepper row changes no backend pattern claim.","inputs":["docs/patterns/backend.md","docs/ui/responsive-action-surfaces.txt"]}
+  ]
+}

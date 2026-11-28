@@ -1,0 +1,171 @@
+{
+  "revision": "d6bc85619555c748e7e524854a1c1ce8562c5553",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the reply composer entry points for one-press Queue and Steer, unavailable steering, pointer focus preservation, and model and Agent picker return. Mounted Chromium touch and keyboard cases cover the inline and dialog behaviors. Native keyboard visibility requires physical-device evidence.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/ChatInputArea.test.tsx","src-ui/src/__tests__/composer-sizing.browser.test.tsx","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ConversationHandoffDialog.tsx","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/index.css"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Checked the compact composer opt-in against the shared surface, nested Run setup callers and keyboard modal coverage. The focus-preserving path leaves the draft active and handles Escape from it. The usual panel focus and return path still applies to keyboard-opened dialogs.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/ResponsiveDialogSurface.tsx","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/index.css"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the citing pages and capture relationships against the changed rules. The selectors target native mode radios in a compact composer popover that retained draft focus and extend the input hit box to its option row.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/design/motion.md","note":"Reviewed the citing pages and capture relationships against the changed rules. The selectors target native mode radios in a compact composer popover that retained draft focus and extend the input hit box to its option row.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/design/placement.md","note":"Reviewed the citing pages and capture relationships against the changed rules. The selectors target native mode radios in a compact composer popover that retained draft focus and extend the input hit box to its option row.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/design/session-tape-replay.md","note":"Reviewed the citing pages and capture relationships against the changed rules. The selectors target native mode radios in a compact composer popover that retained draft focus and extend the input hit box to its option row.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Reviewed the citing pages and capture relationships against the changed rules. The selectors target native mode radios in a compact composer popover that retained draft focus and extend the input hit box to its option row.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed the citing pages and capture relationships against the changed rules. The selectors target native mode radios in a compact composer popover that retained draft focus and extend the input hit box to its option row.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/guides/knowledge.md","note":"Reviewed the citing pages and capture relationships against the changed rules. The selectors target native mode radios in a compact composer popover that retained draft focus and extend the input hit box to its option row.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed the citing pages and capture relationships against the changed rules. The selectors target native mode radios in a compact composer popover that retained draft focus and extend the input hit box to its option row.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Reviewed the citing pages and capture relationships against the changed rules. The selectors target native mode radios in a compact composer popover that retained draft focus and extend the input hit box to its option row.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/guides/theming.md","note":"Reviewed the citing pages and capture relationships against the changed rules. The selectors target native mode radios in a compact composer popover that retained draft focus and extend the input hit box to its option row.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-compaction.png","note":"Reviewed the citing pages and capture relationships against the changed rules. The selectors target native mode radios in a compact composer popover that retained draft focus and extend the input hit box to its option row.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-learning-1440-dark.png","note":"Reviewed the citing pages and capture relationships against the changed rules. The selectors target native mode radios in a compact composer popover that retained draft focus and extend the input hit box to its option row.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-learning-1440-light.png","note":"Reviewed the citing pages and capture relationships against the changed rules. The selectors target native mode radios in a compact composer popover that retained draft focus and extend the input hit box to its option row.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-learning-390-dark.png","note":"Reviewed the citing pages and capture relationships against the changed rules. The selectors target native mode radios in a compact composer popover that retained draft focus and extend the input hit box to its option row.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-learning-390-light.png","note":"Reviewed the citing pages and capture relationships against the changed rules. The selectors target native mode radios in a compact composer popover that retained draft focus and extend the input hit box to its option row.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-supervision.png","note":"Reviewed the citing pages and capture relationships against the changed rules. The selectors target native mode radios in a compact composer popover that retained draft focus and extend the input hit box to its option row.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-usage.png","note":"Reviewed the citing pages and capture relationships against the changed rules. The selectors target native mode radios in a compact composer popover that retained draft focus and extend the input hit box to its option row.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-working-configuration.png","note":"Reviewed the citing pages and capture relationships against the changed rules. The selectors target native mode radios in a compact composer popover that retained draft focus and extend the input hit box to its option row.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/child-tool-text-after-1440-light.png","note":"Reviewed the citing pages and capture relationships against the changed rules. The selectors target native mode radios in a compact composer popover that retained draft focus and extend the input hit box to its option row.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/child-tool-text-after-390-dark.png","note":"Reviewed the citing pages and capture relationships against the changed rules. The selectors target native mode radios in a compact composer popover that retained draft focus and extend the input hit box to its option row.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/child-tool-text-before-1440-light.png","note":"Reviewed the citing pages and capture relationships against the changed rules. The selectors target native mode radios in a compact composer popover that retained draft focus and extend the input hit box to its option row.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/child-tool-text-before-390-dark.png","note":"Reviewed the citing pages and capture relationships against the changed rules. The selectors target native mode radios in a compact composer popover that retained draft focus and extend the input hit box to its option row.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/connections-models.png","note":"Reviewed the citing pages and capture relationships against the changed rules. The selectors target native mode radios in a compact composer popover that retained draft focus and extend the input hit box to its option row.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/connections-tour.webm","note":"Reviewed the citing pages and capture relationships against the changed rules. The selectors target native mode radios in a compact composer popover that retained draft focus and extend the input hit box to its option row.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"Reviewed the citing pages and capture relationships against the changed rules. The selectors target native mode radios in a compact composer popover that retained draft focus and extend the input hit box to its option row.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"Reviewed the citing pages and capture relationships against the changed rules. The selectors target native mode radios in a compact composer popover that retained draft focus and extend the input hit box to its option row.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/oauth-mcp-picker-comparison.png","note":"Reviewed the citing pages and capture relationships against the changed rules. The selectors target native mode radios in a compact composer popover that retained draft focus and extend the input hit box to its option row.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/oauth-mcp-sign-in-comparison.png","note":"Reviewed the citing pages and capture relationships against the changed rules. The selectors target native mode radios in a compact composer popover that retained draft focus and extend the input hit box to its option row.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s3-consent-sign-in.png","note":"Reviewed the citing pages and capture relationships against the changed rules. The selectors target native mode radios in a compact composer popover that retained draft focus and extend the input hit box to its option row.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s3-other-browser-refused.png","note":"Reviewed the citing pages and capture relationships against the changed rules. The selectors target native mode radios in a compact composer popover that retained draft focus and extend the input hit box to its option row.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s3-paired-after-sign-in.png","note":"Reviewed the citing pages and capture relationships against the changed rules. The selectors target native mode radios in a compact composer popover that retained draft focus and extend the input hit box to its option row.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s3-paired-before-sign-in.png","note":"Reviewed the citing pages and capture relationships against the changed rules. The selectors target native mode radios in a compact composer popover that retained draft focus and extend the input hit box to its option row.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s4-after-sign-in.png","note":"Reviewed the citing pages and capture relationships against the changed rules. The selectors target native mode radios in a compact composer popover that retained draft focus and extend the input hit box to its option row.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"Reviewed the citing pages and capture relationships against the changed rules. The selectors target native mode radios in a compact composer popover that retained draft focus and extend the input hit box to its option row.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"Reviewed the citing pages and capture relationships against the changed rules. The selectors target native mode radios in a compact composer popover that retained draft focus and extend the input hit box to its option row.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-review.png","note":"Reviewed the citing pages and capture relationships against the changed rules. The selectors target native mode radios in a compact composer popover that retained draft focus and extend the input hit box to its option row.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/project-with-task.png","note":"Reviewed the citing pages and capture relationships against the changed rules. The selectors target native mode radios in a compact composer popover that retained draft focus and extend the input hit box to its option row.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/repository-knowledge-narrow.png","note":"Reviewed the citing pages and capture relationships against the changed rules. The selectors target native mode radios in a compact composer popover that retained draft focus and extend the input hit box to its option row.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/repository-knowledge.png","note":"Reviewed the citing pages and capture relationships against the changed rules. The selectors target native mode radios in a compact composer popover that retained draft focus and extend the input hit box to its option row.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-after-1440-dark.png","note":"Reviewed the citing pages and capture relationships against the changed rules. The selectors target native mode radios in a compact composer popover that retained draft focus and extend the input hit box to its option row.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-after-1440-light.png","note":"Reviewed the citing pages and capture relationships against the changed rules. The selectors target native mode radios in a compact composer popover that retained draft focus and extend the input hit box to its option row.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-after-390-dark.png","note":"Reviewed the citing pages and capture relationships against the changed rules. The selectors target native mode radios in a compact composer popover that retained draft focus and extend the input hit box to its option row.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-after-390-light.png","note":"Reviewed the citing pages and capture relationships against the changed rules. The selectors target native mode radios in a compact composer popover that retained draft focus and extend the input hit box to its option row.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-before-1440-dark.png","note":"Reviewed the citing pages and capture relationships against the changed rules. The selectors target native mode radios in a compact composer popover that retained draft focus and extend the input hit box to its option row.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-before-1440-light.png","note":"Reviewed the citing pages and capture relationships against the changed rules. The selectors target native mode radios in a compact composer popover that retained draft focus and extend the input hit box to its option row.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-before-390-dark.png","note":"Reviewed the citing pages and capture relationships against the changed rules. The selectors target native mode radios in a compact composer popover that retained draft focus and extend the input hit box to its option row.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-before-390-light.png","note":"Reviewed the citing pages and capture relationships against the changed rules. The selectors target native mode radios in a compact composer popover that retained draft focus and extend the input hit box to its option row.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/shared-task-document.png","note":"Reviewed the citing pages and capture relationships against the changed rules. The selectors target native mode radios in a compact composer popover that retained draft focus and extend the input hit box to its option row.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/updates-after-1440-light.png","note":"Reviewed the citing pages and capture relationships against the changed rules. The selectors target native mode radios in a compact composer popover that retained draft focus and extend the input hit box to its option row.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/updates-after-390-dark.png","note":"Reviewed the citing pages and capture relationships against the changed rules. The selectors target native mode radios in a compact composer popover that retained draft focus and extend the input hit box to its option row.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/updates-before-1440-light.png","note":"Reviewed the citing pages and capture relationships against the changed rules. The selectors target native mode radios in a compact composer popover that retained draft focus and extend the input hit box to its option row.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/updates-before-390-dark.png","note":"Reviewed the citing pages and capture relationships against the changed rules. The selectors target native mode radios in a compact composer popover that retained draft focus and extend the input hit box to its option row.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/updates-history-after-390-dark.png","note":"Reviewed the citing pages and capture relationships against the changed rules. The selectors target native mode radios in a compact composer popover that retained draft focus and extend the input hit box to its option row.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/updates-notes-after-390-light.png","note":"Reviewed the citing pages and capture relationships against the changed rules. The selectors target native mode radios in a compact composer popover that retained draft focus and extend the input hit box to its option row.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Reviewed the citing pages and capture relationships against the changed rules. The selectors target native mode radios in a compact composer popover that retained draft focus and extend the input hit box to its option row.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/patterns/backend.md","note":"Reviewed the citing pages and capture relationships against the changed rules. The selectors target native mode radios in a compact composer popover that retained draft focus and extend the input hit box to its option row.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Reviewed the citing pages and capture relationships against the changed rules. The selectors target native mode radios in a compact composer popover that retained draft focus and extend the input hit box to its option row.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Reviewed the citing pages and capture relationships against the changed rules. The selectors target native mode radios in a compact composer popover that retained draft focus and extend the input hit box to its option row.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"Reviewed the citing pages and capture relationships against the changed rules. The selectors target native mode radios in a compact composer popover that retained draft focus and extend the input hit box to its option row.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the citing pages and capture relationships against the changed rules. The selectors target native mode radios in a compact composer popover that retained draft focus and extend the input hit box to its option row.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"examples/knowledge-library/README.md","note":"Reviewed the citing pages and capture relationships against the changed rules. The selectors target native mode radios in a compact composer popover that retained draft focus and extend the input hit box to its option row.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"src-desktop/icons/README.md","note":"Reviewed the citing pages and capture relationships against the changed rules. The selectors target native mode radios in a compact composer popover that retained draft focus and extend the input hit box to its option row.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Traced the changed Agent and engine handoff entry points to the existing conversation-boundary owner. The new argument carries the focused draft as a local return target.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/pane-relationships.md","note":"Traced the changed Agent and engine handoff entry points to the existing conversation-boundary owner. The new argument carries the focused draft as a local return target.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Traced the changed Agent and engine handoff entry points to the existing conversation-boundary owner. The new argument carries the focused draft as a local return target.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Traced the changed Agent and engine handoff entry points to the existing conversation-boundary owner. The new argument carries the focused draft as a local return target.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"Traced the changed Agent and engine handoff entry points to the existing conversation-boundary owner. The new argument carries the focused draft as a local return target.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/config.md","note":"Traced the changed Agent and engine handoff entry points to the existing conversation-boundary owner. The new argument carries the focused draft as a local return target.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/concepts.md","note":"Traced the changed Agent and engine handoff entry points to the existing conversation-boundary owner. The new argument carries the focused draft as a local return target.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Traced the changed Agent and engine handoff entry points to the existing conversation-boundary owner. The new argument carries the focused draft as a local return target.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/personal-boards.md","note":"Traced the changed Agent and engine handoff entry points to the existing conversation-boundary owner. The new argument carries the focused draft as a local return target.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"The new prop carries the active draft node to the surface for dismissal focus. Checked the handoff submit, staged choice, request and receipt paths against the cited orchestration and session API claims.","inputs":["src-ui/src/components/chat-dock/ConversationHandoffDialog.tsx"]},
+
+    {"path":"docs/reference/session-api.md","note":"The new prop carries the active draft node to the surface for dismissal focus. Checked the handoff submit, staged choice, request and receipt paths against the cited orchestration and session API claims.","inputs":["src-ui/src/components/chat-dock/ConversationHandoffDialog.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed portal, layer, theme and keyboard focus claims against the dialog shell. The new opt-in captures an already focused composer draft in the compact surface. The default focus path still starts at the configured panel or initial control and restores its captured trigger.","inputs":["src-ui/src/components/ResponsiveDialogSurface.tsx"]},
+
+    {"path":"docs/guides/theming.md","note":"Reviewed portal, layer, theme and keyboard focus claims against the dialog shell. The new opt-in captures an already focused composer draft in the compact surface. The default focus path still starts at the configured panel or initial control and restores its captured trigger.","inputs":["src-ui/src/components/ResponsiveDialogSurface.tsx"]},
+
+    {"path":"docs/patterns/backend.md","note":"Reviewed portal, layer, theme and keyboard focus claims against the dialog shell. The new opt-in captures an already focused composer draft in the compact surface. The default focus path still starts at the configured panel or initial control and restores its captured trigger.","inputs":["src-ui/src/components/ResponsiveDialogSurface.tsx"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Reviewed portal, layer, theme and keyboard focus claims against the dialog shell. The new opt-in captures an already focused composer draft in the compact surface. The default focus path still starts at the configured panel or initial control and restores its captured trigger.","inputs":["src-ui/src/components/ResponsiveDialogSurface.tsx"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Reviewed portal, layer, theme and keyboard focus claims against the dialog shell. The new opt-in captures an already focused composer draft in the compact surface. The default focus path still starts at the configured panel or initial control and restores its captured trigger.","inputs":["src-ui/src/components/ResponsiveDialogSurface.tsx"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Traced the compact popover opt-in through the shared dialog. Approval mode selection, escalation confirmation and managed-ceiling decisions operate on their existing inputs.","inputs":["src-ui/src/components/badges/ComposerModeSheet.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the reply composer focus interactions, direct Queue and Steer toggle, and draft sizing against the composer policy and getting-started routes. The reply textarea is the focus target for the new pointer interactions.","inputs":["src-ui/src/components/chat/ChatInputArea.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the reply composer focus interactions, direct Queue and Steer toggle, and draft sizing against the composer policy and getting-started routes. The reply textarea is the focus target for the new pointer interactions.","inputs":["src-ui/src/components/chat/ChatInputArea.tsx"]}
+  ]
+}

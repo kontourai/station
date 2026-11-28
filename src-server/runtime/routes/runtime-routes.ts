@@ -235,6 +235,7 @@ import {
 import { ProjectSharedTaskService } from '../../services/projects/project-shared-task-service.js';
 import type { ProjectSharedTaskStore } from '../../services/projects/project-shared-task-store.js';
 import { RecordingLimiter } from '../../services/projects/recording-limiter.js';
+import { SessionDiffStatSnapshots } from '../../services/projects/session-diff-stat-snapshots.js';
 import { TaskBrowserCapture } from '../../services/projects/task-browser-capture.js';
 import { TaskBrowserRecording } from '../../services/projects/task-browser-recording.js';
 import { createTaskCaptureBlobStoreFactory } from '../../services/projects/task-capture-blob-store-factory.js';
@@ -413,6 +414,7 @@ import {
   servesCliSessionGroups,
   servesCoordinatorSession,
   servesProjectRoomCoordinator,
+  servesTaskResume,
 } from '../../capabilities/station-capability-flags.js';
 import {
   loadOrCreateAgentRegistry,
@@ -506,6 +508,10 @@ import { createTaskCodeReviewRoutes } from '../../routes/evidence/task-code-revi
 import { createTrustBundleRoutes } from '../../routes/evidence/trust-bundles.js';
 import { createVeritasReadinessRoutes } from '../../routes/evidence/veritas-readiness.js';
 import { createWorkflowSidecarRoutes } from '../../routes/evidence/workflow-sidecars.js';
+import {
+  createExternalSessionHistoryRoutes,
+  type ExternalSessionHistoryRouteDeps,
+} from '../../routes/external-session-history.js';
 import { createFleetInferenceRoutes } from '../../routes/inference/fleet-inference.js';
 import { createIntegrationStatusRoutes } from '../../routes/integrations/integration-status-routes.js';
 import {
@@ -597,6 +603,7 @@ import { createTaskLearningRoutes } from '../../routes/orchestration/task-learni
 import { createTaskMemoryRoutes } from '../../routes/orchestration/task-memory.js';
 import { createTaskOutputRoutes } from '../../routes/orchestration/task-outputs.js';
 import { createTaskRelationshipRoutes } from '../../routes/orchestration/task-relationships.js';
+import { createTaskResumeRoutes } from '../../routes/orchestration/task-resume.js';
 import { createTaskReviewRoutes } from '../../routes/orchestration/task-review.js';
 import { createTaskReviewStationControlRoutes } from '../../routes/orchestration/task-review-station-control.js';
 import { createTaskWriteBackRoutes } from '../../routes/orchestration/task-write-back.js';
@@ -893,6 +900,7 @@ import {
   createDelegationResultSteerPort,
   DELEGATION_RESULT_CLIENT_ORIGIN,
   DelegationResultDelivery,
+  openDelegationRequests,
 } from '../../services/orchestration/delegation-result-delivery.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
 import type { EventStore } from '../../services/orchestration/event-store.js';
@@ -909,12 +917,16 @@ import {
   ACTIVE_TURN_FOLD_METHODS,
   projectSessionLifecycle,
 } from '../../services/orchestration/session-lifecycle-service.js';
-import { notificationChatTitle } from '../../services/orchestration/session-sender-identity.js';
+import {
+  notificationChatTitle,
+  sessionSenderIdentity,
+} from '../../services/orchestration/session-sender-identity.js';
 import { createSessionWorkItemModule } from '../../services/orchestration/session-work-item-module.js';
 import {
   createTaskLeadReader,
   TaskQuestionWake,
   type TaskQuestionWakePorts,
+  taskLeadPlacementCurrent,
 } from '../../services/orchestration/task-question-wake.js';
 import { TaskReviewSend } from '../../services/orchestration/task-review-send.js';
 import { ThreadInboxDelivery } from '../../services/orchestration/thread-inbox.js';
@@ -1325,6 +1337,7 @@ export interface ConfigureRuntimeRoutesContext {
   nativeSurfaceRegistry?: NativeSurfaceRegistry;
   relayEnrollment?: RelayEnrollmentService;
   runtimeSearch?: import('../../services/search/runtime-search.js').RuntimeSearch;
+  externalSessionHistory?: ExternalSessionHistoryRouteDeps;
   app: HonoApp;
   logger: Logger;
   eventBus: EventBus;
@@ -4428,6 +4441,14 @@ export function configureRuntimeRoutes(
       context.environmentSecurityService,
     ),
   );
+  const chatLogApproval = isHostedTenantExecutionRequired()
+    ? undefined
+    : context.featurePreviews.bind({
+        id: 'chat-server-log-approval',
+        label: 'Server log approvals in chat',
+        description:
+          'Let the Station owner approve redacted agent log reads from its chat.',
+      });
   context.app.route(
     '/api/diagnostics',
     createDiagnosticsRoutes(
@@ -4453,6 +4474,16 @@ export function configureRuntimeRoutes(
             JSON.stringify({ kind: 'diagnostics-session', sessionId }),
             'station-control:read_logs',
           ),
+        requestLogRead: (sessionId, description, signal) =>
+          chatLogApproval?.select({
+            enabled: () =>
+              context.orchestrationService.requestServerLogRead(
+                sessionId,
+                description,
+                signal,
+              ),
+            disabled: () => Promise.resolve(false),
+          }) ?? Promise.resolve(false),
         // #4470: in-app troubleshooting writes its run under this Station's
         // home with the same owner-only rules as `station triage`.
         troubleshoot: new TroubleshootService(
@@ -5992,6 +6023,40 @@ export function configureRuntimeRoutes(
       pullRequestProviders: () =>
         listProviders('pullRequest').map((entry) => entry.provider),
       pullRequestFeedbackFor: (...a) => pullRequestFeedback?.factFor(...a),
+      linkedPullRequestSnapshotsEnabled: () =>
+        pullRequestFeedback?.linkedSnapshotsEnabled() ?? false,
+      linkedPullRequestsForTasks: (request, taskSessions) => {
+        if (!pullRequestFeedback?.linkedSnapshotsEnabled()) return undefined;
+        const conversations = new Map(
+          [...taskSessions].map(([id, sessions]) => [
+            id,
+            [
+              ...new Set(
+                sessions.map(
+                  (session) =>
+                    context.orchestrationEventStore?.conversationForSession(
+                      session,
+                    )?.conversationId ?? session,
+                ),
+              ),
+            ].filter((conversationId) =>
+              context.orchestrationService.canUserReadConversation(
+                conversationId,
+                conversationReadAuthorityForRequest(request),
+              ),
+            ),
+          ]),
+        );
+        const observed = pullRequestFeedback.snapshotsForConversations([
+          ...new Set([...conversations.values()].flat()),
+        ]);
+        return new Map(
+          [...conversations].map(([id, members]) => [
+            id,
+            members.flatMap((member) => observed.get(member) ?? []),
+          ]),
+        );
+      },
       logger: context.logger,
       readAutomationTask: (task) => readAutomationTask?.(task),
       workChatConversations: taskInboxProjection,
@@ -6138,6 +6203,92 @@ export function configureRuntimeRoutes(
         createPersonalTaskAnswerSupportModule(context),
     }),
   );
+  // #4554: resume an ended Task, behind the `task-resume` Feature Preview.
+  // Personal mode only: hosted mode neither binds the preview nor mounts the
+  // route, and `taskResume` is withdrawn from its handshake (one predicate).
+  if (
+    servesTaskResume({
+      hosted:
+        hostedTenantRegistry !== undefined || isHostedTenantExecutionRequired(),
+    })
+  ) {
+    const taskResumePreview = context.featurePreviews.bind({
+      // A literal, as docs:feature-previews:check reads it.
+      id: 'task-resume',
+      label: 'Resume ended Tasks',
+      description:
+        'Lets the Station operator, in person, move a done Task on a GitHub item back to ready within 14 days of its end, after reading follow-ups.',
+    });
+    const taskResumeEvents = context.orchestrationEventStore;
+    const taskResumeLeadConversation = (sessionId: string) =>
+      taskResumeEvents?.conversationForSession(sessionId)?.conversationId ??
+      sessionId;
+    context.app.route(
+      '/api/tasks',
+      createTaskResumeRoutes({
+        service: context.taskGraphService,
+        enabled: () =>
+          taskResumePreview.select({
+            enabled: () => true,
+            disabled: () => false,
+          }),
+        inPersonPrincipal: (request) => {
+          try {
+            if (
+              !isOperatorInPersonNotAgent(request) ||
+              !isRequestPrincipalCurrent(request)
+            )
+              return undefined;
+            return conversationReadAuthorityForRequest(request).userId;
+          } catch {
+            return undefined;
+          }
+        },
+        // Every check is the canonical owner's, read now: Task read access,
+        // the Project execution admission the lead wakes use, and the
+        // dispatch route's own scope for this request, so the person who
+        // resumes is one who can dispatch. Membership alone is not enough.
+        authorizeTask: (request, principalId, task) =>
+          isOperatorInPersonNotAgent(request) &&
+          isRequestPrincipalCurrent(request) &&
+          canonicalTaskSourceMayRead(request, task.id) &&
+          canUseTaskSource(context, task, principalId, true) &&
+          runtimeRequestPrincipalMayAccessHttpRoute(
+            request,
+            context.environmentSecurityService,
+            {
+              method: 'POST',
+              path: `/api/tasks/${encodeURIComponent(task.id)}/dispatch`,
+            },
+          ),
+        // Fail closed: an unknown answer counts as a running turn.
+        isTaskSessionTurnActive: (sessionIds) =>
+          sessionIds.some((sessionId) => {
+            const current =
+              context.orchestrationService.currentConversationSessionId(
+                taskResumeLeadConversation(sessionId),
+              );
+            return (
+              context.orchestrationService.hasActiveTurn(sessionId) ||
+              context.orchestrationService.hasActiveTurn(current)
+            );
+          }),
+        leadOwnerOf: (sessionId) =>
+          context.orchestrationService.sessionRecordedOwnerId(
+            context.orchestrationService.currentConversationSessionId(
+              taskResumeLeadConversation(sessionId),
+            ),
+          ),
+        followUps: (task) =>
+          context.taskFollowUps?.forRead()?.list({
+            taskId: task.id,
+            taskCreatedAt: task.createdAt,
+          }),
+        clientOrigin: (request) => resolveClientOriginForRequest(request),
+        logger: context.logger,
+      }),
+    );
+  }
   // The runtime composition seam owns the only durable Starter Work adapter.
   // The store is a narrow correlation ledger, never a second task authority.
   // Starter Work's TaskGraph adapter is personal-home authority. Hosted
@@ -6225,11 +6376,13 @@ export function configureRuntimeRoutes(
         canUseTaskSource(context, task, owner, true),
       placementCurrent: (task, owner, conversationId) =>
         canUseTaskSource(context, task, owner, true) &&
-        task.status !== 'done' &&
-        task.status !== 'canceled' &&
-        Boolean(task.sessionId) &&
-        (roomEventStore.conversationForSession(task.sessionId!)
-          ?.conversationId ?? task.sessionId) === conversationId,
+        taskLeadPlacementCurrent(
+          task,
+          conversationId,
+          (sessionId) =>
+            roomEventStore.conversationForSession(sessionId)?.conversationId ??
+            sessionId,
+        ),
       readTask: (taskId) => context.taskGraphService.readTaskView(taskId),
       conversationOf: (sessionId) =>
         roomEventStore.conversationForSession(sessionId)?.conversationId ??
@@ -7304,6 +7457,67 @@ export function configureRuntimeRoutes(
     return new DelegationResultDelivery({
       ...conversationDeliveryPorts(eventStore),
       store: eventStore.delegationResultStore(),
+      senderIdentity: (threadId) => sessionSenderIdentity(eventStore, threadId),
+      mayReadPullRequestWatch: (owner, authorization) => {
+        const inProject = (conversationId: string) => {
+          const threadId =
+            context.orchestrationService.currentConversationSessionId(
+              conversationId,
+            );
+          const target = stationControlDispatchScope.target(
+            { kind: 'thread', threadId, remote: false },
+            'view',
+          );
+          return (
+            target?.scope.kind === 'project' &&
+            target.scope.id === authorization.projectId &&
+            !target.host &&
+            context.orchestrationService.canUserReadSession(
+              threadId,
+              readAuthorityForExecution(owner.actor.userId),
+            )
+          );
+        };
+        return (
+          inProject(owner.parentConversationId) &&
+          inProject(authorization.sourceConversationId) &&
+          pullRequestFeedback?.mayReadStatusWatch(
+            authorization.sourceConversationId,
+            owner.taskId,
+          ) === true
+        );
+      },
+      inspectWatchStart: (conversationId, deliveryId) => {
+        const receipt = context.orchestrationService.inspectTurnDelivery(
+          conversationId,
+          deliveryId,
+          INTERNAL_SESSION_READ_SCOPE,
+        );
+        return receipt?.outcome === 'started' ? receipt : undefined;
+      },
+      blockedEvents: (threadId) => {
+        const last = eventStore
+          .listEventsByMethods(threadId, [
+            'session.state-changed',
+            'turn.started',
+            'turn.completed',
+            'turn.aborted',
+            'runtime.error',
+            'session.exited',
+          ])
+          .at(-1);
+        return last?.payload.method === 'session.state-changed' &&
+          last.payload.sessionState === 'blocked'
+          ? [{ event: last.payload, sequence: last.sequence }]
+          : [];
+      },
+      requestEvents: (threadId) =>
+        openDelegationRequests(
+          eventStore.listEventsByMethods(threadId, [
+            'request.opened',
+            'request.resolved',
+          ]),
+        ),
       // Opt-in resolution: a delegation result reports the exact reply,
       // even one EventStore stored out of line (event-content-spill).
       turnEvents: (threadId, turnId, methods, limit, invocationId) =>
@@ -7708,6 +7922,9 @@ export function configureRuntimeRoutes(
           eventStore: context.orchestrationEventStore,
           store: coordinatorStore,
           enabled: coordinatorSessionEnabled,
+          handlesApprovalWake: (parent, session, itemKey) =>
+            delegationResults?.handlesApprovalWake(parent, session, itemKey) ===
+            true,
           pictureEnabled: () =>
             picturePreview?.select({
               enabled: () => true,
@@ -8265,6 +8482,9 @@ export function configureRuntimeRoutes(
     context.app.route(
       '/api/orchestration/session-control',
       createSessionAgentControlRoutes({
+        delegationResults,
+        watchPullRequest: (source, projectId, ref, owner) =>
+          pullRequestFeedback?.subscribeStatus(source, projectId, ref, owner),
         waiter: sessionTurnWaiter,
         orchestrationService: context.orchestrationService,
         eventStore: context.orchestrationEventStore,
@@ -11126,6 +11346,7 @@ export function configureRuntimeRoutes(
   registerPullRequestProvider(
     new GitHubPullRequestProvider(undefined, undefined, {
       readMergeQueue: () =>
+        (pullRequestFeedback?.linkedSnapshotsEnabled() ?? false) ||
         projectOverviewPreview.select({
           enabled: () => true,
           disabled: () => false,
@@ -11295,6 +11516,7 @@ export function configureRuntimeRoutes(
           );
         },
         derived: (id) => pullRequestFeedback?.derivedLinks(id) ?? [],
+        snapshot: (identity) => pullRequestFeedback?.snapshotFor(identity),
       },
     ),
   );
@@ -11305,7 +11527,9 @@ export function configureRuntimeRoutes(
       id,
       conversationReadAuthorityForRequest(request),
     );
+  const sessionDiffStatSnapshots = new SessionDiffStatSnapshots();
   pullRequestFeedback = composePullRequestFeedbackRuntime({
+    coordination: delegationResults,
     homeDir: context.configLoader.getProjectHomeDir(),
     hosted: hostedTenantRegistry !== undefined,
     featurePreviews: context.featurePreviews,
@@ -11315,6 +11539,8 @@ export function configureRuntimeRoutes(
     eventBus: context.eventBus,
     logger: context.logger,
     links: conversationPullRequestLinks,
+    refreshWorkspaceFacts: (now, enabled) =>
+      sessionDiffStatSnapshots.refresh(now, enabled),
     providers: () =>
       listProviders('pullRequest').map((entry) => entry.provider),
     keptForSessions: (ids) =>
@@ -12748,6 +12974,7 @@ export function configureRuntimeRoutes(
             context.configLoader.getProjectHomeDir(),
           ),
         ).problem(directory),
+      () => context.consentChannel.publication !== undefined,
     ),
   );
   context.app.route(
@@ -13191,6 +13418,83 @@ export function configureRuntimeRoutes(
       ),
       context.environmentSecurityService,
       readMarkers,
+      (request, items) =>
+        pullRequestFeedback?.snapshotsForConversations(
+          items
+            .filter(
+              (item) =>
+                !item.environmentId && canReadConversation(request, item.id),
+            )
+            .map((item) => item.id),
+        ) ?? new Map(),
+      (request, items) => {
+        if (!pullRequestFeedback?.linkedSnapshotsEnabled()) return new Map();
+        const roots = new Map<string, string | undefined>();
+        const authority = conversationReadAuthorityForRequest(request);
+        const observe = (item: (typeof items)[number]) => {
+          if (
+            item.source !== 'runtime' ||
+            !item.projectSlug ||
+            item.environmentId ||
+            !context.orchestrationService.canUserReadConversation(
+              item.id,
+              authority,
+            )
+          )
+            return undefined;
+          const currentId =
+            context.orchestrationService.currentConversationSessionId(item.id);
+          const session =
+            context.orchestrationEventStore?.readSessionByThread(currentId);
+          if (!session?.cwd) return undefined;
+          try {
+            if (!roots.has(item.projectSlug)) {
+              roots.set(item.projectSlug, undefined);
+              const project = context.projectService.getProject(
+                item.projectSlug,
+              );
+              const root = project.workingDirectory
+                ? resolve(expandTilde(project.workingDirectory))
+                : undefined;
+              roots.set(item.projectSlug, root);
+            }
+            const projectRoot = roots.get(item.projectSlug);
+            if (!projectRoot) return undefined;
+            const metadata =
+              context.orchestrationService.firstStartedMetadataOfThread(
+                currentId,
+              );
+            const worktree: unknown =
+              metadata?.worktree ?? metadata?.workspaceIsolation;
+            const base =
+              worktree &&
+              typeof worktree === 'object' &&
+              'mode' in worktree &&
+              worktree.mode === 'worktree' &&
+              'path' in worktree &&
+              worktree.path === session.cwd &&
+              'baseCommit' in worktree &&
+              typeof worktree.baseCommit === 'string' &&
+              'baseRef' in worktree &&
+              typeof worktree.baseRef === 'string'
+                ? { ref: worktree.baseRef, commit: worktree.baseCommit }
+                : undefined;
+            return sessionDiffStatSnapshots.get(currentId, {
+              cwd: session.cwd,
+              projectRoot,
+              base,
+            });
+          } catch {
+            return undefined;
+          }
+        };
+        return new Map(
+          items.flatMap((item) => {
+            const workspace = observe(item);
+            return workspace ? [[item.id, workspace] as const] : [];
+          }),
+        );
+      },
     ),
   );
   // `rename_session`'s own leaf (never the person's `PATCH`, which stamps
@@ -13545,6 +13849,24 @@ export function configureRuntimeRoutes(
   };
   generalEventProducer = createEventStreamProducer(eventRouteDeps);
   context.app.route('/events', createEventRoutes(eventRouteDeps));
+  if (context.externalSessionHistory) {
+    context.app.route(
+      '/api/orchestration/external-history',
+      createExternalSessionHistoryRoutes({
+        ...context.externalSessionHistory,
+        isOwnerCurrent: (request) => {
+          const security = context.environmentSecurityService;
+          const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+          return (
+            isRuntimeRequestPrincipalCurrent(request, security) &&
+            (principal?.locality === 'home-possession' ||
+              (principal?.authority === 'device-credential' &&
+                security.credentialHasOwnerStanding(principal.credential)))
+          );
+        },
+      }),
+    );
+  }
   context.app.route(
     '/api/presence',
     createFocusPresenceRoutes({

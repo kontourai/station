@@ -11,14 +11,29 @@
  * `/tool-approval/:id` instead, which only consults the ApprovalRegistry that
  * this adapter never registers with.
  */
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   INTERNAL_SESSION_READ_SCOPE,
   sessionReadAuthorityFromRequest,
 } from '@kontourai/station-contracts/tenancy';
+import { toolRequestSessionGrantFromPayload } from '@kontourai/station-shared/tool-request-preview';
+import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { createDiagnosticsRoutes } from '../../../routes/system/diagnostics.js';
+import {
+  bindRuntimeLocalOperator,
+  setRuntimeAuthenticatedRequestPrincipal,
+} from '../../../security/runtime-request-security.js';
+import {
+  bindStationControlRequestAuthority,
+  bindStationControlRequestCurrent,
+} from '../../../security/station-control-request-authority.js';
+import { stationControlCallerPrincipal } from '../../../tools/station-control-shared.js';
+import { createLogger } from '../../../utils/logger.js';
+import { DiagnosticsService } from '../../infra/diagnostics-service.js';
+import { createServerLogReader } from '../../infra/server-log-reader.js';
 import {
   gateMediatedMcpCall,
   resetPersonApprovedCalls,
@@ -141,6 +156,7 @@ describe('#2316 inline approval card → Claude adapter', () => {
     toolName = 'Bash',
     toolInput: Record<string, unknown> = { command: 'ls' },
     autoApprove: string[] = [],
+    suggestions: import('@anthropic-ai/claude-agent-sdk').PermissionUpdate[] = [],
   ) {
     await service.dispatch(
       {
@@ -162,7 +178,7 @@ describe('#2316 inline approval card → Claude adapter', () => {
     const permission = canUseTool(toolName, toolInput, {
       signal: new AbortController().signal,
       toolUseID: 'toolu-inline-1',
-      suggestions: [],
+      suggestions,
     });
     const opened = await eventually(() =>
       eventStore
@@ -173,6 +189,48 @@ describe('#2316 inline approval card → Claude adapter', () => {
     if (opened.method !== 'request.opened') throw new Error('unreachable');
     return { permission, opened };
   }
+
+  test('an all-scoped Claude edit answer preserves the recorded Ask mode', async () => {
+    const threadId = 'claude-inline';
+    const { permission, opened } = await openBashRequest(
+      'Edit',
+      { file_path: 'src/readme.md' },
+      [],
+      [{ type: 'setMode', mode: 'acceptEdits', destination: 'session' }],
+    );
+    service.recordApprovalModeDecision({
+      threadId,
+      provider: 'claude',
+      approvalMode: 'ask',
+      basedOnSequence: null,
+    });
+    expect(toolRequestSessionGrantFromPayload(opened.payload)).toBe(
+      'edit-mode',
+    );
+    expect(opened.payload).toHaveProperty('sessionGrantAll', true);
+    await service.dispatchWithReceipt(
+      {
+        type: 'respondToRequest',
+        threadId,
+        requestId: opened.requestId,
+        expectedRequestEventId: opened.eventId,
+        decision: 'acceptForSession',
+        sessionGrantScope: 'all',
+      },
+      { approvalModeAuthority: true },
+    );
+    await expect(permission).resolves.toMatchObject({
+      behavior: 'allow',
+      updatedPermissions: undefined,
+    });
+    const modeDecisions = eventStore
+      .listEvents(threadId)
+      .map(({ payload }) => payload)
+      .filter((event) => event.method === 'session.approval-mode-set');
+    expect(modeDecisions).toEqual([
+      expect.objectContaining({ approvalMode: 'ask' }),
+    ]);
+  });
 
   test('wildcard approval never answers a question; validated answers reach the suspended SDK call', async () => {
     const input = {
@@ -441,6 +499,238 @@ describe('#2316 inline approval card → Claude adapter', () => {
         decision: 'accept',
       }),
     ).rejects.toThrow(/not-a-real-request/);
+  });
+
+  test('a server log read resumes only after the owner answers its exact chat approval', async () => {
+    const threadId = 'claude-inline';
+    await service.dispatch({
+      type: 'startSession',
+      input: { threadId, provider: 'claude' },
+    });
+    await service.dispatch({
+      type: 'sendTurn',
+      input: { threadId, input: 'Check recent warnings' },
+    });
+    await eventually(() =>
+      eventStore
+        .listEvents(threadId)
+        .find(({ payload }) => payload.method === 'turn.started'),
+    );
+    const controller = new AbortController();
+    try {
+      const read = service.requestServerLogRead(
+        threadId,
+        'Severity: warn',
+        controller.signal,
+      );
+      const opened = eventStore.listEvents(threadId).at(-1)?.payload;
+      if (opened?.method !== 'request.opened')
+        throw new Error('Expected the log approval card');
+      expect(opened).toMatchObject({
+        title: 'Allow this server log query?',
+        description: 'Severity: warn',
+      });
+      const answer = {
+        type: 'respondToRequest',
+        threadId,
+        requestId: opened.requestId,
+        expectedRequestEventId: opened.eventId,
+        decision: 'accept',
+      } as const;
+      await expect(
+        service.dispatchWithReceipt(answer, { personAnswer: true }),
+      ).rejects.toThrow('The Station owner must answer');
+      const owner = { serverLogReadDecisionAuthorized: () => true };
+      await expect(
+        service.dispatchWithReceipt(
+          {
+            ...answer,
+            expectedRequestEventId: 'stale-event',
+          },
+          owner,
+        ),
+      ).rejects.toThrow();
+      await service.dispatchWithReceipt(answer, owner);
+      await expect(read).resolves.toBe(true);
+      expect(eventStore.listEvents(threadId).at(-1)?.payload).toMatchObject({
+        method: 'request.resolved',
+        requestId: opened.requestId,
+        status: 'approved',
+      });
+      await expect(
+        service.dispatchWithReceipt(answer, owner),
+      ).rejects.toThrow();
+    } finally {
+      controller.abort();
+    }
+  });
+
+  test('session log approval returns redacted logs and expires when the session stops', async () => {
+    const threadId = 'claude-inline';
+    const otherThreadId = 'other-log-session';
+    const controller = new AbortController();
+    const logger = createLogger({
+      name: 'session-log-approval-test',
+      level: 'error',
+    });
+    const reader = createServerLogReader({ directory: tmp });
+    writeFileSync(
+      join(tmp, 'server-2026-08-01.ndjson'),
+      `${JSON.stringify({
+        timestamp: '2026-08-01T00:00:01.000Z',
+        level: 'warn',
+        msg: 'test log',
+        config: { apiKey: 'private-log-canary' },
+      })}\n`,
+    );
+    const app = new Hono();
+    app.use('*', async (c, next) => {
+      setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
+        kind: 'internal',
+        credential: 'test-internal',
+        authority: undefined,
+        source: 'bearer',
+        locality: 'home-possession',
+      });
+      expect(bindRuntimeLocalOperator(c.req.raw)).toBe(true);
+      bindStationControlRequestAuthority(c.req.raw, {
+        kind: 'caller',
+        boundOperator: true,
+        caller: {
+          sessionId: c.req.header('x-test-session') ?? threadId,
+          assurance: 'bound',
+          principal: stationControlCallerPrincipal(
+            'owner-user',
+            'session-owner',
+          ),
+        },
+      });
+      bindStationControlRequestCurrent(c.req.raw, () => true);
+      await next();
+    });
+    app.route(
+      '/',
+      createDiagnosticsRoutes(new DiagnosticsService(tmp), logger, reader, {
+        requestLogRead: service.requestServerLogRead.bind(service),
+      }),
+    );
+    const read = (sessionId: string) =>
+      app.request('/logs?level=warn', {
+        headers: { 'x-test-session': sessionId },
+        signal: controller.signal,
+      });
+    const approvals = (sessionId: string) =>
+      eventStore
+        .listEvents(sessionId)
+        .map(({ payload }) => payload)
+        .filter((event) => event.method === 'request.opened');
+    const startTurn = async (sessionId: string) => {
+      const previous = eventStore
+        .listEvents(sessionId)
+        .filter(({ payload }) => payload.method === 'turn.started').length;
+      await service.dispatch({
+        type: 'startSession',
+        input: { threadId: sessionId, provider: 'claude' },
+      });
+      await service.dispatch({
+        type: 'sendTurn',
+        input: { threadId: sessionId, input: 'Check recent warnings' },
+      });
+      await eventually(() =>
+        eventStore
+          .listEvents(sessionId)
+          .filter(({ payload }) => payload.method === 'turn.started').length >
+        previous
+          ? true
+          : undefined,
+      );
+    };
+    const owner = { serverLogReadDecisionAuthorized: () => true };
+    try {
+      await startTurn(threadId);
+      const first = read(threadId);
+      const opened = await eventually(() => approvals(threadId)[0]);
+      expect(toolRequestSessionGrantFromPayload(opened.payload)).toBe('tool');
+      const answer = {
+        type: 'respondToRequest',
+        threadId,
+        requestId: opened.requestId,
+        expectedRequestEventId: opened.eventId,
+        decision: 'acceptForSession',
+      } as const;
+      await expect(
+        service.dispatchWithReceipt(answer, {
+          serverLogReadDecisionAuthorized: () => false,
+        }),
+      ).rejects.toThrow('The Station owner must answer');
+      await expect(
+        service.dispatchWithReceipt(
+          {
+            ...answer,
+            expectedRequestEventId: 'stale-event',
+          },
+          owner,
+        ),
+      ).rejects.toThrow('The Station owner must answer');
+      await service.dispatchWithReceipt(answer, owner);
+      const firstResponse = await first;
+      expect(firstResponse.status).toBe(200);
+      expect(await firstResponse.json()).toMatchObject({
+        entries: [{ config: { apiKey: '[REDACTED]' } }],
+      });
+      const second = await read(threadId);
+      expect(second.status).toBe(200);
+      expect(await second.json()).toMatchObject({
+        entries: [{ config: { apiKey: '[REDACTED]' } }],
+      });
+      expect(approvals(threadId)).toHaveLength(1);
+
+      await startTurn(otherThreadId);
+      const other = read(otherThreadId);
+      const otherOpened = await eventually(() => approvals(otherThreadId)[0]);
+      await service.dispatchWithReceipt(
+        {
+          ...answer,
+          threadId: otherThreadId,
+          requestId: otherOpened.requestId,
+          expectedRequestEventId: otherOpened.eventId,
+          decision: 'decline',
+        },
+        owner,
+      );
+      expect((await other).status).toBe(403);
+
+      await service.dispatch({ type: 'stopSession', threadId });
+      expect((await read(threadId)).status).toBe(403);
+      await startTurn(threadId);
+      const restarted = read(threadId);
+      const restartedOpened = await eventually(() => approvals(threadId)[1]);
+      if (!restartedOpened.turnId) throw new Error('Expected an active turn');
+      eventStore.appendEvent({
+        eventId: 'end-restarted-log-turn',
+        threadId,
+        turnId: restartedOpened.turnId,
+        provider: 'claude',
+        method: 'turn.aborted',
+        reason: 'interrupted',
+        createdAt: new Date().toISOString(),
+      });
+      await expect(
+        service.dispatchWithReceipt(
+          {
+            ...answer,
+            requestId: restartedOpened.requestId,
+            expectedRequestEventId: restartedOpened.eventId,
+          },
+          owner,
+        ),
+      ).rejects.toThrow('This request ended with the turn that asked it');
+      controller.abort();
+      expect((await restarted).status).toBe(403);
+    } finally {
+      controller.abort();
+      await adapter.stopSession(otherThreadId);
+    }
   });
 
   test('a reload during the pending approval reads as a wait on the active turn, not read-only', async () => {

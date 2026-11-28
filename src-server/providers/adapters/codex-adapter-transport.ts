@@ -24,6 +24,10 @@ import {
   WORKLOAD_TRANSCRIPT_NAMESPACE,
 } from '@kontourai/station-shared/extension-transcript-markers';
 import {
+  toolRequestNeedsPerson,
+  toolRequestSessionGrantFromPayload,
+} from '@kontourai/station-shared/tool-request-preview';
+import {
   assertEngineAllowedByManagedPolicy,
   managedEngineBinaryPath,
   managedEngineLaunch,
@@ -46,6 +50,7 @@ import {
   settleOpenCodexChildren,
 } from './codex-adapter-child-work.js';
 import {
+  codexApprovalOffersSessionWideGrant,
   deriveApprovalToolName,
   extractThreadId,
   hasId,
@@ -1073,9 +1078,20 @@ export class CodexAdapterTransport {
     // tools never re-prompt; denies are never cached. A
     // data-collecting elicitation has no truthful auto-acceptance, so it
     // always re-prompts even under a grant.
+    const allowOnce = toolName
+      ? resolveSessionGrantAutoApproval(request.method, payload)
+      : null;
+    const allOffered =
+      event.requestType === 'approval' &&
+      !record.denyApprovals &&
+      codexApprovalOffersSessionWideGrant(request.method, payload) &&
+      !toolRequestNeedsPerson(toolName, event.payload?.toolKind) &&
+      toolRequestSessionGrantFromPayload(event.payload) !== 'none' &&
+      allowOnce !== null;
     const grantedAutoApproval =
-      toolName && record.approvedTools.has(toolName)
-        ? resolveSessionGrantAutoApproval(request.method, payload)
+      (allOffered && record.allGranted) ||
+      (toolName && record.approvedTools.has(toolName))
+        ? allowOnce
         : null;
     if (grantedAutoApproval !== null) {
       this.sendResponse(record, requestId, grantedAutoApproval);
@@ -1084,6 +1100,7 @@ export class CodexAdapterTransport {
 
     record.pendingApprovals.set(canonicalRequestId, {
       openedEventId: event.eventId,
+      allOffered,
       ...(event.blocking === false ? { blocking: false } : {}),
       rpcRequestId: requestId,
       method: request.method,
@@ -1092,7 +1109,11 @@ export class CodexAdapterTransport {
       payload,
       ...(toolName ? { toolName } : {}),
     });
-    this.publish(event);
+    this.publish(
+      allOffered
+        ? { ...event, payload: { ...event.payload, sessionGrantAll: true } }
+        : event,
+    );
   }
 
   private handleNotification(

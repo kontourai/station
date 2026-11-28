@@ -12,6 +12,8 @@
  * degraded open — while Station's main surface stays usable. The state here
  * is what the approval-request routes consult before minting a review URL.
  */
+import { AsyncLocalStorage } from 'node:async_hooks';
+import type { StationRoutesResponse } from '@kontourai/station-contracts/station-routes';
 import {
   ConsentTransactionStore,
   LOCAL_CONSENT_TENANT,
@@ -48,13 +50,57 @@ export class ConsentChannelService {
    * already validated by `parseTrustedConsentOrigin`), or null for the
    * default per-request http URL.
    */
-  readonly trustedOrigin: string | null;
+  readonly #legacyOrigin: string | null;
+  readonly #publication = new AsyncLocalStorage<
+    NonNullable<StationRoutesResponse['publication']>
+  >();
+  readonly #resolvePublication?: () => Promise<
+    NonNullable<StationRoutesResponse['publication']>
+  >;
+  readonly #reviewOrigins = new Map<
+    string,
+    { partition: string; transactionId: string; origin: string }
+  >();
 
   constructor(
-    options: { now?: () => number; trustedOrigin?: string | null } = {},
+    options: {
+      now?: () => number;
+      trustedOrigin?: string | null;
+      resolvePublication?: () => Promise<
+        NonNullable<StationRoutesResponse['publication']>
+      >;
+    } = {},
   ) {
     this.store = new ConsentTransactionStore({ now: options.now });
-    this.trustedOrigin = options.trustedOrigin ?? null;
+    this.#legacyOrigin = options.trustedOrigin ?? null;
+    this.#resolvePublication = options.resolvePublication;
+  }
+
+  get trustedOrigin(): string | null {
+    const publication = this.#publication.getStore();
+    return publication ? publication.consentOrigin : this.#legacyOrigin;
+  }
+
+  get publication(): StationRoutesResponse['publication'] {
+    const publication = this.#publication.getStore();
+    return publication?.status === 'disabled' ? undefined : publication;
+  }
+
+  async withPublication<T>(operation: () => Promise<T>): Promise<T> {
+    if (!this.#resolvePublication) return operation();
+    return this.#publication.run(await this.#resolvePublication(), operation);
+  }
+
+  acceptsReviewOrigin(
+    transactionId: string,
+    partition: string,
+    origin: string,
+  ): boolean {
+    if (this.publication && origin !== this.trustedOrigin) return false;
+    const pinned = this.#reviewOrigins.get(
+      JSON.stringify([partition, transactionId]),
+    );
+    return pinned === undefined || pinned.origin === origin;
   }
 
   state(): ConsentChannelState {
@@ -97,8 +143,24 @@ export class ConsentChannelService {
     // A configured HTTPS origin is the operator's statement of where the
     // consent listener is reachable; the request's Host plays no part.
     if (this.trustedOrigin !== null) {
+      if (this.publication) {
+        for (const [key, review] of this.#reviewOrigins) {
+          if (!this.store.get(review.partition, review.transactionId))
+            this.#reviewOrigins.delete(key);
+        }
+        const key = JSON.stringify([partition, transactionId]);
+        const pinned = this.#reviewOrigins.get(key);
+        if (pinned !== undefined && pinned.origin !== this.trustedOrigin)
+          return null;
+        this.#reviewOrigins.set(key, {
+          partition,
+          transactionId,
+          origin: this.trustedOrigin,
+        });
+      }
       return `${this.trustedOrigin}${path}`;
     }
+    if (this.publication) return null;
     if (!requestHostHeader) return null;
     let hostname: string;
     try {

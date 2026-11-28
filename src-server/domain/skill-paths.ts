@@ -14,21 +14,9 @@
 
 import { lstatSync, realpathSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
-import { SETUP_IMPORT_MAX_TARGET_NAME_LENGTH } from '@kontourai/station-shared/setup-import-bounds';
+import { isSafeSkillName } from '@kontourai/station-shared/setup-import-bounds';
 import { errorMessage } from '../utils/error-message.js';
 import { isCanonicalPathStrictlyWithin } from '../utils/path-containment.js';
-
-/**
- * Keys that must never be used as a skill name. `JSON.parse` yields
- * `__proto__` as an own property, but assigning to it on an ordinary object
- * hits `Object.prototype`'s accessor instead of creating one — the usage
- * counter reported a run and persisted nothing, forever.
- */
-export const PROTOTYPE_AFFECTING_KEYS: readonly string[] = [
-  '__proto__',
-  'constructor',
-  'prototype',
-];
 
 /**
  * A skill name that is a single path segment, never a traversal, and never a
@@ -42,17 +30,10 @@ export const PROTOTYPE_AFFECTING_KEYS: readonly string[] = [
  * are deliberately both present, since either alone leaves the other reader
  * exposed.
  */
-export function isSafeSkillName(name: string): boolean {
-  return (
-    name.trim() !== '' &&
-    name.length <= SETUP_IMPORT_MAX_TARGET_NAME_LENGTH &&
-    !name.includes('/') &&
-    !name.includes('\\') &&
-    !name.includes('..') &&
-    name !== '.' &&
-    !PROTOTYPE_AFFECTING_KEYS.includes(name)
-  );
-}
+export {
+  isSafeSkillName,
+  PROTOTYPE_AFFECTING_KEYS,
+} from '@kontourai/station-shared/setup-import-bounds';
 
 /**
  * The refusal every skill CREATE and RENAME seam shares, enforced in

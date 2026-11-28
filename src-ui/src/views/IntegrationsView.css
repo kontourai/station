@@ -175,3 +175,9 @@
   > .split-pane {
   flex: 1 0 min(32rem, 100%);
 }
+
+/* The list's own chrome sits above the rows, as on Skills. */
+.integrations-view__list-actions {
+  display: flex;
+  padding: 0 var(--k-space-3) var(--k-space-2);
+}

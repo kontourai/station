@@ -1347,8 +1347,18 @@ button:hover:where(:not(:disabled)) {
   scroll-padding-bottom: var(--dock-bottom-clearance);
 }
 
-/* Fill frames delegate scrolling to their bodies and need the full width. */
-.content-view:not(:has(> .route-transition--fill, > .page-frame--fill)) {
+/* Fill frames delegate scrolling to their bodies and need the full width.
+   Every route sits inside the Customize shell, which off a Customize item
+   takes no box (`customize-shell--off`), so its children count as the
+   outlet's own here. */
+.content-view:not(
+  :has(
+    > .route-transition--fill,
+    > .page-frame--fill,
+    > .customize-shell--off > .customize-shell__main > .route-transition--fill,
+    > .customize-shell--off > .customize-shell__main > .page-frame--fill
+  )
+) {
   scrollbar-gutter: stable;
 }
 
@@ -8916,6 +8926,21 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   height: 1px;
   overflow: hidden;
   clip: rect(0 0 0 0);
+}
+
+/* Let the radio receive the press directly while the draft holds focus.
+   A label's default click forwards activation and gives focus to its input. */
+[data-preserved-draft-focus] .composer-mode-sheet__option {
+  position: relative;
+}
+
+[data-preserved-draft-focus] .composer-mode-sheet__option-input {
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  clip: auto;
+  opacity: 0;
 }
 
 .composer-mode-sheet__option:has(

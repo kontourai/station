@@ -1,0 +1,13 @@
+{
+  "revision": "17394811b193d4a2bd28c4d89a7801e39f535c1a",
+
+  "notes": [
+    {"path":"docs/design/settings-architecture.md","note":"Verified additive experimental-inbox-row-actions catalog entry preserves settings navigation and developer-tools gating claims.","inputs":["src-ui/src/views/settings/settings-catalog.ts"]},
+
+    {"path":"docs/design/settings-launch-triage.md","note":"Verified additive experimental-inbox-row-actions catalog entry preserves settings navigation and developer-tools gating claims.","inputs":["src-ui/src/views/settings/settings-catalog.ts"]},
+
+    {"path":"docs/plans/whole-app-ux-campaign.md","note":"Verified additive experimental-inbox-row-actions catalog entry preserves settings navigation and developer-tools gating claims.","inputs":["src-ui/src/views/settings/settings-catalog.ts"]},
+
+    {"path":"docs/user/settings.md","note":"Verified additive experimental-inbox-row-actions catalog entry preserves settings navigation and developer-tools gating claims.","inputs":["src-ui/src/views/settings/settings-catalog.ts"]}
+  ]
+}

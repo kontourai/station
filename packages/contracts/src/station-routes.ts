@@ -19,6 +19,14 @@ export interface StationRoute {
 export interface StationRoutesResponse {
   environmentId: string;
   routes: StationRoute[];
+  publication?: StationRoutePublication;
+}
+
+export interface StationRoutePublication {
+  consentOrigin: string | null;
+  source: 'configured' | 'tailscale' | 'unavailable';
+  appOrigins: string[];
+  status: 'ready' | 'unavailable' | 'ambiguous' | 'disabled';
 }
 
 const ROUTE_KINDS: ReadonlySet<string> = new Set<StationRouteKind>([
@@ -42,6 +50,71 @@ function routeOrigin(value: unknown): string | null {
   }
 }
 
+export function isTrustedConsentOrigin(value: string): boolean {
+  if (routeOrigin(value) !== value) return false;
+  const url = new URL(value);
+  const labels = url.hostname.split('.');
+  return (
+    url.protocol === 'https:' &&
+    url.port !== '0' &&
+    url.hostname.length <= 253 &&
+    labels.every((label) =>
+      /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label),
+    ) &&
+    !/^\d+\.\d+\.\d+\.\d+$/.test(url.hostname)
+  );
+}
+
+function parsePublication(value: unknown): StationRoutePublication | null {
+  if (!value || typeof value !== 'object') return null;
+  const { consentOrigin, source, appOrigins, status } = value as Record<
+    string,
+    unknown
+  >;
+  if (
+    consentOrigin !== null &&
+    (typeof consentOrigin !== 'string' ||
+      !isTrustedConsentOrigin(consentOrigin))
+  ) {
+    return null;
+  }
+  if (
+    source !== 'configured' &&
+    source !== 'tailscale' &&
+    source !== 'unavailable'
+  ) {
+    return null;
+  }
+  if (
+    status !== 'ready' &&
+    status !== 'unavailable' &&
+    status !== 'ambiguous' &&
+    status !== 'disabled'
+  ) {
+    return null;
+  }
+  if (
+    !Array.isArray(appOrigins) ||
+    appOrigins.length > MAX_STATION_ROUTES ||
+    (status === 'ready' && consentOrigin === null) ||
+    (source === 'unavailable' && consentOrigin !== null)
+  ) {
+    return null;
+  }
+  const origins = new Set<string>();
+  for (const candidate of appOrigins) {
+    const origin = routeOrigin(candidate);
+    if (origin === null) return null;
+    origins.add(origin);
+  }
+  return {
+    consentOrigin,
+    source,
+    appOrigins: [...origins],
+    status,
+  };
+}
+
 /**
  * Validates a `GET /api/system/routes` answer. Invalid entries are dropped
  * rather than failing the whole answer, so one bad address never hides the
@@ -52,7 +125,10 @@ export function parseStationRoutesResponse(
   value: unknown,
 ): StationRoutesResponse | null {
   if (!value || typeof value !== 'object') return null;
-  const { environmentId, routes } = value as Record<string, unknown>;
+  const { environmentId, routes, publication } = value as Record<
+    string,
+    unknown
+  >;
   if (typeof environmentId !== 'string' || !environmentId) return null;
   if (!Array.isArray(routes)) return null;
   const seen = new Set<string>();
@@ -69,5 +145,10 @@ export function parseStationRoutesResponse(
     parsed.push({ kind: kind as StationRouteKind, url: origin });
     if (parsed.length === MAX_STATION_ROUTES) break;
   }
-  return { environmentId, routes: parsed };
+  const parsedPublication = parsePublication(publication);
+  return {
+    environmentId,
+    routes: parsed,
+    ...(parsedPublication ? { publication: parsedPublication } : {}),
+  };
 }

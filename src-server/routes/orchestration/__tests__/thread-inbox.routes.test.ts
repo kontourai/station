@@ -1,3 +1,4 @@
+import { join } from 'node:path';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import {
   type ConversationInboxEntry,
@@ -8,10 +9,13 @@ import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/te
 import { turnInterruptedContinueClientTurnId } from '@kontourai/station-shared/conversation-message';
 import { TURN_INTERRUPTED_CONTINUE_PROMPT } from '@kontourai/station-shared/runtime-event-projection';
 import { describe, expect, test, vi } from 'vitest';
+import { z } from 'zod';
 import { ClientTurnInputConflictError } from '../../../providers/adapter-shape.js';
 import { restartContinuationEntry } from '../../../services/orchestration/restart-continuation.js';
 import { turnDedupKey } from '../../../services/orchestration/station-turn-dedup-bindings.js';
 import { foregroundTurnSubmissionDigest } from '../../../services/orchestration/turn-submission-digest.js';
+import { PullRequestFeedbackPoller } from '../../../services/pull-requests/pull-request-feedback-poller.js';
+import { PullRequestFeedbackStore } from '../../../services/pull-requests/pull-request-feedback-store.js';
 
 import {
   AGENT,
@@ -22,6 +26,196 @@ import {
   READER,
   STRANGER,
 } from './helpers/thread-inbox-harness.js';
+
+describe('coordination wakes through the inbox harness', () => {
+  const station = createInboxHarness();
+
+  test('a settled coordinator receives one wake for each durable Session and PR transition after restart', async () => {
+    const first = station({ birth: 'coordination-first' });
+    const workers = ['settlement', 'approval', 'error'];
+    for (const id of [CONVERSATION, ...workers]) {
+      const launched = await first.send(`launch-${id}`, `Set up ${id}`, {
+        conversationId: id,
+      });
+      expect(launched.status, await launched.clone().text()).toBe(200);
+      await eventually(() =>
+        expect(
+          first.service.hasActiveTurn(
+            first.service.currentConversationSessionId(id),
+          ),
+        ).toBe(false),
+      );
+    }
+    const original = first.coordinate();
+    original.delivery.stop();
+    const send = (sessionId: string, extra: Record<string, unknown> = {}) =>
+      original.control.request('/send', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          sessionId,
+          requestKey: `coordinate-${sessionId}`,
+          mode: 'start',
+          text: 'Verify the release',
+          notifyOnSettle: true,
+          notifyOnAttention: true,
+          ...extra,
+        }),
+      });
+    const forged = await send('settlement', {
+      parentConversationId: 'other-parent',
+    });
+    expect(forged.status).toBe(400);
+
+    const result = await send('settlement');
+    expect(result.status, await result.clone().text()).toBe(200);
+    first.adapter.holdTurns = true;
+    const awaiting = await send('approval');
+    expect(awaiting.status, await awaiting.clone().text()).toBe(200);
+    const startedSend = z.object({
+      data: z.object({ sessionId: z.string(), turnId: z.string() }),
+    });
+    const { data: approval } = startedSend.parse(await awaiting.json());
+    const approvalInvocation = first.adapter.turns.at(-1)?.invocationId;
+    const requested = {
+      eventId: 'coordination-approval',
+      method: 'request.opened' as const,
+      provider: 'claude' as const,
+      threadId: approval.sessionId,
+      turnId: approval.turnId,
+      invocationId: approvalInvocation,
+      requestId: 'approval-to-verify',
+      requestType: 'approval' as const,
+      title: 'Approve the verification',
+      createdAt: new Date().toISOString(),
+    };
+    first.adapter.events.push(requested);
+    await eventually(() =>
+      expect(
+        first.store
+          .listEvents(approval.sessionId)
+          .some(({ payload }) => payload.eventId === requested.eventId),
+      ).toBe(true),
+    );
+
+    const failed = await send('error');
+    expect(failed.status, await failed.clone().text()).toBe(200);
+    const { data: broken } = startedSend.parse(await failed.json());
+    const errorInvocation = first.adapter.turns.at(-1)?.invocationId;
+    first.adapter.events.push({
+      eventId: 'coordination-engine-error',
+      method: 'runtime.error',
+      provider: 'claude',
+      threadId: broken.sessionId,
+      turnId: broken.turnId,
+      invocationId: errorInvocation,
+      severity: 'error',
+      code: 'fixture-engine-error',
+      message: 'Engine lost its connection',
+      createdAt: new Date().toISOString(),
+    });
+    await eventually(() =>
+      expect(
+        first.store
+          .listEvents(broken.sessionId)
+          .some(
+            ({ payload }) => payload.eventId === 'coordination-engine-error',
+          ),
+      ).toBe(true),
+    );
+
+    const identity = {
+      provider: 'github',
+      host: 'github.com',
+      ref: '61',
+      repository: { owner: 'acme', name: 'release' },
+    };
+    const prKey = 'github:github.com/acme/release#61';
+    expect(
+      original.delivery.watchPullRequest(
+        {
+          childConversationId: 'release-watch',
+          taskId: prKey,
+          parentConversationId: CONVERSATION,
+          actor: { userId: OWNER, attribution: 'verified-bound' },
+        },
+        prKey,
+        identity,
+        {
+          sourceConversationId: 'release-source',
+          projectId: 'release-project',
+        },
+      ),
+    ).toBe('armed');
+    const second = station({ root: first.root, birth: 'coordination-second' });
+    const restarted = second.coordinate();
+    const observation = {
+      identity,
+      url: 'https://github.com/acme/release/pull/61',
+      state: 'MERGED' as const,
+      draft: false,
+      headSha: 'a'.repeat(40),
+      baseSha: 'b'.repeat(40),
+      headRefName: 'release',
+      baseRefName: 'main',
+      mergeable: 'unknown' as const,
+      checks: [],
+      checksTruncated: false,
+      reviews: [],
+      threads: [],
+      threadsTotal: 0,
+      observedAt: new Date().toISOString(),
+    };
+    const feedbackStore = new PullRequestFeedbackStore(
+      join(second.root, 'pr-observations.sqlite'),
+    );
+    try {
+      const poller = new PullRequestFeedbackPoller({
+        enabled: () => true,
+        store: () => feedbackStore,
+        providers: () => [
+          {
+            id: 'github',
+            canServeHost: () => true,
+            getFeedbackObservation: async () => ({
+              state: 'observed',
+              observation,
+            }),
+          },
+        ],
+        session: () => ({ state: 'idle' }),
+        lastTurnAt: () => undefined,
+        delivery: () => undefined,
+        statusWatches: () => restarted.delivery.watchedPullRequests(),
+        observeStatus: (key, value) =>
+          restarted.delivery.observePullRequest(key, value),
+        logger: { warn: vi.fn() },
+      });
+      const poll = await poller.poll({
+        now: Date.now(),
+        signal: new AbortController().signal,
+      });
+      expect(poll.read).toBe(1);
+      expect(feedbackStore.allClaims()).toEqual([]);
+    } finally {
+      feedbackStore.close();
+    }
+    await restarted.delivery.reconcile();
+    await eventually(() => expect(second.prompts()).toHaveLength(4));
+    await restarted.delivery.reconcile();
+    expect(second.prompts()).toHaveLength(4);
+    for (const expected of [
+      'finished its turn',
+      'Approve the verification',
+      'failed',
+      'acme/release #61 merged',
+    ]) {
+      expect(
+        second.prompts().filter((prompt) => prompt.includes(expected)),
+      ).toHaveLength(1);
+    }
+  });
+});
 
 describe('POST /chat whenBusy queue (#3568)', () => {
   const station = createInboxHarness();
@@ -207,6 +401,75 @@ describe('POST /chat whenBusy queue (#3568)', () => {
     });
   });
 
+  test('the sender can edit, reorder and cancel held messages without changing the running turn', async () => {
+    const world = station();
+    await world.busy();
+    const revised = 'First check the timeout.\nThen add coverage.';
+    expect(
+      (await world.send('first-held', 'old text', { whenBusy: 'queue' }))
+        .status,
+    ).toBe(202);
+    expect(
+      (await world.send('second-held', 'other text', { whenBusy: 'queue' }))
+        .status,
+    ).toBe(202);
+    const update = (body: Record<string, string>) =>
+      world.app.request(
+        `/api/orchestration/conversations/${CONVERSATION}/inbox`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(body),
+        },
+      );
+    const edit = {
+      kind: 'edit',
+      key: 'first-held',
+      previous: 'old text',
+      message: revised,
+    };
+    expect((await world.as(READER, () => update(edit))).status).toBe(409);
+    expect((await update(edit)).status).toBe(200);
+    expect((await update(edit)).status).toBe(409);
+    expect(
+      (
+        await update({
+          kind: 'move',
+          key: 'second-held',
+          neighbor: 'first-held',
+          direction: 'up',
+        })
+      ).status,
+    ).toBe(200);
+    expect(await (await world.listInbox()).json()).toMatchObject({
+      data: {
+        queueControls: true,
+        entries: [
+          { clientTurnId: 'second-held', position: 1, message: 'other text' },
+          { clientTurnId: 'first-held', position: 2, message: revised },
+        ],
+      },
+    });
+    expect(
+      (
+        await update({
+          kind: 'promote',
+          key: 'b66c162c-88d9-43f1-827b-b728c2c79772',
+          source: 'first-held',
+          expectedTurn: world.inbox.currentSteerTarget(CONVERSATION)!,
+          message: revised,
+        })
+      ).status,
+    ).toBe(409);
+    expect(world.inbox.entry(CONVERSATION, 'first-held')?.state).toBe('queued');
+    expect((await world.cancel('second-held')).status).toBe(200);
+    world.adapter.holdTurns = false;
+    world.adapter.complete();
+    await eventually(() =>
+      expect(world.prompts()).toEqual(['read the file', revised]),
+    );
+  });
+
   test.each(['steer', 'follow-up'] as const)(
     '%s admission rejects a stale head and leaves the inbox empty',
     async (kind) => {
@@ -237,12 +500,22 @@ describe('POST /chat whenBusy queue (#3568)', () => {
     },
   );
 
-  test.each(['steer', 'follow-up'] as const)(
-    '%s is recorded with its head before any delivery',
-    async (kind) => {
+  test.each([
+    ['steer', 'currentHead'],
+    ['steer', 'steerHead'],
+    ['follow-up', 'currentHead'],
+  ] as const)(
+    '%s is recorded with its %s before any delivery',
+    async (kind, headField) => {
       const world = station();
       await world.busy();
-      const expectedHead = world.inbox.currentHead(CONVERSATION);
+      const listing = await world.listInbox();
+      expect(listing.status).toBe(200);
+      const snapshot = (await listing.json()) as {
+        data: Partial<Record<typeof headField, string>>;
+      };
+      const expectedHead = snapshot.data[headField];
+      expect(expectedHead).toEqual(expect.any(String));
       const send = () =>
         world.app.request(
           `/api/orchestration/conversations/${encodeURIComponent(CONVERSATION)}/inbox`,

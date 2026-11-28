@@ -14,8 +14,10 @@ import {
   type AppConfig,
   appConfigSemanticError,
   describeFirstRunTransitionViolation,
+  describeNewChatDefaultViolation,
   type FirstRunTransitionRequest,
   firstRunStateForTransition,
+  type NewChatDefault,
 } from '@kontourai/station-contracts/config';
 import {
   FLEET_CONTRIBUTION_SCOPE_KEY,
@@ -34,6 +36,7 @@ import {
 import type { ProjectConfig } from '@kontourai/station-contracts/project';
 import { readProjectOverrides } from '@kontourai/station-contracts/project-settings-overrides';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
+import { routeWrittenKeyRefusal } from '@kontourai/station-contracts/settings-registry';
 import { type Context, Hono } from 'hono';
 import type { ConfigLoader } from '../../domain/config-loader.js';
 import { mergeAppConfigUpdate } from '../../domain/config-loader-app.js';
@@ -101,6 +104,8 @@ import {
   COMMAND_NOT_GRANTED_CODE,
   requestMayBeAnAgent,
 } from '../../security/coding-authority.js';
+import { parseTrustedConsentOrigin } from '../../services/consent/consent-origin.js';
+import { FeaturePreviewDisabledError } from '../../services/feature-previews/feature-preview-refusal.js';
 import {
   appConfigUpdateSchema,
   errorMessage,
@@ -330,6 +335,7 @@ export function createConfigRoutes(
   terminalHistoryLocationProblem?: (
     directory: string,
   ) => Promise<string | null>,
+  routePublicationsEnabled?: () => boolean,
 ) {
   const app = new Hono();
   const logLevelEdits = new LogLevelEditService(configLoader);
@@ -616,22 +622,17 @@ export function createConfigRoutes(
             400,
           );
       }
-      // The first-run record is a TRANSITION, not a setting (review M1). Left
-      // on this route it was an ordinary composite: an `orchestration:operate`
-      // peer could re-arm an existing home as `pending` and re-run the guided
-      // chapter on it, or forge `completed` with a timestamp of its choosing
-      // for a run that never happened. Same shape as the `logLevel` refusal
-      // below — the write has its own endpoint, which is where the rule lives.
-      if (Object.hasOwn(body as object, 'firstRun')) {
-        configOps.add(1, { op: 'update_app_first_run_refused' });
-        return c.json(
-          {
-            success: false,
-            error:
-              'firstRun records a first-run decision and is written through POST /config/first-run; no settings were saved.',
-          },
-          400,
-        );
+      // The first-run record is a TRANSITION, not a setting (review M1), and
+      // a first-signed-in default for new chats is recorded once. Left on
+      // this route either rule could be skipped: an `orchestration:operate`
+      // peer could re-arm a home as `pending`, or replace the recorded
+      // default. Each has its own endpoint, which is where its rule lives.
+      const routeWritten = routeWrittenKeyRefusal(
+        body as Record<string, unknown>,
+      );
+      if (routeWritten) {
+        configOps.add(1, { op: 'update_app_route_written_refused' });
+        return c.json({ success: false, error: routeWritten }, 400);
       }
 
       // The terminal shell is a program Station will start; changing it is
@@ -990,6 +991,9 @@ export function createConfigRoutes(
         Object.keys(accepted).every(
           (key) => key === 'telemetryTier' || key === 'telemetryEnabled',
         );
+      const publicationChoiceOnly =
+        Object.hasOwn(accepted, 'trustedConsentOrigin') &&
+        Object.keys(accepted).every((key) => key === 'trustedConsentOrigin');
       // Shared with the disclosure read's `capabilities.raise`, so the
       // choice a client offers and the raise this refuses cannot drift.
       const mayRaiseTelemetry = mayRaiseTelemetryChoice(
@@ -1077,6 +1081,27 @@ export function createConfigRoutes(
             authorizeContributionMutation?.(c.req.raw) !== true
           )
             throw new Error('LAN_DISCOVERY_OPERATOR_REQUIRED');
+          if (
+            Object.hasOwn(accepted, 'trustedConsentOrigin') &&
+            accepted.trustedConsentOrigin !== current.trustedConsentOrigin
+          ) {
+            if (authorizeContributionMutation?.(c.req.raw) !== true)
+              throw new Error('CONSENT_ORIGIN_OPERATOR_REQUIRED');
+            if (routePublicationsEnabled?.() !== true)
+              throw new FeaturePreviewDisabledError(
+                'dynamic-route-publications',
+                'Dynamic HTTPS routes',
+              );
+            if (typeof accepted.trustedConsentOrigin !== 'string')
+              throw new Error(
+                'Approval origin must be an HTTPS DNS origin or empty for automatic discovery.',
+              );
+            parseTrustedConsentOrigin(accepted.trustedConsentOrigin);
+            if (
+              lanDiscoveryFor(configLoader).managedPolicyRefusal() !== undefined
+            )
+              throw new Error(MANAGED_POLICY_REMOTE_CLIENTS_CODE);
+          }
           // #4519: checked after the operator gate, so only the operator
           // learns what the policy says.
           if (
@@ -1145,7 +1170,9 @@ export function createConfigRoutes(
         return updated;
       };
       const mutation = await captureConfigurationMutation(
-        telemetryChoiceOnly ? undefined : applyConfigurationMutation,
+        telemetryChoiceOnly || publicationChoiceOnly
+          ? undefined
+          : applyConfigurationMutation,
         update,
       );
       const updated = mutation.value;
@@ -1260,17 +1287,22 @@ export function createConfigRoutes(
       }
       if (
         error instanceof Error &&
-        error.message === 'LAN_DISCOVERY_OPERATOR_REQUIRED'
+        [
+          'LAN_DISCOVERY_OPERATOR_REQUIRED',
+          'CONSENT_ORIGIN_OPERATOR_REQUIRED',
+        ].includes(error.message)
       ) {
         return c.json(
           {
             success: false,
             error:
-              'Only this Station’s local operator can change nearby discovery.',
+              'Only this Station’s local operator can change nearby discovery or the approval origin.',
           },
           403,
         );
       }
+      if (error instanceof FeaturePreviewDisabledError)
+        return c.json(error.refusal, 404);
       logger.error('Failed to update app config', { error });
       return c.json({ success: false, error: errorMessage(error) }, 400);
     }
@@ -1313,6 +1345,55 @@ export function createConfigRoutes(
       if (error instanceof ManagedSettingLockedError)
         return managedSettingRefusal(c, error);
       logger.error('Failed to record the first-run decision', { error });
+      return c.json({ success: false, error: errorMessage(error) }, 500);
+    }
+  });
+
+  /**
+   * Record the default for new chats (`AppConfig.newChatDefault`).
+   *
+   * `{ agent, reason: 'first-signed-in' }` is written only while no default
+   * exists, checked inside the serialized config write, so two devices
+   * choosing at once, or an engine that becomes ready later, cannot replace
+   * it: the loser gets 409 with the default that stands. `reason: 'chosen'`
+   * always replaces it. The Agent is not looked up: a default whose Agent is
+   * later deleted is kept and passed over at start, and readers handle that.
+   */
+  app.post('/new-chat-default', async (c) => {
+    try {
+      configOps.add(1, { op: 'update_new_chat_default' });
+      const body = await c.req.json().catch(() => undefined);
+      const malformed = describeNewChatDefaultViolation(undefined, body);
+      if (malformed) {
+        configOps.add(1, { op: 'update_new_chat_default_refused' });
+        return c.json({ success: false, error: malformed }, 400);
+      }
+      const next = body as NewChatDefault;
+      let standing: NewChatDefault | undefined;
+      const updated = await configLoader.mutateAppConfig((current) => {
+        if (describeNewChatDefaultViolation(current.newChatDefault, next)) {
+          standing = current.newChatDefault;
+          return {};
+        }
+        return { newChatDefault: { agent: next.agent, reason: next.reason } };
+      });
+      if (standing) {
+        configOps.add(1, { op: 'update_new_chat_default_kept' });
+        return c.json(
+          {
+            success: false,
+            error: 'This Station already has a default for new chats.',
+            data: standing,
+          },
+          409,
+        );
+      }
+      eventBus?.emit(SERVER_EVENTS.CONFIG_CHANGED, { source: 'config' });
+      return c.json({ success: true, data: updated.newChatDefault });
+    } catch (error: unknown) {
+      if (error instanceof ManagedSettingLockedError)
+        return managedSettingRefusal(c, error);
+      logger.error('Failed to record the default for new chats', { error });
       return c.json({ success: false, error: errorMessage(error) }, 500);
     }
   });

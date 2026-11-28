@@ -1,4 +1,10 @@
-import { execSync as realExecSync, spawn } from 'node:child_process';
+import {
+  execFileSync as realExecFileSync,
+  execSync as realExecSync,
+  spawnSync as realSpawnSync,
+  type SpawnOptions,
+  spawn,
+} from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import {
@@ -25,7 +31,7 @@ import {
   createServer as createRawServer,
 } from 'node:net';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join, resolve, win32 } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { serve } from '@hono/node-server';
 import { DEFAULT_GRANT_PAIRING_SCOPE } from '@kontourai/station-contracts';
@@ -51,9 +57,23 @@ import {
   STATION_HOME_SCHEMA_FILE,
   STATION_HOME_SCHEMA_VERSION,
 } from '@kontourai/station-shared/station-home-schema';
+import {
+  assertWindowsPathsTrusted,
+  hardenWindowsPathsTrusted,
+  runWindowsTrustCommand,
+  type WindowsTrustCommandRunner,
+} from '@kontourai/station-shared/windows-path-trust';
 import { buildSync } from 'esbuild';
 import { Hono } from 'hono';
-import { afterEach, describe, expect, it, type Mock, vi } from 'vitest';
+import {
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  type Mock,
+  vi,
+} from 'vitest';
 import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
 import { configureRuntimeHttp } from '../../../../src-server/runtime/bootstrap/runtime-http.js';
 import type { EventBus } from '../../../../src-server/services/orchestration/event-bus.js';
@@ -65,12 +85,21 @@ import {
 import type { Logger } from '../../../../src-server/utils/logger.js';
 import { renderLaunchdPlist } from '../commands/service-launchd.js';
 import { renderSystemdUnit } from '../commands/service-systemd.js';
+import {
+  renderWindowsServiceCommand,
+  windowsRegistration,
+} from '../commands/service-windows.js';
 import { plutilJson } from './helpers/launchd-plist-fixture.js';
 import {
   reapAllLongRunningFixtureChildren,
   reapLongRunningFixtureChild,
   spawnLongRunningFixtureChild,
 } from './helpers/longrunning-fixture-child.js';
+import {
+  formatTaskSettings,
+  schtasksDefaultSettings,
+} from './helpers/windows-task-settings-fixture.js';
+import { windowsTrustOperation } from './helpers/windows-trust-fixture.js';
 
 type LifecycleModule = typeof import('../commands/lifecycle.js');
 type PlatformModule = typeof import('../commands/platform.js');
@@ -89,6 +118,7 @@ const TEST_CWD = join(TEST_ROOT, 'cwd');
 const TEST_SERVER_ENTRY_FILENAME = 'command-station.js';
 const TEST_DEFAULT_HOME = join(TEST_ROOT, 'default-home');
 const TEST_ALT_HOME = join(TEST_ROOT, 'alt-home');
+const TEST_ARCHIVE_HOME = join(TEST_ROOT, 'archive home');
 const TEST_SECOND_HOME = join(TEST_ROOT, 'second-home');
 const TEST_PIDFILE = join(TEST_CWD, '.station.pids');
 const TEST_INSTANCE_STATE_DIR = join(TEST_CWD, '.station', 'instances');
@@ -175,6 +205,7 @@ function liveStateRecords(): Array<Record<string, any>> {
     ...stateRecordsIn(TEST_INSTANCE_STATE_DIR),
     ...stateRecordsIn(archiveStateDir(TEST_DEFAULT_HOME)),
     ...stateRecordsIn(archiveStateDir(TEST_ALT_HOME)),
+    ...stateRecordsIn(archiveStateDir(TEST_ARCHIVE_HOME)),
     ...stateRecordsIn(archiveStateDir(TEST_SECOND_HOME)),
     ...stateRecordsIn(archiveStateDir(TEST_ROOTED_HOME)),
   ];
@@ -545,6 +576,71 @@ function ensureDir(path: string): void {
   mkdirSync(path, { recursive: true });
 }
 
+const runFixtureWindowsTrust: WindowsTrustCommandRunner = (
+  command,
+  args,
+  options,
+) =>
+  realSpawnSync(command, args, {
+    ...options,
+    encoding: 'utf8',
+    shell: false,
+    windowsHide: true,
+  });
+
+function ensureTrustedInstallDirectory(path: string): void {
+  mkdirSync(path, { recursive: true, mode: 0o755 });
+  hardenWindowsPathsTrusted(runFixtureWindowsTrust, [
+    { kind: 'directory', path: resolve(path, '../..') },
+  ]);
+}
+
+function expectPrivateDirectoryAndFile(directory: string, file: string): void {
+  if (process.platform === 'win32') {
+    assertWindowsPathsTrusted(runFixtureWindowsTrust, [
+      { kind: 'directory', path: directory },
+      { kind: 'file', path: file },
+    ]);
+  } else {
+    expect(statSync(directory).mode & 0o777).toBe(0o700);
+    expect(statSync(file).mode & 0o777).toBe(0o600);
+  }
+}
+
+function writeTrustedInstallFile(path: string, content: string): void {
+  writeFileSync(path, content, { mode: 0o644 });
+}
+
+function writePackagedInstallers(directory: string): void {
+  writeFileSync(join(directory, 'install.sh'), '#!/bin/sh\nexit 0\n', {
+    mode: 0o700,
+  });
+  writeFileSync(join(directory, 'install.ps1'), 'exit 0\n', { mode: 0o700 });
+}
+
+function expectedPackagedInstaller(directory: string): [string, string[]] {
+  return process.platform === 'win32'
+    ? [
+        win32.join(
+          process.env.SystemRoot ?? process.env.WINDIR ?? 'C:\\Windows',
+          'System32',
+          'WindowsPowerShell',
+          'v1.0',
+          'powershell.exe',
+        ),
+        [
+          '-NoProfile',
+          '-NonInteractive',
+          '-ExecutionPolicy',
+          'Bypass',
+          '-File',
+          join(directory, 'install.ps1'),
+          'install',
+        ],
+      ]
+    : ['sh', ['./install.sh', 'install']];
+}
+
 /**
  * Station homes are read by the instance registry before `clean` removes
  * them. A home fixture therefore has to satisfy the same owner-only contract
@@ -585,7 +681,6 @@ function writeStaleServiceManifest(
 ): string {
   const platform = currentServicePlatform();
   const serviceDirectory = join(home, 'service');
-  const unitPath = join(serviceDirectory, `station-${instanceId}.unit`);
   ensureDir(serviceDirectory);
   const unit = {
     ...location,
@@ -599,17 +694,24 @@ function writeStaleServiceManifest(
     } as Parameters<typeof renderSystemdUnit>[0]['lifecycle'],
     servicePath: '/usr/bin:/bin',
   };
+  const registration =
+    platform === 'win32'
+      ? windowsRegistration(instanceId, unit.lifecycle)
+      : { unitPath: join(serviceDirectory, `station-${instanceId}.unit`) };
+  const { unitPath } = registration;
   writeFileSync(
     unitPath,
-    platform === 'linux'
-      ? renderSystemdUnit(unit)
-      : renderLaunchdPlist({
-          ...unit,
-          label: `io.kontourai.station.${instanceId}`,
-        }).replace(
-          '<key>ProcessType</key><string>Interactive</string>',
-          '<key>ProcessType</key><string>Background</string>',
-        ),
+    platform === 'win32'
+      ? renderWindowsServiceCommand(unit)
+      : platform === 'linux'
+        ? renderSystemdUnit(unit)
+        : renderLaunchdPlist({
+            ...unit,
+            label: `io.kontourai.station.${instanceId}`,
+          }).replace(
+            '<key>ProcessType</key><string>Interactive</string>',
+            '<key>ProcessType</key><string>Background</string>',
+          ),
   );
   writeFileSync(
     join(serviceDirectory, `${instanceId}.json`),
@@ -622,7 +724,7 @@ function writeStaleServiceManifest(
       platform,
       // The registration field a real `service install` records for each
       // backend — the status probe needs it to ask about the unit at all.
-      ...(platform === 'win32' ? { taskName: `\\Station-${instanceId}` } : {}),
+      ...registration,
       ...(platform === 'darwin'
         ? { label: `io.kontourai.station.${instanceId}` }
         : {}),
@@ -666,22 +768,85 @@ function stoppedServiceProbe(
   return null;
 }
 
+function expectServiceGuidance(
+  message: string | null,
+  action: 'install' | 'status' | 'uninstall',
+  expectedArguments: string[],
+  launcher = 'station',
+): void {
+  const command = message?.match(
+    new RegExp(`"(${launcher} service ${action} [^\\r\\n]+)"`, 'u'),
+  )?.[1];
+  expectStationArguments(
+    command,
+    ['service', action, ...expectedArguments],
+    launcher,
+  );
+}
+
+function expectStationArguments(
+  command: string | undefined,
+  expectedArguments: string[],
+  launcher = 'station',
+): void {
+  expect(command).toBeDefined();
+  const shell =
+    process.platform === 'win32'
+      ? resolve(
+          realExecSync('git --exec-path', {
+            encoding: 'utf8',
+            windowsHide: true,
+          }).trim(),
+          '../../..',
+          'bin/sh.exe',
+        )
+      : 'sh';
+  const result = realSpawnSync(
+    shell,
+    [
+      '-c',
+      `station() { printf '%s\\0' "$@"; }; station${command?.slice(launcher.length)}`,
+    ],
+    { encoding: 'utf8', windowsHide: true },
+  );
+  expect(result.error).toBeUndefined();
+  expect(result.status).toBe(0);
+  expect(result.stdout.split('\0').slice(0, -1)).toEqual(expectedArguments);
+}
+
 function staleSchedulingSpawnSync(unitPath: string): Mock {
-  return vi.fn((command: string, args: string[]) => {
-    const probe = stoppedServiceProbe(command, args);
-    if (probe) return probe;
-    if (process.platform === 'darwin') {
-      return { status: 0, stderr: '', stdout: plutilJson(unitPath) };
-    }
-    if (process.platform === 'win32') {
-      return { status: 0, stderr: '', stdout: '7\n' };
-    }
-    return {
-      status: 0,
-      stderr: '',
-      stdout: `# ${unitPath}\n${readFileSync(unitPath, 'utf8')}\n[Service]\nNice=10\n`,
-    };
-  });
+  return vi.fn(
+    (
+      command: string,
+      args: string[],
+      options?: Parameters<WindowsTrustCommandRunner>[2],
+    ) => {
+      if (
+        process.platform === 'win32' &&
+        /\\powershell\.exe$/i.test(command) &&
+        windowsTrustOperation(args) !== null
+      ) {
+        return runFixtureWindowsTrust(command, args, options);
+      }
+      const probe = stoppedServiceProbe(command, args);
+      if (probe) return probe;
+      if (process.platform === 'darwin') {
+        return { status: 0, stderr: '', stdout: plutilJson(unitPath) };
+      }
+      if (process.platform === 'win32') {
+        return {
+          status: 0,
+          stderr: '',
+          stdout: `${formatTaskSettings(schtasksDefaultSettings())}\n`,
+        };
+      }
+      return {
+        status: 0,
+        stderr: '',
+        stdout: `# ${unitPath}\n${readFileSync(unitPath, 'utf8')}\n[Service]\nNice=10\n`,
+      };
+    },
+  );
 }
 
 function runningServiceSpawnSync(unitPath: string): Mock {
@@ -695,6 +860,44 @@ function runningServiceSpawnSync(unitPath: string): Mock {
     }
     if (command === 'systemctl' && args.includes('is-enabled')) {
       return { status: 0, stderr: '', stdout: 'enabled\n' };
+    }
+    if (process.platform === 'win32') {
+      if (/\\schtasks\.exe$/i.test(command) && args.includes('/XML')) {
+        const wrapper = unitPath
+          .replaceAll('&', '&amp;')
+          .replaceAll('<', '&lt;')
+          .replaceAll('>', '&gt;')
+          .replaceAll('"', '&quot;')
+          .replaceAll("'", '&apos;');
+        const interpreter = win32.join(
+          process.env.SystemRoot ?? process.env.WINDIR ?? 'C:\\Windows',
+          'System32',
+          'cmd.exe',
+        );
+        return {
+          status: 0,
+          stderr: '',
+          stdout: `<Task><Principals><Principal><UserId>S-1-5-21-1000</UserId><RunLevel>LeastPrivilege</RunLevel></Principal></Principals><Actions><Exec><Command>${interpreter}</Command><Arguments>/d /c &quot;${wrapper}&quot;</Arguments></Exec></Actions></Task>`,
+        };
+      }
+      if (/\\whoami\.exe$/i.test(command) && args.includes('/user')) {
+        return {
+          status: 0,
+          stderr: '',
+          stdout: '"DESKTOP-WIN\\fixture","S-1-5-21-1000"\n',
+        };
+      }
+      if (/\\powershell\.exe$/i.test(command)) {
+        const program = Buffer.from(args[3] ?? '', 'base64').toString(
+          'utf16le',
+        );
+        if (
+          program.includes('Get-ScheduledTask') &&
+          program.includes('[int]$task.State')
+        ) {
+          return { status: 0, stderr: '', stdout: '4\n' };
+        }
+      }
     }
     return fallback(command, args);
   });
@@ -822,6 +1025,12 @@ function writeInstanceState(options: {
     { mode: 0o600 },
   );
   chmodSync(statePath, 0o600);
+  if (process.platform === 'win32') {
+    hardenWindowsPathsTrusted(runFixtureWindowsTrust, [
+      { kind: 'directory', path: stateDir },
+      { kind: 'file', path: statePath },
+    ]);
+  }
 
   return statePath;
 }
@@ -907,6 +1116,7 @@ afterEach(async () => {
   vi.doUnmock('node:child_process');
   vi.doUnmock('node:http');
   vi.doUnmock('node:net');
+  vi.doUnmock('@kontourai/station-shared/process-identity');
   rmSync(TEST_ROOT, { force: true, recursive: true });
 });
 
@@ -934,29 +1144,15 @@ describe('a state record whose recorded home a guard now rejects (#1091)', () =>
     serverPid: number;
     uiPid: number;
   }): string {
-    ensureDir(TEST_INSTANCE_STATE_DIR);
-    chmodSync(TEST_INSTANCE_STATE_DIR, 0o700);
-    const statePath = join(TEST_INSTANCE_STATE_DIR, 'default.json');
-    writeFileSync(
-      statePath,
-      JSON.stringify({
-        instanceId: 'default',
-        serverPid: pids.serverPid,
-        uiPid: pids.uiPid,
-        // Ports nothing is listening on, so liveness rests on the pids.
-        serverPort: 64_700,
-        uiPort: 64_710,
-        // Written when the shared root was still a legal home.
-        baseDir: SHARED_ROOT,
-        homeSource: 'default',
-        host: '127.0.0.1',
-        startedAt: new Date(0).toISOString(),
-        cwd: TEST_CWD,
-      }),
-      { mode: 0o600 },
-    );
-    chmodSync(statePath, 0o600);
-    return statePath;
+    return writeInstanceState({
+      instanceId: 'default',
+      serverPid: pids.serverPid,
+      uiPid: pids.uiPid,
+      serverPort: 64_700,
+      uiPort: 64_710,
+      baseDir: SHARED_ROOT,
+      startedAt: new Date(0).toISOString(),
+    });
   }
 
   it('reclaims the dead record instead of wedging every lifecycle command', async () => {
@@ -1836,14 +2032,74 @@ describe('lifecycle instance state', () => {
 
   it('fails closed on permissive or symlinked modern instance state', async () => {
     ensureDir(TEST_CWD);
+    ensureDir(TEST_DEFAULT_HOME);
     const permissive = writeInstanceState({
       instanceName: 'permissive',
-      serverPid: 43001,
+      serverPid: process.pid,
       uiPid: null,
+      serverPort: 3257,
+      uiPort: 5287,
     });
-    chmodSync(permissive, 0o644);
-    const { lifecycle } = await loadLifecycleModule();
-    expect(() => lifecycle.isRunning()).toThrow('expected owned mode 0600');
+    const { lifecycle } = await loadLifecycleModule({
+      normalizeHomePathMock: (home) =>
+        admitStationRuntimeHome(home, {
+          STATION_ROOT: join(TEST_ROOT, 'admission-root'),
+        }),
+    });
+    hardenWindowsPathsTrusted(runWindowsTrustCommand, [
+      { kind: 'directory', path: TEST_INSTANCE_STATE_DIR },
+      { kind: 'file', path: permissive },
+    ]);
+    if (process.platform === 'win32') {
+      hardenWindowsPathsTrusted(runFixtureWindowsTrust, [
+        { kind: 'directory', path: resolve(TEST_INSTANCE_STATE_DIR, '..') },
+      ]);
+      realExecFileSync('icacls', [TEST_INSTANCE_STATE_DIR, '/reset'], {
+        encoding: 'utf8',
+        windowsHide: true,
+      });
+    }
+    expect(lifecycle.isRunning()).toBe(true);
+    assertWindowsPathsTrusted(runFixtureWindowsTrust, [
+      { kind: 'directory', path: TEST_INSTANCE_STATE_DIR },
+    ]);
+    const original = readFileSync(permissive);
+    const identity = statSync(permissive).ino;
+    if (process.platform === 'win32') {
+      realExecFileSync('icacls', [permissive, '/grant', '*S-1-1-0:R'], {
+        encoding: 'utf8',
+        windowsHide: true,
+      });
+    } else {
+      chmodSync(permissive, 0o644);
+    }
+    expect(() => lifecycle.isRunning()).toThrow(
+      process.platform === 'win32'
+        ? /Windows private file/
+        : 'expected owned mode 0600',
+    );
+    expect(readFileSync(permissive)).toEqual(original);
+    expect(statSync(permissive).ino).toBe(identity);
+
+    if (process.platform === 'win32') {
+      hardenWindowsPathsTrusted(runFixtureWindowsTrust, [
+        { kind: 'file', path: permissive },
+      ]);
+      realExecFileSync(
+        'icacls',
+        [TEST_INSTANCE_STATE_DIR, '/grant', '*S-1-1-0:R'],
+        {
+          encoding: 'utf8',
+          windowsHide: true,
+        },
+      );
+      expect(() => lifecycle.isRunning()).toThrow(/Windows private file/);
+      expect(readFileSync(permissive)).toEqual(original);
+      expect(statSync(permissive).ino).toBe(identity);
+      hardenWindowsPathsTrusted(runFixtureWindowsTrust, [
+        { kind: 'directory', path: TEST_INSTANCE_STATE_DIR },
+      ]);
+    }
 
     rmSync(permissive);
     const target = join(TEST_ROOT, 'outside-instance.json');
@@ -1853,7 +2109,7 @@ describe('lifecycle instance state', () => {
     expect(readFileSync(target, 'utf8')).toBe('{}');
   });
 
-  it('fails publication when the instance directory cannot be fsynced', async () => {
+  it('honors platform directory-fsync behavior when publishing instance state', async () => {
     ensureDir(TEST_CWD);
     ensureBuildOutputs('dir-sync');
     ensureDir(TEST_ALT_HOME);
@@ -1862,12 +2118,29 @@ describe('lifecycle instance state', () => {
       .fn()
       .mockReturnValueOnce({ pid: 43101, unref: vi.fn() })
       .mockReturnValueOnce({ pid: 43102, unref: vi.fn() });
+    const killSpy = vi
+      .spyOn(process, 'kill')
+      .mockImplementation((() => true) as typeof process.kill);
+    let directorySyncAttempts = 0;
+    const instanceDirectoryDescriptors = new Set<number>();
     vi.stubGlobal('fetch', vi.fn(readyLifecycleFetch));
     const { lifecycle } = await loadLifecycleModule({
       childProcessMock: { execSync: vi.fn(), spawn },
       fsOverrides: {
+        openSync: (path, flags, mode) => {
+          const descriptor = actualFs.openSync(path, flags, mode);
+          if (path === TEST_INSTANCE_STATE_DIR) {
+            instanceDirectoryDescriptors.add(descriptor);
+          }
+          return descriptor;
+        },
+        closeSync: (descriptor) => {
+          instanceDirectoryDescriptors.delete(descriptor);
+          actualFs.closeSync(descriptor);
+        },
         fsyncSync: (fd) => {
-          if (actualFs.fstatSync(fd).isDirectory()) {
+          if (instanceDirectoryDescriptors.has(fd)) {
+            directorySyncAttempts += 1;
             throw new Error('directory fsync failed');
           }
           actualFs.fsyncSync(fd);
@@ -1875,15 +2148,30 @@ describe('lifecycle instance state', () => {
       },
       platformOverrides: { sleepSync: vi.fn() },
     });
-    await expect(
-      lifecycle.start({
+    try {
+      const started = lifecycle.start({
         baseDir: TEST_ALT_HOME,
         instanceName: 'dir-sync',
         serverPort: 3250,
         uiPort: 5280,
-      }),
-    ).rejects.toThrow('directory fsync failed');
-    expect(existsSync(getInstanceStatePath('dir-sync'))).toBe(false);
+      });
+      const statePath = getInstanceStatePath('dir-sync');
+      if (process.platform === 'win32') {
+        await expect(started).resolves.toBeUndefined();
+        expect(directorySyncAttempts).toBe(0);
+        expect(JSON.parse(readFileSync(statePath, 'utf8'))).toMatchObject({
+          instanceId: 'dir-sync',
+          serverPid: 43101,
+          uiPid: 43102,
+        });
+      } else {
+        await expect(started).rejects.toThrow('directory fsync failed');
+        expect(directorySyncAttempts).toBeGreaterThan(0);
+        expect(existsSync(statePath)).toBe(false);
+      }
+    } finally {
+      killSpy.mockRestore();
+    }
   });
 
   it('detects a final-path replacement instead of claiming another record', async () => {
@@ -1988,6 +2276,9 @@ describe('lifecycle instance state', () => {
     ensureDir(TEST_ALT_HOME);
     ensureDir(TEST_INSTANCE_STATE_DIR);
     chmodSync(TEST_INSTANCE_STATE_DIR, 0o700);
+    hardenWindowsPathsTrusted(runFixtureWindowsTrust, [
+      { kind: 'directory', path: TEST_INSTANCE_STATE_DIR },
+    ]);
     const statePath = getInstanceStatePath('state-orphan');
     const lock = `${statePath}.mutation`;
     writeFileSync(
@@ -2733,8 +3024,7 @@ describe('lifecycle instance state', () => {
       uiPid: 41002,
       uiPort: 5274,
     });
-    expect(statSync(TEST_INSTANCE_STATE_DIR).mode & 0o777).toBe(0o700);
-    expect(statSync(statePath).mode & 0o777).toBe(0o600);
+    expectPrivateDirectoryAndFile(TEST_INSTANCE_STATE_DIR, statePath);
     expect(
       JSON.parse(
         readFileSync(join(TEST_ALT_HOME, STATION_HOME_SCHEMA_FILE), 'utf-8'),
@@ -5375,7 +5665,7 @@ describe('upgrade', () => {
     ensureDir(TEST_CWD);
     ensureDir(join(TEST_CWD, '.git'));
     writeOwnedDependencyLifecycle(TEST_CWD);
-    const channelHome = join(TEST_ROOT, 'beta-home');
+    const channelHome = join(TEST_ROOT, 'beta home');
     const unitPath = writeStaleServiceManifest(channelHome, 'beta-upgrade');
     const execSync = vi.fn(
       (command: string, options?: { env?: NodeJS.ProcessEnv }) => {
@@ -5423,9 +5713,13 @@ describe('upgrade', () => {
           }),
         ),
       ).toMatchObject({ sha: '0123456789abcdef0123456789abcdef01234567' });
-      expect(log.mock.calls.flat().join('\n')).toContain(
-        `station service install --instance=beta-upgrade --base=${channelHome} --port=3141 --ui-port=3000 --host=127.0.0.1`,
-      );
+      expectServiceGuidance(log.mock.calls.flat().join('\n'), 'install', [
+        '--instance=beta-upgrade',
+        `--base=${channelHome}`,
+        '--port=3141',
+        '--ui-port=3000',
+        '--host=127.0.0.1',
+      ]);
     } finally {
       log.mockRestore();
     }
@@ -5475,11 +5769,9 @@ describe('upgrade', () => {
     ensureDir(TEST_CWD);
     ensureDir(join(TEST_CWD, '.git'));
     writeOwnedDependencyLifecycle(TEST_CWD);
-    vi.stubEnv('STATION_HOME', TEST_DEFAULT_HOME);
-    const unitPath = writeStaleServiceManifest(
-      TEST_DEFAULT_HOME,
-      'service-unknown',
-    );
+    const serviceHome = join(TEST_ROOT, 'unknown service home');
+    vi.stubEnv('STATION_HOME', serviceHome);
+    const unitPath = writeStaleServiceManifest(serviceHome, 'service-unknown');
     const fallback = staleSchedulingSpawnSync(unitPath);
     const spawnSync = vi.fn((command: string, args: string[]) =>
       command === 'launchctl' ||
@@ -5493,7 +5785,7 @@ describe('upgrade', () => {
       childProcessMock: { execSync, spawnSync },
     });
 
-    const refusal = lifecycle.upgrade().then(
+    const refusal = lifecycle.upgrade({ baseDir: serviceHome }).then(
       () => null,
       (error: Error) => error.message,
     );
@@ -5504,14 +5796,14 @@ describe('upgrade', () => {
     // Actionable (review M2): the manifest file, the status command for this
     // unit, the uninstall that clears a gone unit, and the override flag.
     expect(message).toContain(
-      `manifest: ${join(TEST_DEFAULT_HOME, 'service', 'service-unknown.json')}`,
+      `manifest: ${join(serviceHome, 'service', 'service-unknown.json')}`,
     );
-    expect(message).toContain(
-      `"station service status --instance=service-unknown --base=${TEST_DEFAULT_HOME}"`,
-    );
-    expect(message).toContain(
-      `"station service uninstall --instance=service-unknown --base=${TEST_DEFAULT_HOME}"`,
-    );
+    const targetingArguments = [
+      '--instance=service-unknown',
+      `--base=${serviceHome}`,
+    ];
+    expectServiceGuidance(message, 'status', targetingArguments);
+    expectServiceGuidance(message, 'uninstall', targetingArguments);
     expect(message).toContain('--ignore-service-state');
     expect(execSync).not.toHaveBeenCalled();
   });
@@ -5713,7 +6005,7 @@ describe('upgrade', () => {
     const installRoot = join(TEST_ROOT, 'portable-missing-provenance');
     const releasesRoot = join(installRoot, 'releases');
     const release = join(releasesRoot, 'unsigned');
-    ensureDir(release);
+    ensureTrustedInstallDirectory(release);
     for (const path of [installRoot, releasesRoot, release]) {
       chmodSync(path, 0o700);
     }
@@ -5749,9 +6041,9 @@ describe('upgrade', () => {
       const installRoot = join(TEST_ROOT, `portable-${runtimeChannel}`);
       const release = join(installRoot, 'releases', 'a'.repeat(64));
       const stationHome = join(TEST_ROOT, `home-${runtimeChannel}`);
-      ensureDir(release);
+      ensureTrustedInstallDirectory(release);
       ensureDir(stationHome);
-      writeFileSync(
+      writeTrustedInstallFile(
         join(release, '.station-release.json'),
         `${JSON.stringify({
           schemaVersion: 2,
@@ -5767,10 +6059,8 @@ describe('upgrade', () => {
           prerelease: releaseChannel !== 'stable',
         })}\n`,
       );
-      writeFileSync(join(release, 'install.sh'), '#!/bin/sh\nexit 0\n', {
-        mode: 0o700,
-      });
-      writeFileSync(
+      writePackagedInstallers(release);
+      writeTrustedInstallFile(
         join(installRoot, '.station-portable-install-root'),
         'station-portable-install-root-v1\n',
       );
@@ -5833,8 +6123,7 @@ describe('upgrade', () => {
         await lifecycle.upgrade();
 
         expect(execFileSync).toHaveBeenCalledWith(
-          'sh',
-          ['./install.sh', 'install'],
+          ...expectedPackagedInstaller(release),
           expect.objectContaining({
             cwd: release,
             env: expect.objectContaining({
@@ -5861,8 +6150,17 @@ describe('upgrade', () => {
         // The reinstall names the ring's launcher, which owns this install
         // (#4189). A Windows remedy reads the manifest, which this fixture
         // writes without the archive fields.
-        expect(log.mock.calls.flat().join('\n')).toContain(
-          `Run "${process.platform === 'win32' ? 'station' : launcher} service install --instance=packaged-guidance --base=${stationHome} --port=3141 --ui-port=3000 --host=127.0.0.1"`,
+        expectServiceGuidance(
+          log.mock.calls.flat().join('\n'),
+          'install',
+          [
+            '--instance=packaged-guidance',
+            `--base=${stationHome}`,
+            '--port=3141',
+            '--ui-port=3000',
+            '--host=127.0.0.1',
+          ],
+          process.platform === 'win32' ? 'station' : launcher,
         );
         expect(execSync).not.toHaveBeenCalled();
       } finally {
@@ -5875,9 +6173,9 @@ describe('upgrade', () => {
     const installRoot = join(TEST_ROOT, 'portable-service');
     const release = join(installRoot, 'releases', 'e'.repeat(64));
     const stationHome = join(TEST_ROOT, 'home-service');
-    ensureDir(release);
+    ensureTrustedInstallDirectory(release);
     ensureDir(stationHome);
-    writeFileSync(
+    writeTrustedInstallFile(
       join(release, '.station-release.json'),
       `${JSON.stringify({
         schemaVersion: 2,
@@ -5889,10 +6187,8 @@ describe('upgrade', () => {
         prerelease: false,
       })}\n`,
     );
-    writeFileSync(join(release, 'install.sh'), '#!/bin/sh\nexit 0\n', {
-      mode: 0o700,
-    });
-    writeFileSync(
+    writePackagedInstallers(release);
+    writeTrustedInstallFile(
       join(installRoot, '.station-portable-install-root'),
       'station-portable-install-root-v1\n',
     );
@@ -5932,11 +6228,9 @@ describe('upgrade', () => {
     ensureDir(TEST_CWD);
     ensureDir(join(TEST_CWD, '.git'));
     writeOwnedDependencyLifecycle(TEST_CWD);
-    vi.stubEnv('STATION_HOME', TEST_DEFAULT_HOME);
-    const unitPath = writeStaleServiceManifest(
-      TEST_DEFAULT_HOME,
-      'source-guidance',
-    );
+    const serviceHome = join(TEST_ROOT, 'stale service home');
+    vi.stubEnv('STATION_HOME', serviceHome);
+    const unitPath = writeStaleServiceManifest(serviceHome, 'source-guidance');
     const execSync = vi.fn(
       (command: string, options?: { env?: NodeJS.ProcessEnv }) => {
         if (command === 'npm run build:server') {
@@ -5970,14 +6264,18 @@ describe('upgrade', () => {
     });
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     try {
-      await lifecycle.upgrade();
+      await lifecycle.upgrade({ baseDir: serviceHome });
 
       expect(log.mock.calls.flat().join('\n')).toContain(
         'Service scheduling is stale for source-guidance',
       );
-      expect(log.mock.calls.flat().join('\n')).toContain(
-        `station service install --instance=source-guidance --base=${TEST_DEFAULT_HOME} --port=3141 --ui-port=3000 --host=127.0.0.1`,
-      );
+      expectServiceGuidance(log.mock.calls.flat().join('\n'), 'install', [
+        '--instance=source-guidance',
+        `--base=${serviceHome}`,
+        '--port=3141',
+        '--ui-port=3000',
+        '--host=127.0.0.1',
+      ]);
     } finally {
       log.mockRestore();
     }
@@ -5994,8 +6292,8 @@ describe('upgrade', () => {
     async ({ state }) => {
       const installRoot = join(TEST_ROOT, 'portable-unknown-ring');
       const release = join(installRoot, 'releases', 'd'.repeat(64));
-      ensureDir(release);
-      writeFileSync(
+      ensureTrustedInstallDirectory(release);
+      writeTrustedInstallFile(
         join(release, '.station-release.json'),
         `${JSON.stringify({
           schemaVersion: 2,
@@ -6070,9 +6368,9 @@ describe('upgrade', () => {
     const installRoot = join(TEST_ROOT, 'portable-mismatch');
     const release = join(installRoot, 'releases', 'c'.repeat(64));
     const stationHome = join(TEST_ROOT, 'home-mismatch');
-    ensureDir(release);
+    ensureTrustedInstallDirectory(release);
     ensureDir(stationHome);
-    writeFileSync(
+    writeTrustedInstallFile(
       join(release, '.station-release.json'),
       `${JSON.stringify({
         schemaVersion: 2,
@@ -6084,10 +6382,8 @@ describe('upgrade', () => {
         prerelease: true,
       })}\n`,
     );
-    writeFileSync(join(release, 'install.sh'), '#!/bin/sh\nexit 0\n', {
-      mode: 0o700,
-    });
-    writeFileSync(
+    writePackagedInstallers(release);
+    writeTrustedInstallFile(
       join(installRoot, '.station-portable-install-root'),
       'station-portable-install-root-v1\n',
     );
@@ -6120,9 +6416,9 @@ describe('upgrade', () => {
     const installRoot = join(TEST_ROOT, 'portable-permissive-root');
     const release = join(installRoot, 'releases', 'e'.repeat(64));
     const stationHome = join(TEST_ROOT, 'home-permissive-root');
-    ensureDir(release);
+    ensureTrustedInstallDirectory(release);
     ensureDir(stationHome);
-    writeFileSync(
+    writeTrustedInstallFile(
       join(release, '.station-release.json'),
       `${JSON.stringify({
         schemaVersion: 2,
@@ -6134,10 +6430,8 @@ describe('upgrade', () => {
         prerelease: false,
       })}\n`,
     );
-    writeFileSync(join(release, 'install.sh'), '#!/bin/sh\nexit 0\n', {
-      mode: 0o700,
-    });
-    writeFileSync(
+    writePackagedInstallers(release);
+    writeTrustedInstallFile(
       join(installRoot, '.station-portable-install-root'),
       'station-portable-install-root-v1\n',
     );
@@ -6152,7 +6446,21 @@ describe('upgrade', () => {
       { mode: 0o600 },
     );
     symlinkSync(release, join(installRoot, 'current'));
-    chmodSync(installRoot, 0o777);
+    if (process.platform === 'win32') {
+      const result = realSpawnSync(
+        win32.join(
+          process.env.SystemRoot ?? process.env.WINDIR ?? 'C:\\Windows',
+          'System32',
+          'icacls.exe',
+        ),
+        [installRoot, '/grant', '*S-1-1-0:(W)'],
+        { encoding: 'utf8', windowsHide: true },
+      );
+      expect(result.error).toBeUndefined();
+      expect(result.status, result.stderr).toBe(0);
+    } else {
+      chmodSync(installRoot, 0o777);
+    }
 
     const execFileSync = vi.fn();
     const { lifecycle } = await loadLifecycleModule({
@@ -6161,7 +6469,9 @@ describe('upgrade', () => {
     });
 
     await expect(lifecycle.upgrade()).rejects.toThrow(
-      'packaged install root must be a same-user directory that is not group/world writable',
+      process.platform === 'win32'
+        ? 'Windows current-user ACL verification failed'
+        : 'packaged install root must be a same-user directory that is not group/world writable',
     );
     expect(execFileSync).not.toHaveBeenCalled();
   });
@@ -6376,6 +6686,11 @@ describe('uiRequestHandler (static UI server SPA fallback + reverse proxy)', () 
     const crypto = await import('node:crypto');
     const path = await import('node:path');
     const lifecycle = await import('../commands/lifecycle.js');
+    if (opts?.readinessFile && existsSync(opts.readinessFile)) {
+      hardenWindowsPathsTrusted(runWindowsTrustCommand, [
+        { kind: 'file', path: opts.readinessFile },
+      ]);
+    }
     const handler = lifecycle.uiRequestHandler({
       http,
       crypto,
@@ -6403,6 +6718,8 @@ describe('uiRequestHandler (static UI server SPA fallback + reverse proxy)', () 
       hostedTenantAuthorities: opts?.hostedTenantAuthorities,
     });
     const server = http.createServer(handler);
+    server.once('close', handler.close);
+    await handler.ready;
     await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
     const addr = server.address();
     const port = typeof addr === 'object' && addr ? addr.port : 0;
@@ -7945,10 +8262,396 @@ describe('uiRequestHandler (static UI server SPA fallback + reverse proxy)', () 
 // generated script) rather than relying on Vitest to produce it — the
 // `globalThis.__name` shim in `buildUiServerScript` is what's asserted, not
 // this test's own transform.
-describe('buildUiServerScript output runs as a real standalone node -e process (code-review M2)', () => {
-  const makeUiDir = trackTempDirs();
+describe('Windows readiness verifier lifecycle', () => {
+  let resolveGuard: (() => Promise<string | null>) | undefined;
+  async function launchWorker(program: string) {
+    const native =
+      await vi.importActual<typeof import('node:child_process')>(
+        'node:child_process',
+      );
+    if (process.platform === 'win32') {
+      const guards = await import(
+        '@kontourai/station-shared/windows-command-guard'
+      );
+      resolveGuard ??= guards.createWindowsCommandGuardResolver({
+        sourceDirectory: import.meta.dirname,
+        stagedGuard: null,
+      });
+      return guards.createWindowsOwnedWorkerLauncher({
+        spawn: native.spawn,
+        resolveGuard,
+        timeoutMs: 5_000,
+      })(process.execPath, ['-e', program]);
+    }
+    const child = native.spawn(process.execPath, ['-e', program], {
+      stdio: ['pipe', 'pipe', 'ignore'],
+      windowsHide: true,
+    });
+    const settled = new Promise<boolean>((resolve) =>
+      child.once('close', () => resolve(true)),
+    );
+    return {
+      pid: child.pid!,
+      stdin: child.stdin!,
+      stdout: child.stdout!,
+      settled,
+      stop: () => {
+        child.kill();
+        return settled;
+      },
+    };
+  }
 
-  function spawnUiScript(script: string) {
+  it.each(['timeout', 'close'])(
+    'cancels a %s during unresolved startup without later acquiring a process',
+    async (reason) => {
+      const { createWindowsReadinessReader } = await import(
+        '../commands/windows-readiness-reader.js'
+      );
+      const guards = await import(
+        '@kontourai/station-shared/windows-command-guard'
+      );
+      const childProcess = process.getBuiltinModule('child_process');
+      const execute = vi.spyOn(childProcess, 'execFile');
+      const spawnWorker = vi.fn(childProcess.spawn);
+      let release!: () => void;
+      let entered!: () => void;
+      let aborted!: () => void;
+      const resolving = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      const cancellation = new Promise<void>((resolve) => {
+        aborted = resolve;
+      });
+      const launch = guards.createWindowsOwnedWorkerLauncher({
+        resolveGuard: (signal) =>
+          new Promise<string>((resolve) => {
+            release = () => resolve('must-not-run.exe');
+            signal!.addEventListener('abort', aborted, { once: true });
+            entered();
+          }),
+        spawn: spawnWorker,
+        timeoutMs: 1_000,
+      });
+      const reader = createWindowsReadinessReader({
+        launch: (signal) =>
+          launch(process.execPath, ['-e', 'process.exit(99)'], signal),
+        timeoutMs: 100,
+      });
+      const pending = reader.read();
+      await resolving;
+      const closing = reason === 'close' ? reader.close() : undefined;
+      try {
+        await cancellation;
+        await expect(reader.read()).resolves.toBeNull();
+        expect(execute).not.toHaveBeenCalled();
+        release();
+        await expect(pending).resolves.toBeNull();
+        await closing;
+        expect(execute).not.toHaveBeenCalled();
+        expect(spawnWorker).not.toHaveBeenCalled();
+        await expect(reader.read()).resolves.toBeNull();
+      } finally {
+        release();
+        await reader.close();
+      }
+    },
+  );
+
+  it('coalesces waiting readers into a fresh next observation and closes the worker', async () => {
+    const { createWindowsReadinessReader } = await import(
+      '../commands/windows-readiness-reader.js'
+    );
+    const program = `
+      require('node:readline').createInterface({input:process.stdin}).on('line', sequence => {
+        setTimeout(()=>process.stdout.write(JSON.stringify({sequence,trusted:true,content:JSON.stringify({pid:process.pid,sequence})})+'\\n'),50);
+      });
+    `;
+    const reader = createWindowsReadinessReader({
+      launch: () => launchWorker(program),
+      timeoutMs: 5_000,
+    });
+    let workerPid: number | undefined;
+    try {
+      const first = reader.read();
+      const second = reader.read();
+      const third = reader.read();
+      expect(third).toBe(second);
+      const observations = (await Promise.all([first, second, third])).map(
+        (content) => JSON.parse(content!),
+      );
+      workerPid = observations[0].pid;
+      expect(observations.map((observation) => observation.sequence)).toEqual([
+        '1',
+        '2',
+        '2',
+      ]);
+      expect(observations.map((observation) => observation.pid)).toEqual([
+        workerPid,
+        workerPid,
+        workerPid,
+      ]);
+      expect(JSON.parse((await reader.read())!).sequence).toBe('3');
+    } finally {
+      await reader.close();
+    }
+    expect(workerPid).toBeTypeOf('number');
+    expect(() => process.kill(workerPid!, 0)).toThrow();
+    await expect(reader.read()).resolves.toBeNull();
+  });
+
+  it.each(['stalled', 'wrong-sequence', 'oversized'])(
+    'fails closed and reaps a %s worker',
+    async (failure) => {
+      const { createWindowsReadinessReader } = await import(
+        '../commands/windows-readiness-reader.js'
+      );
+      let worker: Awaited<ReturnType<typeof launchWorker>> | undefined;
+      const program = `
+        process.stdin.on('data',()=>{
+          if(${JSON.stringify(failure)}==='wrong-sequence') process.stdout.write(JSON.stringify({sequence:'9',trusted:true,content:'ready'})+'\\n');
+          if(${JSON.stringify(failure)}==='oversized') process.stdout.write('x'.repeat(1048577));
+        });
+      `;
+      const reader = createWindowsReadinessReader({
+        launch: async () => {
+          worker = await launchWorker(program);
+          return worker;
+        },
+        timeoutMs: 1_000,
+      });
+      try {
+        const first = reader.read();
+        const queued = reader.read();
+        await expect(first).resolves.toBeNull();
+        await expect(queued).resolves.toBeNull();
+        expect(worker).toBeDefined();
+        expect(() => process.kill(worker!.pid, 0)).toThrow();
+      } finally {
+        await reader.close();
+      }
+    },
+  );
+
+  it.each([true, false])(
+    'fences replacements until cleanup settles and preserves its %s custody verdict',
+    async (confirmed) => {
+      const { createWindowsReadinessReader } = await import(
+        '../commands/windows-readiness-reader.js'
+      );
+      let entered!: () => void;
+      const stopping = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      let release!: () => void;
+      const released = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let launches = 0;
+      let firstSettled = false;
+      const reader = createWindowsReadinessReader({
+        launch: async () => {
+          launches++;
+          const program =
+            launches === 1
+              ? `process.stdin.on('data',()=>process.stdout.write(JSON.stringify({sequence:'wrong',trusted:true,content:'wrong'})+'\\n'));`
+              : `require('node:readline').createInterface({input:process.stdin}).on('line', sequence => process.stdout.write(JSON.stringify({sequence,trusted:true,content:'next'})+'\\n'));`;
+          const worker = await launchWorker(program);
+          if (launches !== 1) return worker;
+          return {
+            ...worker,
+            stop: async () => {
+              entered();
+              await released;
+              await worker.stop();
+              return confirmed;
+            },
+          };
+        },
+        timeoutMs: 5_000,
+      });
+      try {
+        const first = reader.read();
+        void first.then(() => {
+          firstSettled = true;
+        });
+        await stopping;
+        expect(firstSettled).toBe(false);
+        await expect(reader.read()).resolves.toBeNull();
+        expect(launches).toBe(1);
+        release();
+        await expect(first).resolves.toBeNull();
+        await expect(reader.read()).resolves.toBe(confirmed ? 'next' : null);
+        expect(launches).toBe(confirmed ? 2 : 1);
+      } finally {
+        release();
+        await reader.close();
+      }
+    },
+  );
+
+  it.runIf(process.platform === 'win32')(
+    'fences verification after guard loss without ending an unrelated process',
+    async () => {
+      const native =
+        await vi.importActual<typeof import('node:child_process')>(
+          'node:child_process',
+        );
+      const guards = await import(
+        '@kontourai/station-shared/windows-command-guard'
+      );
+      const { createWindowsReadinessReader } = await import(
+        '../commands/windows-readiness-reader.js'
+      );
+      resolveGuard ??= guards.createWindowsCommandGuardResolver({
+        sourceDirectory: import.meta.dirname,
+        stagedGuard: null,
+      });
+      const processes: import('node:child_process').ChildProcess[] = [];
+      const launch = guards.createWindowsOwnedWorkerLauncher({
+        resolveGuard,
+        spawn: (command, args, options) => {
+          const child = native.spawn(command, args, options);
+          processes.push(child);
+          return child;
+        },
+        timeoutMs: 5_000,
+      });
+      const unrelated = native.spawn(
+        process.execPath,
+        ['-e', 'setTimeout(()=>{},20000)'],
+        { stdio: 'ignore', windowsHide: true },
+      );
+      let worker: Awaited<ReturnType<typeof launch>> | undefined;
+      const reader = createWindowsReadinessReader({
+        launch: async () => {
+          worker = await launch(process.execPath, [
+            '-e',
+            `require('node:readline').createInterface({input:process.stdin}).on('line',sequence=>process.stdout.write(JSON.stringify({sequence,trusted:true,content:'ready'})+'\\n'));`,
+          ]);
+          return worker;
+        },
+        timeoutMs: 5_000,
+      });
+      try {
+        await expect(reader.read()).resolves.toBe('ready');
+        expect(processes).toHaveLength(1);
+        processes[0]!.kill();
+        await expect(worker!.settled).resolves.toBe(false);
+        await expect(reader.read()).resolves.toBeNull();
+        expect(processes).toHaveLength(1);
+        await vi.waitFor(
+          () => expect(() => process.kill(worker!.pid, 0)).toThrow(),
+          { timeout: 10_000 },
+        );
+        expect(() => process.kill(unrelated.pid!, 0)).not.toThrow();
+      } finally {
+        await reader.close();
+        unrelated.kill();
+      }
+    },
+  );
+
+  it.runIf(process.platform === 'win32')(
+    'ends the verifier and its descendants on parent loss without ending an unrelated process',
+    async () => {
+      const native =
+        await vi.importActual<typeof import('node:child_process')>(
+          'node:child_process',
+        );
+      const guards = await import(
+        '@kontourai/station-shared/windows-command-guard'
+      );
+      resolveGuard ??= guards.createWindowsCommandGuardResolver({
+        sourceDirectory: import.meta.dirname,
+        stagedGuard: null,
+      });
+      const guard = await resolveGuard();
+      expect(guard).toBeTypeOf('string');
+      const unrelated = native.spawn(
+        process.execPath,
+        ['-e', 'setTimeout(()=>{},20000)'],
+        { stdio: 'ignore', windowsHide: true },
+      );
+      const workerProgram = `
+      const child=require('node:child_process').spawn(process.execPath,['-e','setTimeout(()=>{},20000)'],{stdio:'ignore',windowsHide:true});
+      process.stdout.write(JSON.stringify({pid:process.pid,descendant:child.pid})+'\\n');
+      setTimeout(()=>{},20000);
+    `;
+      const parent = native.spawn(
+        process.execPath,
+        [
+          '-e',
+          `
+      const launch=(${guards.createWindowsOwnedWorkerLauncher.toString()})({spawn:require('node:child_process').spawn,resolveGuard:async()=>${JSON.stringify(guard)},timeoutMs:5000});
+      launch(process.execPath,['-e',${JSON.stringify(workerProgram)}]).then(worker=>{
+        worker.stdout.once('data',chunk=>process.send(JSON.parse(String(chunk))));
+      }).catch(error=>{process.stderr.write(error.stack);process.exitCode=1;});
+      setTimeout(()=>{},20000);
+    `,
+        ],
+        { stdio: ['ignore', 'ignore', 'pipe', 'ipc'], windowsHide: true },
+      );
+      let parentStderr = '';
+      parent.stderr?.on('data', (chunk) => {
+        parentStderr += String(chunk);
+      });
+      try {
+        const descendants = await new Promise<{
+          pid: number;
+          descendant: number;
+        }>((resolve, reject) => {
+          parent.once('message', (message) => {
+            if (
+              typeof message !== 'object' ||
+              message === null ||
+              !('pid' in message) ||
+              !('descendant' in message) ||
+              typeof message.pid !== 'number' ||
+              typeof message.descendant !== 'number'
+            ) {
+              reject(new Error('Parent sent an invalid worker observation'));
+              return;
+            }
+            resolve({ pid: message.pid, descendant: message.descendant });
+          });
+          parent.once('error', reject);
+          parent.once('exit', () =>
+            reject(
+              new Error(
+                `Parent exited before worker observation: ${parentStderr}`,
+              ),
+            ),
+          );
+        });
+        expect(() => process.kill(descendants.pid, 0)).not.toThrow();
+        expect(() => process.kill(descendants.descendant, 0)).not.toThrow();
+        parent.kill();
+        await vi.waitFor(
+          () => {
+            expect(() => process.kill(descendants.pid, 0)).toThrow();
+            expect(() => process.kill(descendants.descendant, 0)).toThrow();
+          },
+          { timeout: 10_000 },
+        );
+        expect(() => process.kill(unrelated.pid!, 0)).not.toThrow();
+      } finally {
+        parent.kill();
+        unrelated.kill();
+      }
+    },
+  );
+});
+
+describe('buildUiServerScript output runs as a real standalone node process (code-review M2)', () => {
+  const makeUiDir = trackTempDirs();
+  let generatedScriptLifecycle: LifecycleModule;
+
+  beforeAll(async () => {
+    generatedScriptLifecycle = await import('../commands/lifecycle.js');
+  });
+
+  function spawnUiScript(script: string, environment: NodeJS.ProcessEnv = {}) {
     // Observe the child's real listener; a peer's HTTP response is not readiness.
     const observeListening = `
       (() => {
@@ -7961,11 +8664,12 @@ describe('buildUiServerScript output runs as a real standalone node -e process (
         };
       })();
     `;
-    const child = spawn(process.execPath, ['-e', observeListening + script], {
-      stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
+    const child = spawn(process.execPath, ['-'], {
+      stdio: ['pipe', 'ignore', 'pipe', 'ipc'],
       windowsHide: true,
       env: {
         ...process.env,
+        ...environment,
         STATION_INTERNAL_API_TOKEN: 'test-only-internal-api-token',
       },
     });
@@ -8003,14 +8707,17 @@ describe('buildUiServerScript output runs as a real standalone node -e process (
         reject(new Error(`UI child exited (${code}, ${signal}): ${stderr}`));
       });
     });
+    child.stdin!.end(observeListening + script);
     return { child, listening, stderr: () => stderr };
   }
 
-  it('spawns the generated script as a child process and makes one proxied request + one static request against it', async () => {
+  it('spawns the generated script with syntax-bearing configuration and makes one proxied request + one static request against it', async () => {
     const http = await import('node:http');
-    const lifecycle = await import('../commands/lifecycle.js');
+    const lifecycle = generatedScriptLifecycle;
 
-    const uiDir = makeUiDir('station-ui-spawn-');
+    const uiDir = join(makeUiDir('station-ui-spawn-'), "app ' ` \u2028");
+    mkdirSync(uiDir);
+    const tenant = "alpha';throw new Error('configuration executed');//";
     writeFileSync(
       join(uiDir, 'index.html'),
       '<head></head><body>real-spawn-app</body>',
@@ -8049,7 +8756,7 @@ describe('buildUiServerScript output runs as a real standalone node -e process (
       typeof upstreamAddr === 'object' && upstreamAddr ? upstreamAddr.port : 0;
 
     const script = lifecycle.buildUiServerScript({
-      hostedTenantAuthorities: { 'alpha.example.test': 'alpha' },
+      hostedTenantAuthorities: { 'alpha.example.test': tenant },
       uiDir,
       upstreamPort,
       uiPort: 0,
@@ -8092,7 +8799,7 @@ describe('buildUiServerScript output runs as a real standalone node -e process (
       expect(proxiedRes.status).toBe(200);
       const proxiedBody = JSON.parse(proxiedRes.body);
       expect(proxiedBody).toEqual({ ready: true });
-      expect(upstreamTenant).toBe('alpha');
+      expect(upstreamTenant).toBe(tenant);
       expect(server.stderr()).toBe('');
 
       // The envelope, out of the real spawned process: an upstream that dropped
@@ -8120,6 +8827,206 @@ describe('buildUiServerScript output runs as a real standalone node -e process (
       await new Promise<void>((resolve) => upstream.close(() => resolve()));
     }
   }, 15_000);
+
+  it.each(process.platform === 'win32' ? ['source', 'staged'] : ['source'])(
+    'admits a private readiness snapshot but refuses a later permissive ACL and a foreign boot in the generated %s listener',
+    async (delivery) => {
+      const trust = await import(
+        '@kontourai/station-shared/windows-path-trust'
+      );
+      const uiDir = makeUiDir('station-ui-private-readiness-');
+      const workerTemp = join(uiDir, 'worker-temp');
+      mkdirSync(workerTemp);
+      if (delivery === 'staged') {
+        const guards = await import(
+          '@kontourai/station-shared/windows-command-guard'
+        );
+        const compiled = await guards.createWindowsCommandGuardResolver({
+          sourceDirectory: import.meta.dirname,
+          stagedGuard: null,
+        })();
+        expect(compiled).toBeTypeOf('string');
+        const runtime = join(uiDir, 'runtime');
+        mkdirSync(runtime);
+        writeFileSync(join(uiDir, '.station-prebuilt-archive'), '');
+        const helper = join(runtime, 'station-windows-owned-guard.exe');
+        const bytes = readFileSync(compiled!);
+        writeFileSync(helper, bytes);
+        writeFileSync(
+          `${helper}.sha256`,
+          createHash('sha256').update(bytes).digest('hex'),
+        );
+        vi.doMock('@kontourai/station-shared/process-identity', async () => {
+          const actual = await vi.importActual<
+            typeof import('@kontourai/station-shared/process-identity')
+          >('@kontourai/station-shared/process-identity');
+          return {
+            ...actual,
+            resolveWindowsBirthHelper: () =>
+              actual.resolveWindowsBirthHelper({
+                execPath: join(runtime, 'node.exe'),
+              }),
+          };
+        });
+      }
+      const lifecycle = await import('../commands/lifecycle.js');
+      writeFileSync(join(uiDir, 'index.html'), '<head></head><body>app</body>');
+      const readinessFile = join(uiDir, 'state.json');
+      const identity = {
+        instanceId: 'private-ready',
+        bootId: '11111111-1111-4111-8111-111111111111',
+        sha: 'a'.repeat(40),
+      };
+      writeFileSync(
+        readinessFile,
+        JSON.stringify({ health: { status: 'ready', sha: identity.sha } }),
+        { mode: 0o600 },
+      );
+      trust.hardenWindowsPathsTrusted(trust.runWindowsTrustCommand, [
+        { kind: 'file', path: readinessFile },
+      ]);
+      const original = readFileSync(readinessFile);
+      let backendIdentity = identity;
+      const observedCredentials: string[] = [];
+      const upstream = createHttpServer((request, response) => {
+        observedCredentials.push(
+          String(request.headers['x-station-internal-token']),
+        );
+        response.writeHead(200, { 'Content-Type': 'application/json' });
+        response.end(JSON.stringify(backendIdentity));
+      });
+      await new Promise<void>((resolve) =>
+        upstream.listen(0, '127.0.0.1', resolve),
+      );
+      const address = upstream.address();
+      if (!address || typeof address === 'string')
+        throw new Error('backend did not listen');
+      const server = spawnUiScript(
+        lifecycle.buildUiServerScript({
+          uiDir,
+          upstreamPort: address.port,
+          uiPort: 0,
+          host: '127.0.0.1',
+          readinessFile,
+          identity,
+        }),
+        { TEMP: workerTemp, TMP: workerTemp, TMPDIR: workerTemp },
+      );
+      try {
+        const uiPort = await server.listening;
+        const compiledHelpers = () =>
+          readdirSync(workerTemp).filter((name) =>
+            name.startsWith('station-command-guard-'),
+          );
+        if (process.platform === 'win32')
+          expect(compiledHelpers()).toHaveLength(delivery === 'source' ? 1 : 0);
+        const readiness = () =>
+          fetch(`http://127.0.0.1:${uiPort}/api/system/readiness`);
+        const ready = await readiness();
+        expect(ready.status).toBe(200);
+        await expect(ready.json()).resolves.toEqual({
+          ready: true,
+          status: 'ready',
+        });
+        expect(observedCredentials).toEqual(['test-only-internal-api-token']);
+        backendIdentity = {
+          ...identity,
+          bootId: '22222222-2222-4222-8222-222222222222',
+        };
+        expect((await readiness()).status).toBe(503);
+        backendIdentity = identity;
+        const replacement = join(uiDir, 'next-state.json');
+        writeFileSync(replacement, original, { mode: 0o600 });
+        trust.hardenWindowsPathsTrusted(trust.runWindowsTrustCommand, [
+          { kind: 'file', path: replacement },
+        ]);
+        const previousGeneration = statSync(readinessFile).ino;
+        renameSync(replacement, readinessFile);
+        expect(statSync(readinessFile).ino).not.toBe(previousGeneration);
+        expect((await readiness()).status).toBe(200);
+        writeFileSync(
+          readinessFile,
+          JSON.stringify({ health: { status: 'ready', sha: 'b'.repeat(40) } }),
+        );
+        expect((await readiness()).status).toBe(503);
+        expect(observedCredentials).toHaveLength(3);
+        writeFileSync(readinessFile, original);
+        const before = statSync(readinessFile);
+        if (process.platform === 'win32') {
+          const encodedPath = Buffer.from(readinessFile).toString('base64');
+          const program = `$ErrorActionPreference='Stop'; $file=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${encodedPath}')); $acl=[IO.File]::GetAccessControl($file); $everyone=New-Object Security.Principal.SecurityIdentifier('S-1-1-0'); $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($everyone,'Modify','Allow'))); [IO.File]::SetAccessControl($file,$acl)`;
+          const result = realSpawnSync(
+            trust.windowsSystemUtilityPath('powershell'),
+            [
+              '-NoProfile',
+              '-NonInteractive',
+              '-EncodedCommand',
+              Buffer.from(program, 'utf16le').toString('base64'),
+            ],
+            {
+              encoding: 'utf8',
+              windowsHide: true,
+              timeout: trust.WINDOWS_TRUST_COMMAND_TIMEOUT_MS,
+            },
+          );
+          expect(result.error).toBeUndefined();
+          expect(result.status, result.stderr).toBe(0);
+        } else {
+          chmodSync(readinessFile, 0o666);
+        }
+        const after = statSync(readinessFile);
+        expect(after.ino).toBe(before.ino);
+        expect(after.mtimeMs).toBe(before.mtimeMs);
+        const permissive = await readiness();
+        expect(permissive.status).toBe(503);
+        await expect(permissive.json()).resolves.toEqual({
+          ready: false,
+          status: 'unavailable',
+        });
+        expect(observedCredentials).toHaveLength(3);
+        expect(readFileSync(readinessFile)).toEqual(original);
+        if (process.platform === 'win32')
+          expect(compiledHelpers()).toHaveLength(delivery === 'source' ? 1 : 0);
+        if (process.platform === 'win32') {
+          trust.hardenWindowsPathsTrusted(trust.runWindowsTrustCommand, [
+            { kind: 'file', path: readinessFile },
+          ]);
+          expect((await readiness()).status).toBe(200);
+          const junction = join(uiDir, 'redirected');
+          symlinkSync(uiDir, junction, 'junction');
+          const redirected = spawnUiScript(
+            lifecycle.buildUiServerScript({
+              uiDir,
+              upstreamPort: address.port,
+              uiPort: 0,
+              host: '127.0.0.1',
+              readinessFile: join(junction, 'state.json'),
+              identity,
+            }),
+          );
+          try {
+            const port = await redirected.listening;
+            const response = await fetch(
+              `http://127.0.0.1:${port}/api/system/readiness`,
+            );
+            expect(response.status).toBe(503);
+            await expect(response.json()).resolves.toEqual({
+              ready: false,
+              status: 'unavailable',
+            });
+            expect(observedCredentials).toHaveLength(4);
+          } finally {
+            await reapLongRunningFixtureChild(redirected.child);
+          }
+        }
+      } finally {
+        await reapLongRunningFixtureChild(server.child);
+        upstream.closeAllConnections();
+        await new Promise<void>((resolve) => upstream.close(() => resolve()));
+      }
+    },
+    15_000,
+  );
 
   it('the globalThis.__name shim neutralizes an esbuild/keepNames-style __name(...)-wrapped binding spliced into the real generated script (code-review M2 residual-gap tripwire)', async () => {
     const lifecycle = await import('../commands/lifecycle.js');
@@ -8726,7 +9633,18 @@ describe('lifecycle build + restart ergonomics', () => {
     const uiStdinEnd = vi.fn();
     const spawn = vi
       .fn()
-      .mockReturnValueOnce({ pid: 41001, unref: vi.fn() })
+      .mockImplementationOnce(
+        (_command: string, _args: string[], options: SpawnOptions) => {
+          const child = realSpawnSync(
+            process.execPath,
+            ['-e', 'process.stdout.write("server stdio descriptor bytes\\n")'],
+            { stdio: options.stdio, windowsHide: true },
+          );
+          expect(child.error).toBeUndefined();
+          expect(child.status).toBe(0);
+          return { pid: 41001, unref: vi.fn() };
+        },
+      )
       .mockReturnValueOnce({
         pid: 41002,
         unref: vi.fn(),
@@ -8750,6 +9668,24 @@ describe('lifecycle build + restart ergonomics', () => {
     writeFileSync(logFile, 'retained pre-restart SIGTERM marker\n', {
       mode: 0o644,
     });
+    let originalLogDirectoryAcl: string | undefined;
+    if (process.platform === 'win32') {
+      hardenWindowsPathsTrusted(runFixtureWindowsTrust, [
+        { kind: 'directory', path: logDirectory },
+      ]);
+      realExecFileSync('icacls', [logDirectory, '/grant', '*S-1-1-0:(RX)'], {
+        encoding: 'utf8',
+        windowsHide: true,
+      });
+      originalLogDirectoryAcl = realExecFileSync('icacls', [logDirectory], {
+        encoding: 'utf8',
+        windowsHide: true,
+      });
+      realExecFileSync('icacls', [logFile, '/grant', '*S-1-1-0:R'], {
+        encoding: 'utf8',
+        windowsHide: true,
+      });
+    }
 
     try {
       await lifecycle.start({
@@ -8771,8 +9707,25 @@ describe('lifecycle build + restart ergonomics', () => {
           STATION_LOG_FILE: canonicalLogFile,
         }),
       );
-      expect(String(uiStdinEnd.mock.calls[0]?.[0])).toContain(
-        'listen(5274,"127.0.0.1")',
+      const { runInNewContext } = await import('node:vm');
+      const uiServer = Object.assign(new EventEmitter(), { listen: vi.fn() });
+      await runInNewContext(String(uiStdinEnd.mock.calls[0]?.[0]), {
+        require: (id: string) =>
+          id === 'http'
+            ? { createServer: () => uiServer }
+            : process.getBuiltinModule(id),
+        process: {
+          platform: 'linux',
+          env: {},
+          connected: true,
+          once: vi.fn(),
+          on: vi.fn(),
+          exit: vi.fn(),
+        },
+      });
+      expect(uiServer.listen).toHaveBeenCalledExactlyOnceWith(
+        5274,
+        '127.0.0.1',
       );
       expect(fetchMock).toHaveBeenCalledWith(
         'http://127.0.0.1:3242/api/system/identity',
@@ -8823,9 +9776,22 @@ describe('lifecycle build + restart ergonomics', () => {
         host: '127.0.0.1',
         logFile: canonicalLogFile,
       });
-      expect(statSync(logDirectory).mode & 0o777).toBe(0o755);
-      expect(statSync(logFile).mode & 0o777).toBe(0o600);
+      if (process.platform === 'win32') {
+        assertWindowsPathsTrusted(runWindowsTrustCommand, [
+          { kind: 'file', path: logFile },
+        ]);
+        expect(
+          realExecFileSync('icacls', [logDirectory], {
+            encoding: 'utf8',
+            windowsHide: true,
+          }),
+        ).toBe(originalLogDirectoryAcl);
+      } else {
+        expect(statSync(logDirectory).mode & 0o777).toBe(0o755);
+        expect(statSync(logFile).mode & 0o777).toBe(0o600);
+      }
       const retainedLog = readFileSync(logFile, 'utf8');
+      expect(retainedLog).toContain('server stdio descriptor bytes');
       expect(retainedLog).toContain('retained pre-restart SIGTERM marker');
       expect(retainedLog).toContain('station lifecycle start');
       expect(retainedLog).toContain('instance=loopback');
@@ -8869,8 +9835,7 @@ describe('lifecycle build + restart ergonomics', () => {
       expect(spawn.mock.calls[0][2]?.env).toEqual(
         expect.objectContaining({ STATION_LOG_FILE: logFile }),
       );
-      expect(statSync(join(TEST_ALT_HOME, 'logs')).mode & 0o777).toBe(0o700);
-      expect(statSync(logFile).mode & 0o777).toBe(0o600);
+      expectPrivateDirectoryAndFile(join(TEST_ALT_HOME, 'logs'), logFile);
       expect(readFileSync(logFile, 'utf8')).toContain(
         'station lifecycle start instance=default-log',
       );
@@ -8910,16 +9875,66 @@ describe('lifecycle build + restart ergonomics', () => {
         uiPort: 5294,
       });
 
-      expect(statSync(logDirectory).mode & 0o777).toBe(0o700);
-      expect(statSync(logFile).mode & 0o777).toBe(0o600);
+      expectPrivateDirectoryAndFile(logDirectory, logFile);
     } finally {
       killSpy.mockRestore();
     }
   });
 
+  it.skipIf(process.platform !== 'win32')(
+    'refuses an unsafe Windows explicit log directory before creating a log',
+    async () => {
+      ensureDir(TEST_CWD);
+      writeBuildManifest('unsafe-log-parent');
+      const directory = join(TEST_ROOT, 'unsafe-log-parent');
+      const logFile = join(directory, 'station.log');
+      ensureDir(directory);
+      hardenWindowsPathsTrusted(runFixtureWindowsTrust, [
+        { kind: 'directory', path: directory },
+      ]);
+      realExecFileSync('icacls', [directory, '/grant', '*S-1-1-0:(M)'], {
+        encoding: 'utf8',
+        windowsHide: true,
+      });
+      const originalAcl = realExecFileSync('icacls', [directory], {
+        encoding: 'utf8',
+        windowsHide: true,
+      });
+      const spawn = vi.fn();
+      const { lifecycle } = await loadLifecycleModule({
+        childProcessMock: { execSync: vi.fn(() => ''), spawn },
+      });
+      await expect(
+        lifecycle.start({
+          instanceName: 'unsafe-log-parent',
+          baseDir: TEST_ALT_HOME,
+          logFile,
+          serverPort: 3266,
+          uiPort: 5298,
+        }),
+      ).rejects.toThrow(/Windows current-user ACL verification failed/);
+      expect(spawn).not.toHaveBeenCalled();
+      expect(existsSync(logFile)).toBe(false);
+      expect(
+        realExecFileSync('icacls', [directory], {
+          encoding: 'utf8',
+          windowsHide: true,
+        }),
+      ).toBe(originalAcl);
+    },
+  );
+
   it('rejects a relative explicit log path without mutating the working directory', async () => {
     ensureDir(TEST_CWD);
     chmodSync(TEST_CWD, 0o755);
+    const originalMode = statSync(TEST_CWD).mode;
+    const originalAcl =
+      process.platform === 'win32'
+        ? realExecFileSync('icacls', [TEST_CWD], {
+            encoding: 'utf8',
+            windowsHide: true,
+          })
+        : undefined;
     const spawn = vi.fn();
     const { lifecycle } = await loadLifecycleModule({
       childProcessMock: { execSync: vi.fn(), spawn },
@@ -8933,7 +9948,15 @@ describe('lifecycle build + restart ergonomics', () => {
       }),
     ).rejects.toThrow('Explicit log path must be absolute');
 
-    expect(statSync(TEST_CWD).mode & 0o777).toBe(0o755);
+    expect(statSync(TEST_CWD).mode).toBe(originalMode);
+    if (originalAcl !== undefined) {
+      expect(
+        realExecFileSync('icacls', [TEST_CWD], {
+          encoding: 'utf8',
+          windowsHide: true,
+        }),
+      ).toBe(originalAcl);
+    }
     expect(spawn).not.toHaveBeenCalled();
   });
 
@@ -9053,6 +10076,9 @@ describe('lifecycle build + restart ergonomics', () => {
     // landed first and the server refused the home this start created.
     const outsideLogs = join(TEST_ROOT, 'outside-logs');
     ensureDir(outsideLogs);
+    hardenWindowsPathsTrusted(runFixtureWindowsTrust, [
+      { kind: 'directory', path: outsideLogs },
+    ]);
     writeBuildManifest('fresh-home-outside-log');
     const markerAtSpawn: boolean[] = [];
     const spawn = vi.fn(() => {
@@ -10060,7 +11086,7 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
 
   it("starts and stops from a read-only archive, keeping state in the home's Station root", async () => {
     ensurePrebuiltArchive();
-    ensureDir(TEST_ALT_HOME);
+    ensureDir(TEST_ARCHIVE_HOME);
     const { killProcessTree, killSpy } = killableProcesses();
     const spawn = readyStartMocks([41311, 41312]);
     const { lifecycle } = await loadLifecycleModule({
@@ -10071,14 +11097,13 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     const before = treeListing(TEST_CWD);
     const restoreWritable = makeReadOnly(TEST_CWD);
-    // TEST_ALT_HOME is a raw directory, so it is its own Station root.
-    const stateDir = join(TEST_ALT_HOME, 'state', 'stable', 'instances');
+    const stateDir = join(TEST_ARCHIVE_HOME, 'state', 'stable', 'instances');
     const statePath = join(stateDir, 'archive-a.json');
 
     try {
       await lifecycle.start({
         instanceName: 'archive-a',
-        baseDir: TEST_ALT_HOME,
+        baseDir: TEST_ARCHIVE_HOME,
         serverPort: 3262,
         uiPort: 5294,
       });
@@ -10093,12 +11118,21 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
       }
       // The printed stop command names the home: a bare `station stop` would
       // search the default home's root, which holds no record of this one.
-      expect(log.mock.calls.map(([line]) => String(line))).toContain(
-        `\n  Stop with: station stop --home=${TEST_ALT_HOME} --instance=archive-a`,
-      );
+      const stopGuidance = log.mock.calls
+        .map(([line]) => String(line))
+        .join('\n')
+        .match(/^\s+Stop with: (station stop [^\r\n]+)$/mu)?.[1];
+      expectStationArguments(stopGuidance, [
+        'stop',
+        `--home=${TEST_ARCHIVE_HOME}`,
+        '--instance=archive-a',
+      ]);
       expect(lifecycle.isRunning({ instanceName: 'archive-a' })).toBe(false);
 
-      lifecycle.stop({ instanceName: 'archive-a', stateHome: TEST_ALT_HOME });
+      lifecycle.stop({
+        instanceName: 'archive-a',
+        stateHome: TEST_ARCHIVE_HOME,
+      });
       expect(killProcessTree).toHaveBeenCalled();
       expect(existsSync(statePath)).toBe(false);
       expect(treeListing(TEST_CWD)).toEqual(before);
@@ -10156,11 +11190,15 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
   it('a second version directory of the channel sees and stops what the first one started', async () => {
     ensurePrebuiltArchive();
     ensureSecondVersion();
-    ensureDir(TEST_ALT_HOME);
+    ensureDir(TEST_ARCHIVE_HOME);
     const { killProcessTree, killSpy } = killableProcesses();
     // No --instance: the implicit id for this home and these ports.
-    const target = { baseDir: TEST_ALT_HOME, serverPort: 3272, uiPort: 5304 };
-    const stateDir = archiveStateDir(TEST_ALT_HOME);
+    const target = {
+      baseDir: TEST_ARCHIVE_HOME,
+      serverPort: 3272,
+      uiPort: 5304,
+    };
+    const stateDir = archiveStateDir(TEST_ARCHIVE_HOME);
 
     try {
       const firstSpawn = readyStartMocks([41321, 41322]);
@@ -10186,18 +11224,21 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
       // finds it running, rather than launching a second server.
       await second.lifecycle.start(target);
       expect(secondSpawn).not.toHaveBeenCalled();
-      expect(
-        log.mock.calls.some(([line]) =>
-          String(line).includes(
-            `Already running\n  UI:   http://localhost:5304\n  Stop: station stop --home=${TEST_ALT_HOME} --instance=${instanceId}`,
-          ),
-        ),
-      ).toBe(true);
+      const runningGuidance = log.mock.calls
+        .map(([line]) => String(line))
+        .join('\n');
+      expect(runningGuidance).toContain(
+        'Already running\n  UI:   http://localhost:5304\n',
+      );
+      expectStationArguments(
+        runningGuidance.match(/^ {2}Stop: (station stop [^\r\n]+)$/mu)?.[1],
+        ['stop', `--home=${TEST_ARCHIVE_HOME}`, `--instance=${instanceId}`],
+      );
       log.mockRestore();
 
       second.lifecycle.stop({
         instanceName: instanceId,
-        stateHome: TEST_ALT_HOME,
+        stateHome: TEST_ARCHIVE_HOME,
       });
       expect(killProcessTree).toHaveBeenCalled();
       expect(readdirSync(stateDir)).toEqual([]);
@@ -10283,13 +11324,13 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
     const installRoot = join(TEST_ROOT, 'archive-install');
     const version = join(installRoot, 'versions', '0.7.0-nightly.3');
     const stationHome = join(TEST_ROOT, 'home-archive');
-    ensureDir(version);
+    ensureTrustedInstallDirectory(version);
     ensureDir(stationHome);
     writeFileSync(
       join(version, '.station-prebuilt-archive'),
       'station-prebuilt-archive-v1\n',
     );
-    writeFileSync(
+    writeTrustedInstallFile(
       join(version, '.station-release.json'),
       `${JSON.stringify({
         schemaVersion: 2,
@@ -10301,10 +11342,8 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
         prerelease: true,
       })}\n`,
     );
-    writeFileSync(join(version, 'install.sh'), '#!/bin/sh\nexit 0\n', {
-      mode: 0o700,
-    });
-    writeFileSync(
+    writePackagedInstallers(version);
+    writeTrustedInstallFile(
       join(installRoot, '.station-portable-install-root'),
       'station-portable-install-root-v1\n',
     );
@@ -10363,8 +11402,7 @@ describe('prebuilt archive lifecycle state (#2675)', () => {
     await lifecycle.upgrade();
 
     expect(execFileSync).toHaveBeenCalledWith(
-      'sh',
-      ['./install.sh', 'install'],
+      ...expectedPackagedInstaller(version),
       expect.objectContaining({
         cwd: version,
         env: expect.objectContaining({
@@ -10541,9 +11579,9 @@ describe('station upgrade under the managed update limit (#4522)', () => {
     const installRoot = join(TEST_ROOT, `managed-portable-${releaseChannel}`);
     const release = join(installRoot, 'releases', 'a'.repeat(64));
     const stationHome = join(TEST_ROOT, `managed-home-${releaseChannel}`);
-    ensureDir(release);
+    ensureTrustedInstallDirectory(release);
     ensureDir(stationHome);
-    writeFileSync(
+    writeTrustedInstallFile(
       join(release, '.station-release.json'),
       `${JSON.stringify({
         schemaVersion: 2,
@@ -10555,10 +11593,8 @@ describe('station upgrade under the managed update limit (#4522)', () => {
         prerelease: releaseChannel !== 'stable',
       })}\n`,
     );
-    writeFileSync(join(release, 'install.sh'), '#!/bin/sh\nexit 0\n', {
-      mode: 0o700,
-    });
-    writeFileSync(
+    writePackagedInstallers(release);
+    writeTrustedInstallFile(
       join(installRoot, '.station-portable-install-root'),
       'station-portable-install-root-v1\n',
     );

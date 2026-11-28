@@ -16,10 +16,15 @@ import {
   DEVICE_SETTINGS_REGISTRY,
   DIRECT_MANIPULATION_DEVICE_KEYS,
   extractPriorDeviceSettingsRoot,
+  INBOX_SECTION_IDS,
   PREFERENCE_DEVICE_KEYS,
 } from '../device-settings.js';
 
 describe('DEVICE_SETTINGS_REGISTRY completeness', () => {
+  test('the pin shelf precedes work shelves in the default Inbox order', () => {
+    expect(INBOX_SECTION_IDS[0]).toBe('pinned');
+  });
+
   test('registry keys are unique', () => {
     const keys = DEVICE_SETTINGS_REGISTRY.map((definition) => definition.key);
     expect(new Set(keys).size).toBe(keys.length);
@@ -191,6 +196,7 @@ describe('DEVICE_SETTINGS_REGISTRY completeness', () => {
         // Station routes preview (docs/design/station-routes.md).
         'experimentalStationRoutesEnabled',
         'experimentalSheetGesturesEnabled',
+        'experimentalInboxRowActionsEnabled',
         // station#4525 — the chat dock's remembered project binding.
         'chatDockProjectSlug',
         // #928 D — which surface occupies which region on this device.

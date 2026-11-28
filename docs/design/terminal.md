@@ -335,6 +335,14 @@ descendant started detached from every console outlived close and a core
 stop (#3994). After a successful `taskkill` both hosts wait for the exit.
 A session whose cleanup misses its six second deadline reports the tree kill
 and its result, the exit event, the last output and whether output was paused.
+The adapter invokes the System32 `taskkill.exe` through the shared Windows
+utility resolver, not PATH lookup. Its diagnostic receipt distinguishes helper
+spawn, exit and stdio-close observations from the PTY exit, identifies the
+utility and helper PID, and retains the last 2,048 characters of each helper
+output stream. A rejected tree kill also reports its error code, signal and
+whether Node issued a kill. These bounded diagnostics do not extend the five
+second helper timeout or six second session deadline, and do not establish the
+cause or resolution of the intermittent Windows settlement failure (#5627).
 After an admitted shell exits, the adapter releases it at most once and closes
 its owned pipes, including for a silent or paused process. Its console process
 listing is answered empty: after exit the listing helper cannot attach, and its

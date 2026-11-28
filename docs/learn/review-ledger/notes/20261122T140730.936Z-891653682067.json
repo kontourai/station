@@ -1,0 +1,9 @@
+{
+  "revision": "1d9b1843d2314edf604ce49de0917602b1fc909e",
+
+  "notes": [
+    {"path":"docs/contexts/workspace-surfaces/CONTEXT.md","note":"The Deliver alternative now links to Apps › Library labelled Open Library; citing pages do not quote the old label.","inputs":["src-ui/src/views/task-experiences.ts"]},
+
+    {"path":"docs/glossary.md","note":"The Deliver alternative now links to Apps › Library labelled Open Library; citing pages do not quote the old label.","inputs":["src-ui/src/views/task-experiences.ts"]}
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "revision": "5c85c43293d334f080bc0e65fcdc6e832e9531ae",
+
+  "notes": [
+    {"path":"docs/design/outside-agent-mcp-r3-evidence.md","note":"Re-reviewed both cited outside OAuth/MCP UI proxy exclusion claims against the existing real HTTP transport case and generated UI proxy owner after merging main11fafdca6. The repaired guidance argv helper now receives the actual CLI launcher; archive fixture home/path and guidance assertions remain scoped away from OAuth transport. Full Linux lifecycle owner at5c85c4329 passes247, including the real proxy exclusion/positive-control case. Historical outside-client captures and installed native qualification were not rerun; no historical claim is refreshed into a new client proof.","inputs":["packages/cli/src/__tests__/lifecycle.test.ts"]},
+
+    {"path":"docs/reference/outside-agent-oauth.md","note":"Re-reviewed both cited outside OAuth/MCP UI proxy exclusion claims against the existing real HTTP transport case and generated UI proxy owner after merging main11fafdca6. The repaired guidance argv helper now receives the actual CLI launcher; archive fixture home/path and guidance assertions remain scoped away from OAuth transport. Full Linux lifecycle owner at5c85c4329 passes247, including the real proxy exclusion/positive-control case. Historical outside-client captures and installed native qualification were not rerun; no historical claim is refreshed into a new client proof.","inputs":["packages/cli/src/__tests__/lifecycle.test.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "a08ae6bd41316a87a67d7b4a1756599328814236",
+
+  "notes": [
+    {"path":"docs/patterns/frontend.md","note":"Scoped review of a08ae6bd41: the unsaved-guard gate now lists StationRoutesSection as a real editor, not an exclusion. Inspected RoutePublication dirty calculation, useUnsavedGuard(dirty), rendered DiscardModal and canonical navigation ownership against the frontend draft-guard guidance. No guard bypass or new navigation wrapper was added; guidance remains accurate. Existing gate and UI focused tests passed 41/41; import classification alone is not runtime navigation evidence.","inputs":["docs/patterns/frontend.md","scripts/unsaved-guard-gate.mjs"]}
+  ]
+}

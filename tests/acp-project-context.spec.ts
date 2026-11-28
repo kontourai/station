@@ -216,9 +216,9 @@ test.describe('ACP + Project Context', () => {
     await page.goto('/agents');
     await page.getByRole('button', { name: /^Kiro Ready$/ }).click();
     await page
-      .getByRole('button', { name: 'Configure in Connections', exact: true })
+      .getByRole('button', { name: 'Configure in Customize', exact: true })
       .click();
-    await expect(page).toHaveURL(/\/connections\/engines\/kiro/);
+    await expect(page).toHaveURL(/\/customize\/engines\/kiro/);
   });
 
   test('new chat can explicitly select a project from the current catalog', async ({

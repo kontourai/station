@@ -1,0 +1,7 @@
+{
+  "revision": "2b0d58a8c664bd61de3c74ab48ff47b9acd2ed0e",
+
+  "notes": [
+    {"path":"docs/user/settings.md","note":"Reviewed linked pull request visibility and queue removal delivery against the live Pull request agent feedback preview binding and its consumers.","inputs":["docs/user/settings.md","src-ui/src/views/TaskWorkspaceView.tsx"]}
+  ]
+}

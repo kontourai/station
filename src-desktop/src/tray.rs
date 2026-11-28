@@ -228,7 +228,7 @@ pub fn init(app: &AppHandle) -> tauri::Result<()> {
         None::<&str>,
     )?;
     let connections =
-        MenuItem::with_id(app, "tray-connections", "Connections…", false, None::<&str>)?;
+        MenuItem::with_id(app, "tray-connections", "Customize…", false, None::<&str>)?;
     let connected_clients = MenuItem::with_id(
         app,
         "tray-connected-clients",
@@ -514,7 +514,7 @@ impl PrimaryHealthTarget for NativePrimaryHealthTarget<'_> {
         set_menu_item_enabled(&state.open_ui, "Open Station UI", model.ui_enabled);
         let _ = state.api_docs.set_text(model.api_docs_text);
         set_menu_item_enabled(&state.api_docs, "Open API docs", model.api_docs_enabled);
-        set_menu_item_enabled(&state.connections, "Connections", model.navigation_enabled);
+        set_menu_item_enabled(&state.connections, "Customize", model.navigation_enabled);
         set_menu_item_enabled(
             &state.connected_clients,
             "Paired devices",
@@ -603,7 +603,7 @@ fn apply_poller_failure_ui(state: &TrayState) {
     set_menu_item_enabled(&state.open_ui, "Open Station UI", false);
     let _ = state.api_docs.set_text("API docs unavailable");
     set_menu_item_enabled(&state.api_docs, "Open API docs", false);
-    set_menu_item_enabled(&state.connections, "Connections", false);
+    set_menu_item_enabled(&state.connections, "Customize", false);
     let _ = state
         .connected_clients
         .set_text("Paired devices: unavailable");
@@ -1829,10 +1829,9 @@ fn run_service_action(app: &AppHandle, action: ServiceAction, service: ResolvedL
             let _ = update_once(&app);
             return;
         }
-        let result = Command::new(command.program)
-            .args(command.args)
-            .env("PATH", command.path)
-            .output();
+        let mut child = Command::new(command.program);
+        crate::apply_no_window(&mut child);
+        let result = child.args(command.args).env("PATH", command.path).output();
         match result {
             Ok(output) if output.status.success() => {
                 log::info!("Station tray service {} action succeeded", action.as_str());

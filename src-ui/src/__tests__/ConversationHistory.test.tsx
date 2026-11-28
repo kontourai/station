@@ -3,6 +3,14 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
+vi.mock('../contexts/ApiBaseContext', () => ({
+  useHostRequestAuthorityScope: () => undefined,
+}));
+vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
+  useFeaturePreviewsQuery: () => ({ data: [] }),
+}));
+
 const loadMore = vi.fn();
 const conversationState = vi.hoisted(() => ({
   conversations: [

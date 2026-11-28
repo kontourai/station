@@ -1,0 +1,7 @@
+{
+  "revision": "9d3b4aa9fc9f92d6d4f830d966cbd8ecf74f4598",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed inputTiming producer and validator at bc09a485d/9d3b4aa9f: opt-in pre-app event observation requests16ms and retains only positive interaction IDs in final-document phases; empty/unsupported results remain null, event and interaction counts differ, durations are rounded and threshold-censored. Existing Home typing passed3samples at bothwidths; a deliberate80mskeydown was observed at bothwidths; disabling positiveinteraction collection failed the independent keydown receipt assertion. No claim of field INP, per-key census, physical-device qualification, or product speedup. Other profiling workloads and lifecycle unchanged.","inputs":["docs/guides/testing.md","scripts/run-journey-profiles.mjs"]}
+  ]
+}

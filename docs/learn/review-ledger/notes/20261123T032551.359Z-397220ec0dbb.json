@@ -1,0 +1,23 @@
+{
+  "revision": "62694dedd2ad88de44a5fa70962aeab935bfd143",
+
+  "notes": [
+    {"path":"docs/guides/build-your-first-plugin.md","note":"Re-recorded after the Apps slice was squash-merged into the phase-1 branch, which dropped the revisions its notes named: this source is byte-identical to the slice head where these pages were reviewed. Checked each citing page for claims about where Plugins, Apps, the Registry or Customize live; none contradicts the combined tree.","inputs":["packages/cli/src/commands/install.ts"]},
+
+    {"path":"docs/reference/agent-plugins.md","note":"Re-recorded after the Apps slice was squash-merged into the phase-1 branch, which dropped the revisions its notes named: this source is byte-identical to the slice head where these pages were reviewed. Checked each citing page for claims about where Plugins, Apps, the Registry or Customize live; none contradicts the combined tree.","inputs":["packages/cli/src/commands/install.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Re-recorded after the Apps slice was squash-merged into the phase-1 branch, which dropped the revisions its notes named: this source is byte-identical to the slice head where these pages were reviewed. Checked each citing page for claims about where Plugins, Apps, the Registry or Customize live; none contradicts the combined tree.","inputs":["packages/cli/src/commands/install.ts"]},
+
+    {"path":"examples/demo-layout/README.md","note":"Re-recorded after the Apps slice was squash-merged into the phase-1 branch, which dropped the revisions its notes named: this source is byte-identical to the slice head where these pages were reviewed. Checked each citing page for claims about where Plugins, Apps, the Registry or Customize live; none contradicts the combined tree.","inputs":["packages/cli/src/commands/install.ts"]},
+
+    {"path":"examples/getting-started-starter/README.md","note":"Re-recorded after the Apps slice was squash-merged into the phase-1 branch, which dropped the revisions its notes named: this source is byte-identical to the slice head where these pages were reviewed. Checked each citing page for claims about where Plugins, Apps, the Registry or Customize live; none contradicts the combined tree.","inputs":["packages/cli/src/commands/install.ts"]},
+
+    {"path":"examples/minimal-layout/README.md","note":"Re-recorded after the Apps slice was squash-merged into the phase-1 branch, which dropped the revisions its notes named: this source is byte-identical to the slice head where these pages were reviewed. Checked each citing page for claims about where Plugins, Apps, the Registry or Customize live; none contradicts the combined tree.","inputs":["packages/cli/src/commands/install.ts"]},
+
+    {"path":"examples/portable-author-kit/README.md","note":"Re-recorded after the Apps slice was squash-merged into the phase-1 branch, which dropped the revisions its notes named: this source is byte-identical to the slice head where these pages were reviewed. Checked each citing page for claims about where Plugins, Apps, the Registry or Customize live; none contradicts the combined tree.","inputs":["packages/cli/src/commands/install.ts"]},
+
+    {"path":"examples/registry/README.md","note":"Re-recorded after the Apps slice was squash-merged into the phase-1 branch, which dropped the revisions its notes named: this source is byte-identical to the slice head where these pages were reviewed. Checked each citing page for claims about where Plugins, Apps, the Registry or Customize live; none contradicts the combined tree.","inputs":["packages/cli/src/commands/install.ts"]},
+
+    {"path":"packages/sdk/README.md","note":"Re-recorded after the Apps slice was squash-merged into the phase-1 branch, which dropped the revisions its notes named: this source is byte-identical to the slice head where these pages were reviewed. Checked each citing page for claims about where Plugins, Apps, the Registry or Customize live; none contradicts the combined tree.","inputs":["packages/cli/src/commands/install.ts"]}
+  ]
+}

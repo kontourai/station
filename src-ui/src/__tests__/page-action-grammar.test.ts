@@ -8,7 +8,7 @@
  *
  * This is a source-scan inventory, not a render test, deliberately: the five
  * actions live behind different providers/contexts (SplitPaneLayout,
- * PageFrameActions, a connections-hub config table), so asserting on their
+ * PageFrameActions, the Customize section frame's copy table), so asserting on their
  * literal source strings is the narrowest layer that still catches a
  * regression — a `+` returning to any one of them reds this file without
  * standing up five separate view trees.
@@ -43,13 +43,18 @@ function extractAddLabel(file: string): string {
   return match[1];
 }
 
-/** Reads the "models" section's addLabel out of the shared IA table. */
-function extractModelsAddLabel(file: string): string {
+/**
+ * Reads the Providers item's addLabel out of the Customize section frame's
+ * copy table (the item that hosts the model connection list).
+ */
+function extractProvidersAddLabel(file: string): string {
   const content = readFileSync(file, 'utf8');
-  const modelsEntry = extractBetween(content, "id: 'models'", '},');
-  const match = modelsEntry.match(/addLabel: '([^']+)'/);
+  const providersEntry = extractBetween(content, '  providers: {', '},');
+  const match = providersEntry.match(/addLabel: '([^']+)'/);
   if (!match) {
-    throw new Error(`no addLabel: '...' found in the models entry of ${file}`);
+    throw new Error(
+      `no addLabel: '...' found in the providers entry of ${file}`,
+    );
   }
   return match[1];
 }
@@ -101,11 +106,9 @@ describe('primary page-action label grammar (station#4463 slice 5)', () => {
     );
   });
 
-  test('Models: "Add model connection"', () => {
+  test('Providers: "Add model connection"', () => {
     expect(
-      extractModelsAddLabel(
-        'src-ui/src/views/connections-hub/connection-sections.ts',
-      ),
+      extractProvidersAddLabel('src-ui/src/views/CustomizeSectionFrame.tsx'),
     ).toBe('Add model connection');
   });
 
@@ -115,9 +118,7 @@ describe('primary page-action label grammar (station#4463 slice 5)', () => {
       extractAddLabel('src-ui/src/views/PluginManagementView.tsx'),
       extractScheduleAddLabel('src-ui/src/views/ScheduleView.tsx'),
       extractAddLabel('src-ui/src/views/SkillsView.tsx'),
-      extractModelsAddLabel(
-        'src-ui/src/views/connections-hub/connection-sections.ts',
-      ),
+      extractProvidersAddLabel('src-ui/src/views/CustomizeSectionFrame.tsx'),
     ];
     for (const label of labels) {
       expect(label).toMatch(VERB_NOUN_GRAMMAR);

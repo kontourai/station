@@ -1,0 +1,7 @@
+{
+  "revision": "bd8b067c5172b111f781c7f727ab4b49eb28ec12",
+
+  "notes": [
+    {"path":"docs/guides/agent-configuration.md","note":"Updated sessionGrantAll / Allow everything for this session documentation to include Claude and Codex alongside OpenCode and ACP; verified against claude-adapter, codex-adapter, codex-adapter-transport, and orchestration-service.","inputs":["docs/guides/agent-configuration.md","src-server/providers/adapters/claude-adapter.ts","src-server/providers/adapters/codex-adapter-transport.ts","src-server/providers/adapters/codex-adapter.ts","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

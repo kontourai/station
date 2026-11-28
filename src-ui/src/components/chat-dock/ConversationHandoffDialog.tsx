@@ -116,6 +116,7 @@ interface ConversationHandoffDialogProps {
     resetEngine?: boolean,
   ) => void;
   onClose: () => void;
+  returnFocusTarget?: HTMLTextAreaElement;
 }
 
 interface PendingHandoffIntent {
@@ -281,6 +282,7 @@ export function ConversationHandoffDialog({
   onDefiniteFailure,
   onStage,
   onClose,
+  returnFocusTarget,
 }: ConversationHandoffDialogProps) {
   const restoredIntent = useRef(
     readPendingIntent(apiBase, conversationId),
@@ -724,6 +726,7 @@ export function ConversationHandoffDialog({
     <ResponsiveDialogSurface
       layer="dialog"
       ariaLabel={dialogTitle}
+      returnFocusTarget={returnFocusTarget}
       panelClassName="conversation-handoff-dialog"
       overlayClassName="conversation-handoff-dialog__overlay"
       onClose={closeLocked ? () => {} : onClose}

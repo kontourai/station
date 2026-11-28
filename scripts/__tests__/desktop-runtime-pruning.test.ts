@@ -9,7 +9,7 @@ import {
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { stageDesktopServerRuntime } from '../lib/desktop-server-runtime.mjs';
 
@@ -31,6 +31,254 @@ function writeFixturePackage(
 }
 
 describe('desktop runtime pruning', () => {
+  it.each([false, true])(
+    'preserves the payload with opt-in stage diagnostics enabled=%s',
+    (enabled) => {
+      const project = makeTempDir('station-runtime-diagnostics-');
+      const packages = Array.from(
+        { length: 12 },
+        (_, index) => `fixture-${index}`,
+      );
+      for (const name of packages) {
+        writeFixturePackage(
+          join(project, 'node_modules', name),
+          { name, version: '1.0.0', main: 'index.cjs' },
+          { 'index.cjs': 'module.exports = 42;', 'index.d.ts': 'export {};' },
+        );
+      }
+      const output = join(project, 'release');
+      const diagnostic = vi
+        .spyOn(console, 'error')
+        .mockImplementation(() => {});
+      vi.stubEnv('STATION_DESKTOP_BUILD_DIAGNOSTICS', enabled ? '1' : '0');
+      try {
+        expect(
+          stageDesktopServerRuntime({
+            projectRoot: project,
+            outputRoot: output,
+            packages,
+            platform: 'win32',
+          }),
+        ).toBe(output);
+        for (const name of packages) {
+          expect(
+            readFileSync(
+              join(output, 'node_modules', name, 'index.cjs'),
+              'utf8',
+            ),
+          ).toBe('module.exports = 42;');
+          expect(
+            existsSync(join(output, 'node_modules', name, 'index.d.ts')),
+          ).toBe(false);
+        }
+        if (!enabled) {
+          expect(diagnostic).not.toHaveBeenCalled();
+          return;
+        }
+        const receipts = diagnostic.mock.calls.map(([, receipt]) =>
+          JSON.parse(String(receipt)),
+        );
+        expect(receipts.map(({ phase, event }) => `${phase}:${event}`)).toEqual(
+          [
+            'prepare output:start',
+            'prepare output:end',
+            'planning:start',
+            'planning:end',
+            'copy:start',
+            'copy:end',
+            'inspection:start',
+            'inspection:end',
+          ],
+        );
+        expect(receipts[3].work).toMatchObject({
+          plannedPackages: 12,
+          uniqueSources: 12,
+        });
+        expect(receipts[5].work).toMatchObject({
+          runtimeCopies: 12,
+          wixCopies: 0,
+          filterRejected: 12,
+        });
+        expect(receipts[5].slowPackages).toHaveLength(10);
+        expect(
+          receipts[5].slowPackages.every(
+            ({ completed }: { completed: boolean }) => completed,
+          ),
+        ).toBe(true);
+        expect(receipts[7].work).toMatchObject({ inspectedFiles: 24 });
+        expect(receipts[7].work.inspectedBytes).toBeGreaterThan(0);
+        expect(receipts[7].parentCpuMicros).toEqual({
+          user: expect.any(Number),
+          system: expect.any(Number),
+        });
+      } finally {
+        diagnostic.mockRestore();
+        vi.unstubAllEnvs();
+      }
+    },
+  );
+
+  it('attributes a release-budget failure to inspection without stale copy context', () => {
+    const project = makeTempDir('station-runtime-diagnostics-failure-');
+    writeFixturePackage(join(project, 'node_modules/fixture'), {
+      name: 'fixture',
+      version: '1.0.0',
+    });
+    const diagnostic = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.stubEnv('STATION_DESKTOP_BUILD_DIAGNOSTICS', '1');
+    try {
+      expect(() =>
+        stageDesktopServerRuntime({
+          projectRoot: project,
+          outputRoot: join(project, 'release'),
+          packages: ['fixture'],
+          budget: { maxBytes: 0, maxFiles: 0 },
+        }),
+      ).toThrow('Desktop server runtime exceeds its release budget');
+      const receipt = JSON.parse(String(diagnostic.mock.calls.at(-1)?.[1]));
+      expect(receipt).toMatchObject({
+        phase: 'inspection',
+        event: 'failed',
+        work: { inspectedFiles: 1 },
+      });
+      expect(receipt.error.message).toContain(
+        'Desktop server runtime exceeds its release budget',
+      );
+      expect(receipt).not.toHaveProperty('currentPackage');
+      expect(receipt).not.toHaveProperty('lastCopyEntry');
+    } finally {
+      diagnostic.mockRestore();
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it.each(['dependencies', 'peerDependencies'])(
+    'hoists conflicting %s without growing the installed OTLP dependency chain',
+    async (dependencyField) => {
+      const project = makeTempDir('station-runtime-hoist-');
+      const names = [
+        '@opentelemetry/exporter-trace-otlp-http',
+        '@opentelemetry/otlp-exporter-base',
+        '@opentelemetry/otlp-transformer',
+        '@opentelemetry/sdk-metrics',
+        '@opentelemetry/resources',
+      ];
+      let source = join(project, 'node_modules', names[0]);
+      for (const [index, name] of names.entries()) {
+        const next = names[index + 1];
+        if (index > 0) {
+          writeFixturePackage(
+            join(project, 'node_modules', name),
+            {
+              name,
+              version: '2.0.0',
+              main: 'index.cjs',
+            },
+            { 'index.cjs': "module.exports = ['2.0.0'];" },
+          );
+        }
+        writeFixturePackage(
+          source,
+          {
+            name,
+            version: '1.0.0',
+            main: 'index.cjs',
+            [dependencyField]: next ? { [next]: '1.0.0' } : {},
+          },
+          {
+            'index.cjs': `module.exports = ['1.0.0'${next ? `, ...require('${next}')` : ''}];`,
+          },
+        );
+        if (next) source = join(source, 'node_modules', next);
+      }
+      const output = join(project, 'release');
+      stageDesktopServerRuntime({
+        projectRoot: project,
+        outputRoot: output,
+        packages: names,
+        platform: 'win32',
+      });
+      const probe = await execFileAsync(
+        process.execPath,
+        [
+          '-e',
+          `console.log(JSON.stringify([require('${names[0]}'), require('${names[4]}')]));`,
+        ],
+        { cwd: output, windowsHide: true, timeout: 10_000 },
+      );
+      expect(JSON.parse(probe.stdout)).toEqual([
+        Array.from({ length: names.length }, () => '1.0.0'),
+        ['2.0.0'],
+      ]);
+      const pending = [output];
+      while (pending.length > 0) {
+        const directory = pending.pop()!;
+        for (const entry of readdirSync(directory, { withFileTypes: true })) {
+          const path = join(directory, entry.name);
+          expect(path.slice(output.length).length).toBeLessThan(180);
+          if (entry.isDirectory()) pending.push(path);
+        }
+      }
+    },
+  );
+
+  it('does not shadow a previously resolved dependency when hoisting a later descendant', async () => {
+    const project = makeTempDir('station-runtime-hoist-shadow-');
+    const modules = join(project, 'node_modules');
+    for (const [name, version, dependencies, entry] of [
+      ['shared', '1.0.0', {}, "module.exports = 'root';"],
+      ['child', '2.0.0', {}, "module.exports = 'unused';"],
+      ['middle', '2.0.0', {}, "module.exports = 'unused';"],
+      [
+        'owner',
+        '1.0.0',
+        { child: '1.0.0' },
+        "module.exports = require('child');",
+      ],
+      [
+        'owner/node_modules/child',
+        '1.0.0',
+        { shared: '1.0.0', middle: '1.0.0' },
+        "module.exports = [require('shared'), require('middle')];",
+      ],
+      [
+        'owner/node_modules/child/node_modules/middle',
+        '1.0.0',
+        { shared: '2.0.0' },
+        "module.exports = require('shared');",
+      ],
+      [
+        'owner/node_modules/child/node_modules/middle/node_modules/shared',
+        '2.0.0',
+        {},
+        "module.exports = 'nested';",
+      ],
+    ] as const) {
+      writeFixturePackage(
+        join(modules, name),
+        {
+          name: name.split('/').at(-1),
+          version,
+          dependencies,
+          main: 'index.cjs',
+        },
+        { 'index.cjs': entry },
+      );
+    }
+    const output = join(project, 'release');
+    stageDesktopServerRuntime({
+      projectRoot: project,
+      outputRoot: output,
+      packages: ['shared', 'child', 'middle', 'owner'],
+    });
+    const probe = await execFileAsync(
+      process.execPath,
+      ['-e', "console.log(JSON.stringify(require('owner')));"],
+      { cwd: output, windowsHide: true, timeout: 10_000 },
+    );
+    expect(JSON.parse(probe.stdout)).toEqual(['root', 'nested']);
+  });
+
   it('keeps installed stable and incubating semantic conventions identical through Node import and require', async () => {
     const output = join(makeTempDir('station-runtime-semconv-'), 'release');
     stageDesktopServerRuntime({

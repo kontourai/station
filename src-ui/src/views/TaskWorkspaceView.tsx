@@ -19,6 +19,7 @@ import {
   usePluginsQuery,
   useQueryClient,
   useTaskGraphQuery,
+  useTaskPullRequestFactsQuery,
   useTaskWorkItemQuery,
 } from '@kontourai/station-sdk';
 import { useProjectTaskRoomDiscoveryQuery } from '@kontourai/station-sdk/project-task-rooms';
@@ -71,6 +72,7 @@ import {
   WorkspacePaneHostOpenContext,
 } from '../workspace-panes/WorkspacePaneHostOpenContext';
 import { WorkspacePaneHostRuntime } from '../workspace-panes/workspacePaneHostRuntime';
+import { TaskPullRequestRollup } from './project-page/TaskPullRequestRollup';
 import {
   observeTaskExperienceAvailability,
   type ResolvedTaskExperience,
@@ -87,6 +89,7 @@ import {
 } from './task-workspace/TaskOutputsSection';
 import { TaskPullRequestWatchPanel } from './task-workspace/TaskPullRequestWatchPanel';
 import { TaskRelationships } from './task-workspace/TaskRelationships';
+import { TaskResumeSection } from './task-workspace/TaskResumeSection';
 import {
   TaskRoomHeader,
   TaskRoomRail,
@@ -653,6 +656,9 @@ function TaskWorkspaceContent({
   const integrations = references.filter(
     (reference) => reference.kind === 'external',
   );
+  const showPullRequestRollup = useSurfaceVisibilityFlags().has(
+    'pull-request-agent-feedback',
+  );
   const tabStripRef = useRef<HTMLDivElement>(null);
   const revealTab = useCallback((button: HTMLElement) => {
     const strip = tabStripRef.current;
@@ -691,6 +697,13 @@ function TaskWorkspaceContent({
         projectId={projectId}
         onDetails={() => setTab('Details')}
       />
+      {showPullRequestRollup && (
+        <TaskHeaderPullRequests
+          task={graph.task}
+          projectSlug={projectSlug}
+          projectId={projectId}
+        />
+      )}
       <div
         className="task-room-tabs page__tabs"
         ref={tabStripRef}
@@ -851,6 +864,7 @@ function TaskWorkspaceContent({
             />
           </Suspense>
         )}
+        <TaskResumeSection task={graph.task} />
         <AutomationRunHistory links={graph.links} />
         <TaskRelationships task={graph.task} kind="children" />
         <div id="task-deliverables">
@@ -1186,10 +1200,10 @@ function TaskExperienceNavigation({
         <div className="task-workspace__experience-heading">
           <div>
             <h3 id="task-inspection-heading">Task inspection</h3>
-            <p>Plugins can add more ways to open this Task.</p>
+            <p>Apps can add more ways to open this Task.</p>
           </div>
-          <a className="editor-btn" href="/plugins">
-            Add plugins
+          <a className="editor-btn" href="/apps/discover">
+            Find apps
           </a>
         </div>
       </section>
@@ -1278,6 +1292,28 @@ function TaskExperienceBoundary({
       )}
     </section>
   );
+}
+
+function TaskHeaderPullRequests({
+  task,
+  projectSlug,
+  projectId,
+}: {
+  task: TaskRecord;
+  projectSlug: string;
+  projectId: string;
+}) {
+  const { data } = useTaskPullRequestFactsQuery(projectSlug, {
+    taskId: task.id,
+  });
+  const entry = data?.tasks[task.id];
+  return entry?.taskCreatedAt === task.createdAt &&
+    entry.linkedPullRequests !== undefined &&
+    (entry.pullRequests.length > 0 || entry.linkedPullRequests.length > 0) ? (
+    <div className="task-room-header__pr-rollup">
+      <TaskPullRequestRollup entry={entry} projectId={projectId} />
+    </div>
+  ) : null;
 }
 
 function TaskHeader({ task }: { task: TaskRecord }) {

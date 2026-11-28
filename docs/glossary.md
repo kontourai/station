@@ -86,14 +86,24 @@ OpenCode”, never infer the engine from the agent's name.
 
 ## Connections
 
-Within Connections, **Models** and **Engines** cover model and agent setup.
-**The tab owns the noun** (#592): the Models tab's user-facing objects are **Model connections**
+Connections is no longer a destination (first-release slice 1.2). Its parts
+are items on the **Customize** page (`/customize`): **Engines** and
+**Providers** under "What they run on", **Tools** and **Knowledge** under "What
+they can reach", beside **Agents** and **Skills** under "Your agents". Its old
+addresses open the matching item. **Computers** is not a Customize item: it
+keeps `/connections/computers` until the Station page replaces it. "Connection"
+stays the word for a configured model service, engine or tool server.
+
+Within Customize, **Providers** and **Engines** cover model and agent setup.
+**The item owns the noun** (#592): the Providers item still lists **Model connections**
 (list title, add flow, delete confirm — all say "model connection"); the
-Engines tab's objects are **Engines**. "Provider" is no longer a user-facing
-object name anywhere — it survives only as the brand/service word inside
+Engines item's objects are **Engines**. **Providers** is the item's name, as
+the first-release design records; the objects inside it become providers with
+the Providers slices (2.11 to 2.15), and until then "provider" is not an
+object name inside the item. It also survives as the brand/service word inside
 descriptive copy ("Pick the name you recognize…") and as the internal kind
 vocabulary below. People still choose the thing they recognize first and a
-model second; the tabs, not an umbrella noun, do the classifying.
+model second; the items, not an umbrella noun, do the classifying.
 
 The internal connection model retains two kinds where execution needs the
 distinction:
@@ -188,10 +198,10 @@ These extend **Station agents**; External agents bring their own (the app owns t
 with two explicit, structurally identical exceptions, both off by default and never silent:
 
 - **Skill** — a reusable bundle of instructions/behavior an agent adopts. THE one authored concept: a skill may declare itself runnable as a `/command`, which is what the retired "Prompt"/"Playbook" noun used to name. The word "playbook" survives only as accurate history (the `migrated-playbook` skill origin, `station doctor --migrate-playbooks`).
-- **Integration** — an MCP server that exposes tools.
+- **Integration** — an MCP server that exposes tools. People see it as a **tool server**.
 - **Tool** — one callable: a function from an integration, or a `station-control` platform function.
 - **Command** — a slash command.
-- **Plugin** — an installable platform extension (layouts, agents, integrations, providers, …).
+- **Plugin** — an installable platform extension (layouts, agents, integrations, providers, …). It is the packaging and developer word (`plugin.json`, `station plugin`, the developer docs). A plugin with a screen of its own is what people see as an **App**; one that only adds skills, agents or providers is found where those are used. The **Registry** is the catalogue infrastructure behind sources, never a place people go: its plugin catalogue is shown as **Apps › Discover**, and its other catalogues are pages entered from where their kind is used (**Browse skills** from Skills, **Browse tool servers** from Tools, **Browse layouts** from a project's Add Layout; the agent catalogue is gone). Copy never sends a reader to "the Registry" or to "Plugins".
 - **Personal access token** — a credential a person makes for a script (`stp_…`): it acts as them, carries Read and optionally Operate, never exceeds their own access, and can expire or be revoked (#3557). It is not a paired device: it cannot manage Station access or a Project's members.
 - **Telemetry producer token** — a credential the operator makes for a program that only reports activity (`sti_…`), such as Flow Agents' telemetry hooks. It is accepted only on `POST /v1/agent-events`, `/v1/traces` and `/v1/logs`, works from this machine unless created with remote access, can expire or be revoked, and names itself on every row it writes (`station.telemetry.producer`). It is not a personal access token or a paired device: it reads nothing.
 - **Station group** — Admin or Member: what any device tied to a person may do at most, Station-wide (#3557). Not a Project role: Project roles (Viewer, Contributor, Admin, Owner) say what a person may do in one Project, and neither grants the other. The operator is the Owner, outside both.
@@ -480,11 +490,16 @@ release delivery.
 |---|---|
 | agent run by Station's engine | **"Station" engine chip** + agent name |
 | agent run by an external engine (incl. ACP) | **engine chip** naming the engine ("Claude Code", "Codex", "OpenCode · GLM-4.7") |
-| A configured LLM endpoint | **Model connection** (Connections › Models) |
-| A configured agent CLI or custom engine | **Engine** (Connections › Engines) |
+| A configured LLM endpoint | **Model connection** (Customize › Providers) |
+| A configured agent CLI or custom engine | **Engine** (Customize › Engines) |
+| The page that lists the agents, what they run on and what they can reach | **Customize** (`/customize`), six items in three groups: **Your agents**, **What they run on**, **What they can reach** |
 | A selectable inference option within a connection | **Model** |
 | This device's saved binding to one Station | **Station** (verbs: Add / Edit / **Forget**) |
 | A project's named view | **Layout** |
+| Something installable with a screen of its own | **App**: **Apps › Discover** finds them and **Apps › Library** manages what is installed. Not the Project's **Library** of files. "Plugin" stays the packaging and developer word |
+| The sidebar section after Projects | **Apps**: one row for each Layout you own, each with its own icon, then **Discover**, which opens **Apps › Discover**. Today's Boards are such Layouts, so both meanings of Apps are one: things with a screen of their own. |
+| An MCP server that provides tools | **Tool server** |
+| A catalogue of one kind of installable thing (skills, tool servers, layouts) | **Browse <kind>** ("Browse skills"), a page opened from where that kind is used. Not "Registry" |
 | A place at the edge of the window a surface can occupy | **Region** |
 | A thing that can occupy a region (Chat, Agents) | **Surface** |
 | The smallest addressable unit of workspace UI | **Pane** (developer contract: **Workspace Pane**) |
@@ -535,8 +550,8 @@ can receive the current marker. The production migration registry is empty.
 See the [schema tests](../packages/shared/src/__tests__/station-home-schema.test.ts)
 and [reset command](reference/cli.md#home-reset) for the separate outcomes.
 
-- **User-facing labels:** the Connections tab owns the noun (#592) — **Model
-  connection** on the Models tab, **Engine** on the Engines tab, **Model** for
+- **User-facing labels:** the Customize item owns the noun (#592) — **Model
+  connection** in Providers, **Engine** in Engines, **Model** for
   the option selected within a connection. Station/external and model/agent
   distinctions remain execution properties.
 - **Guidance → Skills (#2144):** the page a reader reaches at `/guidance` is
@@ -553,7 +568,7 @@ and [reset command](reference/cli.md#home-reset) for the separate outcomes.
   branded types. Synthetic slugs, alias maps, promotion callbacks, and
   load-time identity normalization do not exist.
 - **Engine vocabulary and identity (current):** user-facing labels, engine chips,
-  the Connections hub, and new-chat grouping all name the engine. Persisted Agent
+  the Engines item, and new-chat grouping all name the engine. Persisted Agent
   IDs and engine-connection IDs use the clean grammar in
   `packages/contracts/src/agent-identity.ts`; the branded namespaces may share a
   text ID without becoming interchangeable types. The registry owns default

@@ -1,5 +1,7 @@
+import { createHash } from 'node:crypto';
 import {
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   symlinkSync,
@@ -7,11 +9,34 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, test } from 'vitest';
+import { performance } from 'node:perf_hooks';
+import { afterEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs';
+import { spawnSyncBounded } from '../lib/bounded-capture.mjs';
 import { buildWindowsOwnedGuard } from '../lib/windows-owned-guard-build.mjs';
 import { createWindowsOwnedProtocol } from '../lib/windows-owned-protocol.mjs';
 
 const BOUND = 'BOUND 1 2025-08-03T00:00:00.0000000Z';
+
+let cleanupFailure: Error | undefined;
+let beforeRemoval: (() => void) | undefined;
+
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs')>();
+  const rmSync: typeof actual.rmSync = (path, options) => {
+    beforeRemoval?.();
+    if (cleanupFailure) throw cleanupFailure;
+    actual.rmSync(path, options);
+  };
+  return { ...actual, rmSync };
+});
+
+const makeTempDir = trackTempDirs();
+
+afterEach(() => {
+  cleanupFailure = undefined;
+  beforeRemoval = undefined;
+});
 
 describe('Windows owned guard control protocol', () => {
   test('accepts a canonical UTC ISO BOUND identity and rejects duplicate control', () => {
@@ -108,6 +133,211 @@ test('launcher wires its settlement controller and rejects partial control EOF',
 });
 
 describe('Windows owned guard build', () => {
+  test('preserves compiler timeout details when private output cleanup also fails', () => {
+    const root = makeTempDir('station-guard-build-test-');
+    const compilerFailure = Object.assign(new Error('compiler stalled'), {
+      code: 'ETIMEDOUT',
+    });
+    const removalFailure = Object.assign(new Error('private output locked'), {
+      code: 'EPERM',
+    });
+    let failure: unknown;
+    try {
+      cleanupFailure = removalFailure;
+      try {
+        buildWindowsOwnedGuard({
+          source: join(root, 'missing-source.cs'),
+          tempDirectory: root,
+          spawnProcess: () => ({
+            pid: 4242,
+            status: null,
+            signal: 'SIGTERM',
+            error: compilerFailure,
+            stdout: 'partial compiler output',
+          }),
+        });
+      } catch (error) {
+        failure = error;
+      }
+      expect(failure).toBeInstanceOf(AggregateError);
+      expect(failure).toMatchObject({
+        cause: expect.objectContaining({ cause: compilerFailure }),
+        errors: [
+          expect.objectContaining({
+            message: expect.stringMatching(
+              /compiler timed out after 10000ms[\s\S]*compiler pid 4242; status null; signal SIGTERM[\s\S]*partial compiler output/,
+            ),
+            cause: compilerFailure,
+          }),
+          removalFailure,
+        ],
+        message: expect.stringContaining('private output locked'),
+      });
+      if (failure instanceof AggregateError) {
+        const evidenceLine = failure.errors[0].message
+          .split('\n')
+          .find((line: string) => line.startsWith('compiler evidence '));
+        expect(evidenceLine).toBeDefined();
+        const evidence = JSON.parse(
+          evidenceLine.slice('compiler evidence '.length),
+        );
+        expect(evidence).toMatchObject({
+          source: { unavailable: 'ENOENT' },
+          stagedOutput: { unavailable: 'ENOENT' },
+        });
+      }
+    } finally {
+      cleanupFailure = undefined;
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test.skipIf(process.platform !== 'win32')(
+    'reaps a timed-out real Windows compiler before removing its private output',
+    () => {
+      const root = makeTempDir('station-guard-build-test-');
+      let compilerPid = 0;
+      let checkedExited = false;
+      let failure: unknown;
+      try {
+        beforeRemoval = () => {
+          expect(compilerPid).toBeGreaterThan(0);
+          let probeFailure: unknown;
+          try {
+            process.kill(compilerPid, 0);
+          } catch (error) {
+            probeFailure = error;
+          }
+          expect(probeFailure).toMatchObject({ code: 'ESRCH' });
+          checkedExited = true;
+        };
+        try {
+          buildWindowsOwnedGuard({
+            tempDirectory: root,
+            spawnProcess: (compiler, args, options) => {
+              const compiled = spawnSyncBounded(compiler, args, {
+                ...options,
+                timeout: 1,
+              });
+              compilerPid = compiled.pid;
+              expect(compiled.error).toMatchObject({ code: 'ETIMEDOUT' });
+              expect(compiled.signal).not.toBeNull();
+              return compiled;
+            },
+          });
+        } catch (error) {
+          failure = error;
+        }
+        expect(failure).toMatchObject({ cause: { code: 'ETIMEDOUT' } });
+        expect(checkedExited).toBe(true);
+        expect(readdirSync(root)).toEqual([]);
+      } finally {
+        beforeRemoval = undefined;
+        rmSync(root, { recursive: true, force: true });
+      }
+    },
+  );
+
+  test('refuses timed-out compiler output and removes its private directory', () => {
+    const root = makeTempDir('station-guard-build-test-');
+    const source = join(root, 'guard.cs');
+    const sourceBytes = 'compiler diagnostic fixture';
+    writeFileSync(source, sourceBytes);
+    let failure: unknown;
+    try {
+      const clock = vi
+        .spyOn(performance, 'now')
+        .mockReturnValueOnce(100)
+        .mockReturnValueOnce(175);
+      try {
+        buildWindowsOwnedGuard({
+          source,
+          windir: root,
+          tempDirectory: root,
+          spawnProcess: (_compiler, args, options) => {
+            expect(options.timeout).toBe(10_000);
+            expect(options.maxBuffer).toBe(1024 * 1024);
+            const staged = args.find((argument) =>
+              argument.startsWith('/out:'),
+            );
+            if (!staged) throw new Error('missing compiler output argument');
+            writeFileSync(staged.slice('/out:'.length), 'partial executable');
+            return {
+              status: null,
+              error: Object.assign(new Error('compiler stalled'), {
+                code: 'ETIMEDOUT',
+              }),
+              stdout: 'partial compiler output',
+            };
+          },
+        });
+      } catch (error) {
+        failure = error;
+      } finally {
+        clock.mockRestore();
+      }
+      expect(failure).toBeInstanceOf(Error);
+      const message = failure instanceof Error ? failure.message : '';
+      expect(message).toMatch(
+        /compiler timed out after 10000ms[\s\S]*partial compiler output/,
+      );
+      const evidenceLine = message
+        .split('\n')
+        .find((line) => line.startsWith('compiler evidence '));
+      expect(
+        evidenceLine,
+        'failed compiler evidence survives private directory removal',
+      ).toBeDefined();
+      const evidence = JSON.parse(
+        evidenceLine!.slice('compiler evidence '.length),
+      );
+      expect(evidence).toMatchObject({
+        schemaVersion: 1,
+        timeoutMs: 10_000,
+        elapsedMs: 75,
+        coordinator: {
+          pid: process.pid,
+          platform: process.platform,
+          arch: process.arch,
+          node: process.version,
+        },
+        source: {
+          path: source,
+          size: Buffer.byteLength(sourceBytes),
+          sha256: createHash('sha256').update(sourceBytes).digest('hex'),
+          regularFile: true,
+          symbolicLink: false,
+        },
+        compiler: { unavailable: 'ENOENT' },
+        stagedOutput: {
+          size: Buffer.byteLength('partial executable'),
+          regularFile: true,
+          symbolicLink: false,
+        },
+      });
+      for (const sample of [evidence.before, evidence.after]) {
+        expect(sample).toMatchObject({
+          cpuCount: expect.any(Number),
+          cpuMs: {
+            idle: expect.any(Number),
+            user: expect.any(Number),
+            sys: expect.any(Number),
+          },
+          freeMemoryBytes: expect.any(Number),
+          totalMemoryBytes: expect.any(Number),
+          coordinatorCpuUs: {
+            user: expect.any(Number),
+            system: expect.any(Number),
+          },
+          coordinatorRssBytes: expect.any(Number),
+        });
+      }
+      expect(readdirSync(root)).toEqual(['guard.cs']);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test('uses a unique private staged executable and rejects an empty compiler result', () => {
     const root = mkdtempSync(join(tmpdir(), 'station-guard-build-test-'));
     const source = join(root, 'guard.cs');

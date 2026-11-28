@@ -4,7 +4,7 @@ import type {
   PullRequestHeadReviewWaiting,
 } from '@kontourai/station-contracts/pull-request-feedback';
 import { pullRequestFeedbackKey } from '@kontourai/station-contracts/pull-request-feedback';
-import { useId, useState } from 'react';
+import { type ReactNode, useId, useState } from 'react';
 import { useCoarseNow } from '../../hooks/useCoarseNow';
 import { ActionRow } from '../ActionRow';
 import { Button } from '../Button';
@@ -186,12 +186,14 @@ function Findings({ review }: { review: PullRequestHeadReview }) {
  */
 export function PullRequestHeadReviewSection({
   strip,
+  empty = null,
 }: {
   strip: ReturnType<typeof usePullRequestFeedbackStrip>;
+  empty?: ReactNode;
 }) {
   const { identity, byPullRequest, chat } = strip;
   const now = useCoarseNow();
-  if (!chat.headReview) return null;
+  if (!chat.headReview) return empty;
   if (byPullRequest.isPending)
     return byPullRequest.fetchStatus === 'fetching' ? (
       <SkeletonBlock
@@ -199,12 +201,14 @@ export function PullRequestHeadReviewSection({
         label="Loading Station review"
         className="pr-head-review__loading"
       />
-    ) : null;
+    ) : (
+      empty
+    );
   const data = byPullRequest.data;
-  if (!data || byPullRequest.error || !data.owner?.readable) return null;
+  if (!data || byPullRequest.error || !data.owner?.readable) return empty;
   const review = data.headReview;
   const waiting = data.headReviewWaiting;
-  if (!review && !waiting && !data.settings?.reviewEachHead) return null;
+  if (!review && !waiting && !data.settings?.reviewEachHead) return empty;
   const key = pullRequestFeedbackKey(identity);
   const pending = chat.pending === key;
   const error = chat.error?.key === key ? chat.error.text : undefined;

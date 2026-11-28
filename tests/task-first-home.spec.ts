@@ -3,6 +3,7 @@ import type { ConversationOpenResolution } from '@kontourai/station-contracts/or
 import type { ProjectChatDefaultsView } from '@kontourai/station-contracts/project-chat-defaults';
 import { PROJECT_IDENTITY_NOT_PREPARED_CODE } from '@kontourai/station-contracts/project-identity';
 import type { SkillExperienceInventoryV1 } from '@kontourai/station-contracts/skill-experience';
+import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
 import type {
   BrowserPaneAccessView,
   BrowserSessionView,
@@ -14,6 +15,7 @@ import type {
 import type { WorkspacePaneHostActionCatalog } from '@kontourai/station-contracts/workspace-pane-host-contribution';
 import { devices, expect, type Locator, type Page } from '@playwright/test';
 import type { PluginPublishInspection } from '../src-ui/src/views/project-page/pluginPublishClient';
+import { createLongSessionEventWindowHandler } from './fixtures/long-session';
 import { agentConnectionFixture } from './helpers/connection-fixtures';
 import {
   E2E_STATION_CAPABILITIES,
@@ -74,11 +76,19 @@ function json(data: unknown) {
   };
 }
 
+interface HomeHistoryRefresh {
+  rowTitle: string;
+  failTasks: boolean;
+  task?: TaskRecord;
+  taskResponse?: Promise<void>;
+}
+
 async function mockTaskFirstHome(
   page: Page,
   options: {
     sessionEvents?: Array<Record<string, unknown>>;
     historyCount?: number;
+    historyRefresh?: HomeHistoryRefresh;
     commands?: Array<Record<string, unknown>>;
     workflowTasks?: Array<Record<string, unknown>>;
     /**
@@ -113,12 +123,31 @@ async function mockTaskFirstHome(
       mode: 'isolated-child',
     },
   };
+  const historyUpdatedAt = Date.now();
+  const historySessions = options.historyCount
+    ? Array.from({ length: options.historyCount }, (_, index) => ({
+        ...taskSession,
+        threadId: `history-${index}`,
+        conversationId: `conversation-${index}`,
+        displayTitle: `History session ${index}`,
+        eventCount: 0,
+        delegation: undefined,
+        lifecycleState: 'completed',
+        status: 'closed',
+        updatedAt: new Date(historyUpdatedAt - index * 60_000).toISOString(),
+      }))
+    : [taskSession];
   await installVisualViewportFixture(page);
   await page.addInitScript(() => {
     localStorage.setItem('recentAgents', JSON.stringify(['codex-agent']));
     localStorage.setItem('station:onboarding-setup-dismissed', '1');
   });
   await page.route('**/events', (route) => route.abort());
+  await page.route('**/acp/connections', (route) =>
+    route.request().method() === 'GET'
+      ? route.fulfill(json([]))
+      : rejectUnexpectedFixtureRequest(route),
+  );
   await page.route(
     '**/agents/codex-agent/conversations/task-first-home/messages',
     (route) => route.fulfill(json([])),
@@ -343,21 +372,33 @@ async function mockTaskFirstHome(
       return;
     }
     if (path === '/api/orchestration/sessions/read-model') {
+      const historyRefresh = options.historyRefresh;
+      const sessions = historyRefresh
+        ? historySessions.map((session, index) =>
+            index === 1
+              ? { ...session, displayTitle: historyRefresh.rowTitle }
+              : session,
+          )
+        : historySessions;
+      await route.fulfill(json(sessions));
+      return;
+    }
+    if (
+      path === '/api/tasks' &&
+      route.request().method() === 'GET' &&
+      new URL(route.request().url()).searchParams.size === 0 &&
+      options.historyRefresh
+    ) {
+      await options.historyRefresh.taskResponse;
       await route.fulfill(
-        json(
-          options.historyCount
-            ? Array.from({ length: options.historyCount }, (_, index) => ({
-                ...taskSession,
-                threadId: `history-${index}`,
-                conversationId: `conversation-${index}`,
-                displayTitle: `History session ${index}`,
-                delegation: undefined,
-                lifecycleState: 'completed',
-                status: 'closed',
-                updatedAt: new Date(Date.now() - index * 60_000).toISOString(),
-              }))
-            : [taskSession],
-        ),
+        options.historyRefresh.failTasks
+          ? {
+              status: 503,
+              json: { success: false, error: 'Tasks unavailable' },
+            }
+          : json(
+              options.historyRefresh.task ? [options.historyRefresh.task] : [],
+            ),
       );
       return;
     }
@@ -495,6 +536,42 @@ async function mockTaskFirstHome(
         );
         return;
       }
+    }
+    const historyWindow = path.match(
+      /^\/api\/orchestration\/sessions\/history-(\d+)\/event-window$/,
+    );
+    if (historyWindow && options.historyCount) {
+      const query = new URL(route.request().url()).searchParams;
+      if (
+        route.request().method() !== 'GET' ||
+        Number(historyWindow[1]) >= options.historyCount ||
+        query.get('direction') !== 'newest' ||
+        query.get('turnLimit') !== '1' ||
+        query.has('cursor')
+      )
+        return rejectUnexpectedFixtureRequest(route);
+      await createLongSessionEventWindowHandler({
+        threadId: `history-${historyWindow[1]}`,
+        provider: taskSession.provider,
+        availableTurns: () => [],
+      })(route);
+      return;
+    }
+    if (
+      path === '/api/orchestration/sessions/task-first-home/inventory' &&
+      route.request().method() === 'GET' &&
+      new URL(route.request().url()).searchParams.get('scope') ===
+        'whole-session'
+    ) {
+      await route.fulfill({
+        status: 503,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: false,
+          error: 'Session inventory unavailable',
+        }),
+      });
+      return;
     }
     if (path === '/api/orchestration/sessions/task-first-home') {
       await route.fulfill(
@@ -778,6 +855,13 @@ async function mockTaskFirstHome(
       await route.fulfill(json([]));
       return;
     }
+    if (
+      route.request().method() === 'GET' &&
+      path === '/api/mobile-devices/agent-reveals'
+    ) {
+      await route.fulfill({ status: 404, json: { success: false } });
+      return;
+    }
     if (await fulfillStationShellRead(route)) return;
     await rejectUnexpectedFixtureRequest(route);
   });
@@ -944,11 +1028,9 @@ async function startProjectTask(
   );
   await sendDraft(await openProjectDraft(page), prompt);
   await sent;
-  // Desktop keeps the standalone project-context row; a phone folds the project
-  // into the one-row header's eyebrow above the chat title.
-  const projectContext = page.locator('.chat-dock__project-context');
-  const mobileEyebrow = page.locator('.chat-dock__mobile-eyebrow');
-  await expect(projectContext.or(mobileEyebrow).first()).toBeVisible();
+  const chatHeader = page.locator('.chat-dock__header');
+  await expect(chatHeader).toBeVisible();
+  await expect(chatHeader).toContainText(prompt);
   if (options.settle) await completeStartedTurn(page, prompt);
 }
 
@@ -1564,24 +1646,24 @@ test.describe('Task-first Home (#332, mocked)', () => {
       }),
     ).toHaveAttribute('aria-current', 'true');
 
-    // Back on Home with the dock open and no chat in it.
+    // Back on Home with the dock open and no chat in it: the dock shows its
+    // own New chat draft, ready to type, instead of a "No chat open" card
+    // (#5592), and Home's composer steps aside for it.
     await page.goto('/?dock=open');
     await expect
       .poll(() => new URL(page.url()).searchParams.get('chat'))
       .toBeNull();
-    await expect(page.getByText('No chat open')).toBeVisible();
-
-    // The selection Home's chips name is the one the dock's draft opens
-    // with: the same chips, the same words. Opening the project's work bound
-    // the dock to it, so both now open on Station.
-    await expect(advertised).toBeVisible();
+    await expect(page.getByText('No chat open')).toHaveCount(0);
+    const dialog = page.getByRole('region', { name: 'New chat', exact: true });
+    await expect(dialog).toBeVisible();
+    const draft = dialog.getByRole('form', { name: 'Start work' });
     await expect(
-      homeComposer.getByRole('button', {
-        name: 'Project: Station',
-        exact: true,
-      }),
-    ).toBeVisible();
-    const { dialog, draft } = await openNewChatDraft(page);
+      page.locator('.home-view').getByRole('form', { name: 'Start work' }),
+    ).toHaveCount(0);
+
+    // The selection Home's chips named is the one the dock's draft opens
+    // with: the same chips, the same words. Opening the project's work bound
+    // the dock to it, so the draft opens on Station.
     await expect(
       await runSetupControl(draft, (panel) =>
         panel.getByRole('button', {
@@ -1596,8 +1678,25 @@ test.describe('Task-first Home (#332, mocked)', () => {
         exact: true,
       }),
     ).toBeVisible();
+    // Dismissing a draft the dock opened on its own folds the dock to its
+    // toolbar: there is no chat behind it to return to.
     await dialog.press('Escape');
     await expect(dialog).toHaveCount(0);
+    // With the dock folded, Home's own composer is back and names the same
+    // selection the dock's draft opened with.
+    const homeAgain = page.getByRole('form', { name: 'Start work' });
+    await expect(homeAgain).toBeVisible();
+    await expect(
+      await runSetupControl(homeAgain, (panel) =>
+        panel.getByRole('button', {
+          name: 'Agent: Codex · gpt-5.3-codex',
+          exact: true,
+        }),
+      ),
+    ).toBeVisible();
+    await expect(
+      homeAgain.getByRole('button', { name: 'Project: Station', exact: true }),
+    ).toBeVisible();
 
     await page.getByRole('button', { name: /Open local project/i }).click();
     await expect(
@@ -1612,10 +1711,10 @@ test.describe('Task-first Home (#332, mocked)', () => {
       .toBeNull();
     await expect
       .poll(() => new URL(page.url()).searchParams.get('dock'))
-      .toBe('open');
+      .not.toBe('open');
 
     // station#settings-revamp slice 5: the dead `/providers` alias is
-    // removed — use the canonical connections/models deep link instead.
+    // removed. An old Connections address still lands on its Customize item.
     //
     // #2059: Connections left the panel for Settings' Manage group, so the
     // panel no longer highlights it — the panel lists places, and the row
@@ -1623,16 +1722,16 @@ test.describe('Task-first Home (#332, mocked)', () => {
     // still proves is the round trip: the canonical deep link resolves, and
     // the advertised control reaches the same route from a cold start.
     await page.goto('/connections/providers');
-    await expect(page).toHaveURL(/\/connections\/models/);
+    await expect(page).toHaveURL(/\/customize\/providers/);
     await expect(
       page
         .getByRole('navigation', { name: 'Primary navigation' })
         .getByRole('button', { name: 'Connections', exact: true }),
     ).toHaveCount(0);
-    // The advertised path from here is the footer's Customize chooser, whose
-    // Connections row opens the hub at its Engines tab. The journey that
-    // presses it is project-architecture.spec.ts ("connections view
-    // renders"), whose fixtures model the destination, not this one:
+    // The advertised path from here is the footer's Customize button, whose
+    // page lists Providers. The journey that presses through it is
+    // project-architecture.spec.ts ("the Engines item renders from the
+    // Customize list"), whose fixtures model the destination, not this one:
     // `mockTaskFirstHome` models Home, and routing this test through Settings
     // made it issue five API reads the fixture has no shape for, which is the
     // audit failure this comment replaces rather than papers over. Here only
@@ -1901,93 +2000,107 @@ test.describe('Task-first Home (#332, mocked)', () => {
 
   test('desktop active work reveals real files and task context beside usable chat', async ({
     page,
-  }) => {
+  }, testInfo) => {
+    await installJourneyProfile(page);
     await installMockOrchestrationSse(page);
     await mockTaskFirstHome(page);
     await page.goto('/');
-    await startProjectTask(page, { settle: true });
+    await startProjectTask(page);
+    await page.getByRole('button', { name: 'Show Chat', exact: true }).click();
+    await completeStartedTurn(page, 'Start the project task.');
 
-    // Delegate/Commands/Files/Task-context collapse into one grouped "+"
-    // menu next to attach + mic (docs/design/chat-composer.md §3.2) — open
-    // it to reach the Files/Task-context toggles.
-    const actionsMenuTrigger = page.getByRole('button', {
-      name: 'Composer actions',
-    });
-    await expect(actionsMenuTrigger).toBeVisible();
+    await profileJourney(
+      page,
+      testInfo,
+      'desktop-workspace',
+      { files: 1, taskContexts: 1 },
+      async () => {
+        const actionsMenuTrigger = page.getByRole('button', {
+          name: 'More dock actions',
+        });
+        await expect(actionsMenuTrigger).toBeVisible();
 
-    await actionsMenuTrigger.click();
-    const menu = page.getByRole('menu', { name: 'Composer actions' });
-    await expect(menu).toBeVisible();
-    const filesTrigger = menu.getByRole('menuitemcheckbox', {
-      name: 'Files (1)',
-    });
-    await expect(filesTrigger).toBeVisible();
-    await filesTrigger.click();
-    await expect(
-      page.getByRole('complementary', { name: 'Active work files' }),
-    ).toBeVisible();
-    await expect(page.locator('.chat-dock textarea')).toBeVisible();
+        await actionsMenuTrigger.click();
+        const menu = page.getByRole('menu', { name: 'More dock actions' });
+        await expect(menu).toBeVisible();
+        const filesTrigger = menu.getByRole('menuitemcheckbox', {
+          name: 'Changed files (1)',
+        });
+        await expect(filesTrigger).toBeVisible();
+        await filesTrigger.click();
+        await expect(
+          page.getByRole('complementary', { name: 'Active work files' }),
+        ).toBeVisible();
+        await expect(page.locator('.chat-dock textarea')).toBeVisible();
 
-    // Task context replaces the files panel beside the same usable chat.
-    await actionsMenuTrigger.click();
-    await expect(menu).toBeVisible();
-    await menu.getByRole('menuitemcheckbox', { name: 'Task context' }).click();
-    const context = page.getByRole('complementary', { name: 'Task context' });
-    await expect(context).toContainText('feat/contextual-active-work');
-    await expect(context).toContainText('Checks');
-    await expect(context).toContainText('Unavailable');
-    await expect(page.locator('.chat-dock textarea')).toBeVisible();
+        // Task context replaces the files panel beside the same usable chat.
+        await actionsMenuTrigger.click();
+        await expect(menu).toBeVisible();
+        await menu
+          .getByRole('menuitemcheckbox', { name: 'Task context' })
+          .click();
+        const context = page.getByRole('complementary', {
+          name: 'Task context',
+        });
+        await expect(context).toContainText('feat/contextual-active-work');
+        await expect(context).toContainText('Checks');
+        await expect(context).toContainText('Unavailable');
+        await expect(page.locator('.chat-dock textarea')).toBeVisible();
 
-    const geometry = await page
-      .locator('.chat-dock__workspace')
-      .evaluate((el) => ({
-        clientWidth: el.clientWidth,
-        scrollWidth: el.scrollWidth,
-        clientHeight: el.clientHeight,
-        scrollHeight: el.scrollHeight,
-      }));
-    expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.clientWidth + 1);
-    expect(geometry.scrollHeight).toBeLessThanOrEqual(
-      geometry.clientHeight + 1,
+        const geometry = await page
+          .locator('.chat-dock__workspace')
+          .evaluate((el) => ({
+            clientWidth: el.clientWidth,
+            scrollWidth: el.scrollWidth,
+            clientHeight: el.clientHeight,
+            scrollHeight: el.scrollHeight,
+          }));
+        expect(geometry.scrollWidth).toBeLessThanOrEqual(
+          geometry.clientWidth + 1,
+        );
+        expect(geometry.scrollHeight).toBeLessThanOrEqual(
+          geometry.clientHeight + 1,
+        );
+
+        // A changed file opens in the editor route, where the same chat's
+        // composer is still the usable surface.
+        await actionsMenuTrigger.click();
+        await expect(menu).toBeVisible();
+        await filesTrigger.click();
+        // The opened file's pane reads its changes against HEAD (#3365). Wait
+        // for that read so the test, not teardown timing, decides it ran.
+        const changesRead = page.waitForResponse(
+          (response) =>
+            new URL(response.url()).pathname ===
+              '/api/projects/station/file-preview/changes' &&
+            response.request().method() === 'POST',
+        );
+        await page
+          .getByRole('button', { name: 'Open src-ui/src/App.tsx in editor' })
+          .click();
+        await expect
+          .poll(() => new URL(page.url()).pathname)
+          .toBe('/projects/station/layouts/coding');
+        expect(new URL(page.url()).searchParams.get('previewPath')).toBe(
+          'src-ui/src/App.tsx',
+        );
+        const changes = await changesRead;
+        expect(changes.status()).toBe(200);
+        // The pane asked for the file it opened.
+        expect(changes.request().postDataJSON()).toMatchObject({
+          path: 'src-ui/src/App.tsx',
+        });
+        // The opened preview shows the file and consumed the read: the Changes
+        // toggle counts the declared patch's one changed line.
+        await expect(page.getByText('export function App() {}')).toBeVisible();
+        await expect(
+          page.getByRole('button', { name: 'Changes vs HEAD, 1 changed line' }),
+        ).toBeVisible();
+        await expect(
+          page.getByRole('textbox', { name: 'Message', exact: true }),
+        ).toBeVisible();
+      },
     );
-
-    // A changed file opens in the editor route, where the same chat's
-    // composer is still the usable surface.
-    await actionsMenuTrigger.click();
-    await expect(menu).toBeVisible();
-    await filesTrigger.click();
-    // The opened file's pane reads its changes against HEAD (#3365). Wait
-    // for that read so the test, not teardown timing, decides it ran.
-    const changesRead = page.waitForResponse(
-      (response) =>
-        new URL(response.url()).pathname ===
-          '/api/projects/station/file-preview/changes' &&
-        response.request().method() === 'POST',
-    );
-    await page
-      .getByRole('button', { name: 'Open src-ui/src/App.tsx in editor' })
-      .click();
-    await expect
-      .poll(() => new URL(page.url()).pathname)
-      .toBe('/projects/station/layouts/coding');
-    expect(new URL(page.url()).searchParams.get('previewPath')).toBe(
-      'src-ui/src/App.tsx',
-    );
-    const changes = await changesRead;
-    expect(changes.status()).toBe(200);
-    // The pane asked for the file it opened.
-    expect(changes.request().postDataJSON()).toMatchObject({
-      path: 'src-ui/src/App.tsx',
-    });
-    // The opened preview shows the file and consumed the read: the Changes
-    // toggle counts the declared patch's one changed line.
-    await expect(page.getByText('export function App() {}')).toBeVisible();
-    await expect(
-      page.getByRole('button', { name: 'Changes vs HEAD, 1 changed line' }),
-    ).toBeVisible();
-    await expect(
-      page.getByRole('textbox', { name: 'Message', exact: true }),
-    ).toBeVisible();
   });
 
   // #1180: the Activity surface is one of the places where `SplitPaneLayout`'s
@@ -2974,31 +3087,235 @@ test.describe('Task-first Home (#332, mocked)', () => {
   });
 });
 
-test('profiles Home with substantial session history', async ({
-  page,
-}, testInfo) => {
-  await page.setViewportSize({ width: 1280, height: 900 });
-  await installJourneyProfile(page);
-  await mockTaskFirstHome(page, { historyCount: 1000 });
-  await profileJourney(
+for (const viewport of [
+  { width: 1280, height: 900 },
+  { width: 390, height: 844 },
+]) {
+  test(`profiles Home with substantial session history at ${viewport.width}px`, async ({
     page,
-    testInfo,
-    'home-history',
-    { sessions: 1000 },
-    async () => {
-      const response = page.waitForResponse(
-        (response) =>
-          new URL(response.url()).pathname ===
+  }, testInfo) => {
+    await page.setViewportSize(viewport);
+    await installJourneyProfile(page);
+    const historyRefresh: HomeHistoryRefresh = {
+      rowTitle: 'History session 1',
+      failTasks: false,
+    };
+    await mockTaskFirstHome(page, { historyCount: 1000, historyRefresh });
+    const waitForRefreshReads = (clickTime?: () => Promise<number>) =>
+      Promise.all(
+        [
           '/api/orchestration/sessions/read-model',
+          '/api/tasks',
+          '/api/conversations?limit=100',
+          '/api/environments/ssh/sessions',
+        ].map(async (endpoint) => {
+          const response = await page.waitForResponse(async (response) => {
+            const url = new URL(response.url());
+            const target = new URL(endpoint, url.origin);
+            return (
+              response.request().method() === 'GET' &&
+              url.pathname === target.pathname &&
+              url.search === target.search &&
+              response.ok() &&
+              (!clickTime ||
+                response.request().timing().startTime >= (await clickTime()))
+            );
+          });
+          expect(await response.json()).toMatchObject({ success: true });
+        }),
       );
-      await page.goto('/');
-      expect((await (await response).json()).data).toHaveLength(1000);
+    const initialReads = waitForRefreshReads();
+    await profileJourney(
+      page,
+      testInfo,
+      viewport.width === 1280 ? 'home-history' : 'home-history-mobile',
+      { sessions: 1000 },
+      async () => {
+        const response = page.waitForResponse(
+          (response) =>
+            new URL(response.url()).pathname ===
+            '/api/orchestration/sessions/read-model',
+        );
+        await page.goto('/');
+        expect((await (await response).json()).data).toHaveLength(1000);
+        await expect(
+          page.getByRole('form', { name: 'Start work' }),
+        ).toBeVisible();
+        await expect(
+          page.getByText('History session 0', { exact: true }).first(),
+        ).toBeVisible();
+      },
+    );
+    await initialReads;
+    const composer = page
+      .getByRole('form', { name: 'Start work' })
+      .getByRole('textbox', { name: 'What would you like done?' });
+    const draft = 'Keep this draft while I browse recent work';
+    await profileJourney(
+      page,
+      testInfo,
+      viewport.width === 1280
+        ? 'home-composer-typing'
+        : 'home-composer-typing-mobile',
+      { sessions: 1000, draftCharacters: draft.length },
+      async () => {
+        await composer.click();
+        await composer.pressSequentially(draft);
+        await expect(composer).toHaveValue(draft);
+        await expect(composer).toBeFocused();
+      },
+    );
+    const bounds = await composer.boundingBox();
+    expect(bounds?.height).toBeGreaterThanOrEqual(44);
+    await page
+      .getByText('History session 0', { exact: true })
+      .first()
+      .scrollIntoViewIfNeeded();
+    await expect(composer).toBeFocused();
+    await composer.scrollIntoViewIfNeeded();
+    await expect(composer).toHaveValue(draft);
+    expect(
+      await page.evaluate(
+        () =>
+          document.documentElement.scrollWidth <=
+          document.documentElement.clientWidth + 1,
+      ),
+    ).toBe(true);
+    await testInfo.attach('home-history-draft-and-focus', {
+      body: await page.screenshot(),
+      contentType: 'image/png',
+    });
+    const recentWork = page.getByRole('region', {
+      name: 'Recent work',
+      exact: true,
+    });
+    const refresh = recentWork.getByRole('button', {
+      name: 'Refresh recent work',
+      exact: true,
+    });
+    const freshTitle = 'Refreshed history session';
+    await expect(recentWork.getByText(freshTitle, { exact: true })).toHaveCount(
+      0,
+    );
+    await refresh.scrollIntoViewIfNeeded();
+    const observeRefreshClick = () =>
+      refresh.evaluateHandle((element) => {
+        const observation = { clickedAt: Number.POSITIVE_INFINITY };
+        element.addEventListener(
+          'click',
+          () => {
+            observation.clickedAt = performance.timeOrigin + performance.now();
+          },
+          { capture: true, once: true },
+        );
+        return observation;
+      });
+    const measuredClick = await observeRefreshClick();
+    historyRefresh.rowTitle = freshTitle;
+    historyRefresh.task = {
+      id: 'home-refresh-task',
+      projectId: 'station',
+      title: 'Cached refresh task',
+      description: 'Task retained while its inventory is unavailable',
+      priority: 'normal',
+      status: 'ready',
+      createdBy: 'fixture',
+      createdAt: '2026-07-12T00:00:00Z',
+      updatedAt: '2026-07-13T00:00:00Z',
+    };
+    await profileJourney(
+      page,
+      testInfo,
+      viewport.width === 1280 ? 'home-refresh' : 'home-refresh-mobile',
+      { sessions: 1000, tasks: 1, authoritativeReads: 4 },
+      async () => {
+        const refreshedReads = waitForRefreshReads(() =>
+          measuredClick.evaluate((observation) => observation.clickedAt),
+        );
+        await refresh.click();
+        await refreshedReads;
+        await expect(
+          recentWork.getByText(freshTitle, { exact: true }),
+        ).toBeVisible();
+        await expect(
+          recentWork.getByText('History session 1', { exact: true }),
+        ).toHaveCount(0);
+        await expect(
+          recentWork.getByText('Cached refresh task', { exact: true }),
+        ).toBeVisible();
+        await expect(
+          recentWork.getByText('Updated', { exact: true }),
+        ).toBeVisible();
+        await expect(composer).toHaveValue(draft);
+        await expect(refresh).toBeFocused();
+      },
+    );
+    await measuredClick.dispose();
+    historyRefresh.failTasks = true;
+    let releaseTaskResponse = () => {};
+    historyRefresh.taskResponse = new Promise<void>((resolve) => {
+      releaseTaskResponse = resolve;
+    });
+    const pendingTaskRead = page.waitForRequest((request) => {
+      const url = new URL(request.url());
+      return (
+        request.method() === 'GET' &&
+        url.pathname === '/api/tasks' &&
+        url.search === ''
+      );
+    });
+    const failedRead = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === '/api/tasks' &&
+        response.status() === 503,
+    );
+    await refresh.click();
+    await pendingTaskRead;
+    try {
       await expect(
-        page.getByRole('form', { name: 'Start work' }),
+        recentWork.getByText('Refreshing recent work…', { exact: true }),
       ).toBeVisible();
       await expect(
-        page.getByText('History session 0', { exact: true }).first(),
+        recentWork.getByText(freshTitle, { exact: true }),
       ).toBeVisible();
-    },
-  );
-});
+      await expect(
+        recentWork.getByText('Cached refresh task', { exact: true }),
+      ).toBeVisible();
+      await expect(composer).toHaveValue(draft);
+    } finally {
+      releaseTaskResponse();
+    }
+    await failedRead;
+    await expect(
+      recentWork.getByText('Couldn’t refresh', { exact: true }),
+    ).toBeVisible();
+    await expect(
+      recentWork.getByText(freshTitle, { exact: true }),
+    ).toBeVisible();
+    await expect(composer).toHaveValue(draft);
+    await expect(
+      recentWork.getByText('Cached refresh task', { exact: true }),
+    ).toBeVisible();
+    historyRefresh.failTasks = false;
+    historyRefresh.taskResponse = undefined;
+    historyRefresh.rowTitle = 'Recovered history session';
+    const recoveredClick = await observeRefreshClick();
+    const recoveredReads = waitForRefreshReads(() =>
+      recoveredClick.evaluate((observation) => observation.clickedAt),
+    );
+    await refresh.click();
+    await recoveredReads;
+    await recoveredClick.dispose();
+    await expect(
+      recentWork.getByText('Recovered history session', { exact: true }),
+    ).toBeVisible();
+    await expect(recentWork.getByText(freshTitle, { exact: true })).toHaveCount(
+      0,
+    );
+    await expect(
+      recentWork.getByText('Updated', { exact: true }),
+    ).toBeVisible();
+    await expect(composer).toHaveValue(draft);
+    await expect(refresh).toBeFocused();
+  });
+}

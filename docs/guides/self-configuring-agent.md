@@ -327,7 +327,9 @@ another person owns, keeps `station_control_assurance_insufficient` (or
 it reads the same as a Session that does not exist. Reads keep their own
 answers: `read_conversation` answers `conversation_out_of_scope` or
 `conversation_not_found`, and `list_project_activity` and `get_session_digest`
-answer `session_not_found`. `station_control_assurance_insufficient` otherwise remains the code of the
+answer `session_not_found`. On `read_conversation`, `conversation_out_of_scope`
+carries the scope rule's `reason` when it has one, so a refusal for `host` does
+not read as another Project. `station_control_assurance_insufficient` otherwise remains the code of the
 assurance checks themselves, such as a tool that needs a bound caller or an
 approval command.
 
@@ -414,7 +416,8 @@ A station-control caller may read:
 
 - its own conversation;
 - a conversation the dispatch scope above admits, read with the owner's
-  Project `view` action;
+  Project `view` action. To a caller that is not bound, that excludes a
+  conversation that runs unconfined, even one in the caller's own Project;
 - a conversation a person referenced in a turn of the caller's conversation,
   by the conversation's id or one of its sessions' ids. Station decides this
   from the sender it recorded on that turn: the operator, or a paired device
@@ -431,11 +434,14 @@ For a caller that is not a bound operator, the transcript is read as the
 session's owner, so a reference never reaches another person's
 conversation, and another person's conversation reads as not found. A bound
 operator caller keeps the operator's reach (decision 2 of #2377) and can read
-any recorded conversation. Refusals name a reason:
-`conversation_out_of_scope` when the conversation is the owner's but outside
-the caller's scope, `conversation_deleted` when a referenced conversation no
-longer reads, and `conversation_not_found` otherwise, including an id Station
-has no record of. The
+any recorded conversation. Refusals name their cause.
+`conversation_out_of_scope` is answered when the conversation is the owner's
+but outside the caller's reach. It carries the scope rule's `reason` when the
+rule states one (`host` for a conversation that runs unconfined, `remote`,
+`other-project`, and so on), and its explanation matches that cause instead of
+naming another Project. `conversation_deleted` is answered when a referenced
+conversation no longer reads, and `conversation_not_found` otherwise,
+including an id Station has no record of. The
 [read route](../../src-server/routes/chat/conversation-reference-read.ts)
 defines the rule.
 
@@ -509,6 +515,17 @@ Session by its `sessionId`, without creating a task.
   `no_active_turn` when idle. Steering is delivered once, through the engine's
   mid-turn input, and an engine without it answers `session_busy`. The result
   carries the Session's `sessionId`, the `turnId`, and an `eventCursor`.
+  Set `notifyOnSettle` for a wake when the addressed turn ends, and
+  `notifyOnAttention` for requests that need the person and for a turn that
+  ends in an error or engine exit. Station derives the wake destination from
+  the calling Session. Use the subscription for coordination across turns
+  and keep `schedule_wake_up` as a long fallback heartbeat.
+- `watch_pull_request_status` watches a pull request already linked to a
+  readable Session in the caller's Project. With Pull request agent feedback
+  enabled, it delivers merge, closure, queue-removal, and required-check
+  changes without taking ownership of the pull request's feedback.
+- `cancel_coordination_subscription` closes a subscription owned by the
+  calling conversation. A delivery already in flight can still arrive.
 - `interrupt_session` stops the running turn of the Session (optionally a named
   `turnId`) and answers `no-active-turn` when nothing runs.
 - `wait_session` observes for at most 50 seconds until `turn-settled` (a turn
@@ -1200,7 +1217,7 @@ to Sessions started afterwards.
 ## Example agent
 
 Use this as an attended Station-engine Agent after configuring a usable Model
-connection and default model in [Connections](connections.md). No engine binding
+connection and default model in [Customize › Providers](connections.md). No engine binding
 is declared, so it uses Station's engine. The example declares delegation in
 `tools.available`. Whether a Session can delegate depends on the caller's
 authority, recorded depth, and inherited tool policy. Only the four listed

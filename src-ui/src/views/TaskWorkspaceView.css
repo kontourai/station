@@ -981,6 +981,12 @@
 }
 
 /* #4003: the Task's linked tracker item, read when the Task opens. */
+.task-room-header__pr-rollup {
+  display: flex;
+  align-items: center;
+  padding-inline: var(--k-space-4);
+}
+
 .task-workspace__work-item {
   display: flex;
   flex-wrap: wrap;

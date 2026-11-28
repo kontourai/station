@@ -69,7 +69,7 @@ function createStatus(overrides: Partial<SystemStatus> = {}): SystemStatus {
     recommendation: {
       code: 'unconfigured',
       type: 'connections',
-      actionLabel: 'Open Connections',
+      actionLabel: 'Open Customize',
       title: 'No usable AI path is configured yet',
       detail:
         'Start Ollama locally or add a provider/runtime connection to make Station ready for first-run chat.',
@@ -156,9 +156,9 @@ describe('ChatEmptyState', () => {
     expect(screen.getByText('Connect a model to start chatting')).toBeTruthy();
     expect(screen.queryByText('Start a chat')).toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Open Connections' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Open Providers' }));
 
-    expect(navigate).toHaveBeenCalledWith('/connections/models');
+    expect(navigate).toHaveBeenCalledWith('/customize/providers');
   });
 
   test("routes an engine attention CTA to that engine's Agent Apps configuration", () => {
@@ -178,7 +178,7 @@ describe('ChatEmptyState', () => {
 
     render(<ChatEmptyState agentSlug="dev-agent" agentName="Dev Agent" />);
     fireEvent.click(screen.getByRole('button', { name: 'Sign in to Codex' }));
-    expect(navigate).toHaveBeenCalledWith('/connections/engines/codex');
+    expect(navigate).toHaveBeenCalledWith('/customize/engines/codex');
   });
 
   test('keeps model setup contextual for a Station agent when only a coding engine is available', () => {
@@ -199,7 +199,7 @@ describe('ChatEmptyState', () => {
     expect(screen.getByText('Dev Agent needs a model connection')).toBeTruthy();
     expect(screen.queryByText(/coding engine is available/)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Manage connections' }));
-    expect(navigate).toHaveBeenCalledWith('/connections/models');
+    expect(navigate).toHaveBeenCalledWith('/customize/providers');
   });
 
   test('does not block a connected runtime chat when no model connection exists', () => {

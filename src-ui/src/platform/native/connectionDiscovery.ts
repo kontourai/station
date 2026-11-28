@@ -39,7 +39,27 @@ function privateLanHost(hostname: string): boolean {
   );
 }
 
-/** Called only after the trusted profile establishes a native mobile target. */
+function httpsAppOrigin(value: unknown): string | undefined {
+  if (typeof value !== 'string' || value.length > 245) return undefined;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'https:' || url.origin !== value) return undefined;
+    const labels = url.hostname.split('.');
+    if (
+      labels.length < 2 ||
+      url.hostname.length > 253 ||
+      !labels.every((label) =>
+        /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label),
+      ) ||
+      !/^[a-z]{2,63}$/.test(labels[labels.length - 1])
+    )
+      return undefined;
+    return url.origin;
+  } catch {
+    return undefined;
+  }
+}
+
 export function registerNativeConnectionDiscovery(): () => void {
   const active = new Map<string, AbortController>();
   const unregister = registerConnectionCandidateProvider({
@@ -139,7 +159,7 @@ export function registerNativeConnectionDiscovery(): () => void {
             candidates.push({
               candidateVersion: 1,
               name: entry.name,
-              url: url.origin,
+              url: httpsAppOrigin(entry.appOrigin) ?? url.origin,
               source: 'lan-dns-sd',
               discoveredAt: Date.now(),
             });

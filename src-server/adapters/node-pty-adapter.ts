@@ -1,4 +1,8 @@
-import { execFile } from 'node:child_process';
+import {
+  type ChildProcess,
+  type ExecFileException,
+  execFile,
+} from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { chmodSync, existsSync, readlinkSync } from 'node:fs';
 import { Socket } from 'node:net';
@@ -13,6 +17,7 @@ import {
   type TerminalCapability,
   terminalPtyUnavailableReason,
 } from '@kontourai/station-shared/terminal-capability';
+import { windowsSystemUtilityPath } from '@kontourai/station-shared/windows-system-utility';
 import {
   type IPtyAdapter,
   type IPtyProcess,
@@ -22,6 +27,9 @@ import { createLogger } from '../utils/logger.js';
 import { terminatePtyProcessGroups } from './pty-process-groups.js';
 
 const logger = createLogger({ name: 'node-pty-adapter' });
+
+type TaskkillFailure = Error &
+  Pick<ExecFileException, 'code' | 'signal' | 'killed'>;
 
 let nodePtyPromise: Promise<typeof import('node-pty')> | null = null;
 let didFixSpawnHelper = false;
@@ -171,6 +179,15 @@ class NodePtyProcess implements IPtyProcess {
   private pauseEpoch = 0;
   private outputIncomplete = false;
   private pauseWatch?: ReturnType<typeof setTimeout>;
+  private taskkillReceipt?: {
+    command: string;
+    helper?: ChildProcess;
+    spawned: boolean;
+    exited: boolean;
+    closed: boolean;
+    stdout: string;
+    stderr: string;
+  };
   /**
    * When each step of an ending happened (ms since the epoch), so a cleanup
    * that misses its deadline can say which step it was still waiting on.
@@ -251,26 +268,64 @@ class NodePtyProcess implements IPtyProcess {
         });
       });
       this.trace.taskkill = Date.now();
-      const failure = await new Promise<
-        (Error & { code?: number | string }) | null
-      >((resolve) =>
-        execFile(
-          'taskkill',
+      const receipt: NonNullable<typeof this.taskkillReceipt> = {
+        command: 'unresolved taskkill',
+        helper: undefined,
+        spawned: false,
+        exited: false,
+        closed: false,
+        stdout: '',
+        stderr: '',
+      };
+      this.taskkillReceipt = receipt;
+      const failure = await new Promise<TaskkillFailure | null>((resolve) => {
+        receipt.command = windowsSystemUtilityPath('taskkill');
+        const helper = execFile(
+          receipt.command,
           ['/T', '/F', '/PID', String(this.pid)],
           { timeout: 5_000, windowsHide: true },
           (error) => resolve(error),
-        ),
+        );
+        receipt.helper = helper;
+        helper.once('spawn', () => {
+          receipt.spawned = true;
+        });
+        helper.once('exit', () => {
+          receipt.exited = true;
+        });
+        helper.prependOnceListener('close', () => {
+          receipt.closed = true;
+        });
+        helper.stdout?.on('data', (chunk: Buffer) => {
+          receipt.stdout = (receipt.stdout + chunk.toString('utf8')).slice(
+            -2048,
+          );
+        });
+        helper.stderr?.on('data', (chunk: Buffer) => {
+          receipt.stderr = (receipt.stderr + chunk.toString('utf8')).slice(
+            -2048,
+          );
+        });
+      }).catch(
+        (error: unknown): TaskkillFailure =>
+          error instanceof Error ? error : new Error(String(error)),
       );
       this.trace.taskkillDone = Date.now();
       this.trace.taskkillResult = failure
-        ? `failed (${failure.code ?? failure.message})`
+        ? `failed (${failure.code ?? failure.message.slice(-2048)})`
         : 'exited 0';
       // 128: the shell had already ended, which leaves nothing to report.
       if (failure && failure.code !== 128) {
-        if (!this.exited) this.pty.kill();
-        throw new Error(
-          `Terminal process-tree cleanup failed: ${failure.message}`,
-        );
+        const diagnostic = `Terminal process-tree cleanup failed: ${failure.message.slice(-2048)}; code=${failure.code ?? 'none'}; signal=${failure.signal ?? 'none'}; killed=${failure.killed ?? false}; ${this.describeTermination()}`;
+        try {
+          if (!this.exited) this.pty.kill();
+        } catch (error) {
+          const detail = error instanceof Error ? error.message : String(error);
+          throw new Error(
+            `${diagnostic}; native cleanup failed: ${detail.slice(-2048)}`,
+          );
+        }
+        throw new Error(diagnostic);
       }
       await exited;
     })();
@@ -353,6 +408,19 @@ class NodePtyProcess implements IPtyProcess {
       `last output ${ago(trace.output)}`,
     );
     if (this.paused) parts.push('output paused');
+    const receipt = this.taskkillReceipt;
+    if (receipt) {
+      parts.push(
+        `utility=${JSON.stringify(receipt.helper?.spawnfile || receipt.command)}`,
+        `helper pid=${receipt.helper?.pid ?? 'unassigned'}`,
+        `killed=${receipt.helper?.killed ?? false}`,
+        `spawn=${receipt.spawned ? 'observed' : 'pending'}`,
+        `exit=${receipt.exited ? 'observed' : 'pending'} (code=${receipt.helper?.exitCode ?? 'none'}, signal=${receipt.helper?.signalCode ?? 'none'})`,
+        `close=${receipt.closed ? 'observed' : 'pending'}`,
+        `stdout=${JSON.stringify(receipt.stdout)}`,
+        `stderr=${JSON.stringify(receipt.stderr)}`,
+      );
+    }
     return parts.join('; ');
   }
 

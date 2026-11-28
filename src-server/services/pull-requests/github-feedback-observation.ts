@@ -1,16 +1,20 @@
 /**
- * The one GitHub read pull request agent feedback makes per pull request:
- * a single `gh api graphql --hostname <host>` for state, head and base,
+ * The core GitHub pull request feedback read:
+ * `gh api graphql --hostname <host>` for state, head and base,
  * mergeability, the head commit's checks, review threads (with their
  * resolved and outdated state, which the REST review-comment read cannot
- * give) and each reviewer's latest review.
+ * give) and each reviewer's latest review. A separate optional read adds
+ * merge queue facts when the host supports them.
  *
  * gh runs through the provider's own transport, so it starts in an empty
  * directory and never reads a checkout (#2363). Strings are passed with
  * `-f` (raw); only the validated number uses `-F`, which would otherwise
  * read a value starting with `@` as a file.
  */
-import type { PullRequestLinkIdentity } from '@kontourai/station-contracts/conversation-pull-request-links';
+import type {
+  LinkedPullRequestSnapshot,
+  PullRequestLinkIdentity,
+} from '@kontourai/station-contracts/conversation-pull-request-links';
 import type {
   PullRequestFeedbackCheck,
   PullRequestFeedbackObservation,
@@ -24,6 +28,13 @@ export const GITHUB_FEEDBACK_QUERY = `query($owner: String!, $name: String!, $nu
   repository(owner: $owner, name: $name) {
     pullRequest(number: $number) {
       number
+      title
+      updatedAt
+      mergedAt
+      closedAt
+      additions
+      deletions
+      changedFiles
       url
       state
       merged
@@ -40,6 +51,7 @@ export const GITHUB_FEEDBACK_QUERY = `query($owner: String!, $name: String!, $nu
           commit {
             oid
             statusCheckRollup {
+              state
               contexts(first: 100) {
                 totalCount
                 nodes {
@@ -88,6 +100,21 @@ export const GITHUB_FEEDBACK_QUERY = `query($owner: String!, $name: String!, $nu
   }
 }`;
 
+const GITHUB_FEEDBACK_LANDING_QUERY = `query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      headRefOid
+      mergeStateStatus
+      isInMergeQueue
+      mergeQueueEntry { position }
+      autoMergeRequest { enabledAt }
+      queueRemovals: timelineItems(last: 1, itemTypes: [REMOVED_FROM_MERGE_QUEUE_EVENT]) {
+        nodes { ... on RemovedFromMergeQueueEvent { id createdAt reason } }
+      }
+    }
+  }
+}`;
+
 const NUMBER = /^[1-9]\d{0,9}$/;
 /**
  * Forge text is cut once gh's answer is parsed, so the stored observation
@@ -109,6 +136,7 @@ const HOST = /^[a-z0-9.-]{1,253}(?::\d{1,5})?$/;
 /** The gh argv for one read; refuses an identity that is not plainly one. */
 function githubFeedbackArgs(
   identity: Pick<PullRequestLinkIdentity, 'host' | 'repository' | 'ref'>,
+  query = GITHUB_FEEDBACK_QUERY,
 ): string[] {
   const host = identity.host.toLowerCase();
   if (
@@ -124,7 +152,7 @@ function githubFeedbackArgs(
     '--hostname',
     host,
     '-f',
-    `query=${GITHUB_FEEDBACK_QUERY}`,
+    `query=${query}`,
     '-f',
     `owner=${identity.repository.owner}`,
     '-f',
@@ -237,6 +265,79 @@ function normalizeReview(node: any): PullRequestFeedbackReview | undefined {
   };
 }
 
+function nonNegativeCount(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+    ? value
+    : undefined;
+}
+
+function snapshotChecks(
+  rollup: any,
+  contexts: readonly any[],
+): LinkedPullRequestSnapshot['checks'] {
+  const waiting = contexts.some(
+    (node) =>
+      node?.status === 'WAITING' || node?.conclusion === 'ACTION_REQUIRED',
+  );
+  switch (rollup?.state) {
+    case 'ERROR':
+      return 'failing';
+    case 'FAILURE':
+      return waiting &&
+        rollup.contexts?.totalCount === contexts.length &&
+        !contexts.some((node) =>
+          [
+            'FAILURE',
+            'ERROR',
+            'TIMED_OUT',
+            'CANCELLED',
+            'STARTUP_FAILURE',
+          ].includes(node?.state ?? node?.conclusion),
+        )
+        ? 'awaiting-approval'
+        : 'failing';
+    case 'PENDING':
+    case 'EXPECTED':
+      return waiting ? 'awaiting-approval' : 'pending';
+    case 'SUCCESS':
+      return rollup.contexts?.totalCount > 0 || contexts.length > 0
+        ? 'passing'
+        : undefined;
+    default:
+      return undefined;
+  }
+}
+
+function snapshotLanding(
+  pr: any,
+  state: string,
+): LinkedPullRequestSnapshot['landing'] {
+  if (state === 'MERGED') return { state: 'merged' };
+  if (state !== 'OPEN') return undefined;
+  if (pr.isInMergeQueue === true) {
+    const position = nonNegativeCount(pr.mergeQueueEntry?.position);
+    return { state: 'queued', ...(position !== undefined ? { position } : {}) };
+  }
+  if (pr.isInMergeQueue !== false) return undefined;
+  const removal = pr.queueRemovals?.nodes?.at(-1);
+  const removalId = text(removal?.id);
+  const removedAt = text(removal?.createdAt);
+  const armedAt = text(pr.autoMergeRequest?.enabledAt);
+  if (removalId && removedAt && (!armedAt || removedAt >= armedAt)) {
+    const reason = capped(text(removal.reason), EXCERPT_CHARS);
+    return {
+      state: 'removed',
+      id: removalId,
+      at: removedAt,
+      ...(reason ? { reason } : {}),
+    };
+  }
+  if (armedAt) return { state: 'armed' };
+  if (pr.autoMergeRequest === null && Array.isArray(pr.queueRemovals?.nodes))
+    return { state: 'not-queued' };
+  return undefined;
+}
+
 /** gh's JSON for one read, as an observation; throws on an incomplete one. */
 export function normalizeGitHubFeedbackObservation(
   parsed: unknown,
@@ -269,7 +370,44 @@ export function normalizeGitHubFeedbackObservation(
   const state = pr.merged === true ? 'MERGED' : pr.state.toUpperCase();
   const headOwner = login(pr.headRepositoryOwner);
   const viewerLogin = login(data.viewer);
+  const mergeable =
+    pr.mergeable === 'MERGEABLE'
+      ? 'mergeable'
+      : pr.mergeable === 'CONFLICTING'
+        ? 'conflicting'
+        : 'unknown';
+  const reviewDecision =
+    pr.reviewDecision === 'APPROVED'
+      ? 'approved'
+      : pr.reviewDecision === 'CHANGES_REQUESTED'
+        ? 'changes_requested'
+        : pr.reviewDecision === 'REVIEW_REQUIRED'
+          ? 'review_required'
+          : undefined;
+  const title = capped(text(pr.title), NAME_CHARS);
   return {
+    ...(title
+      ? {
+          snapshot: {
+            title,
+            pullRequestState: state,
+            url: pr.url,
+            head: pr.headRefOid,
+            observedAt,
+            isDraft: typeof pr.isDraft === 'boolean' ? pr.isDraft : undefined,
+            checks: snapshotChecks(rollup, contextNodes),
+            reviewDecision,
+            mergeability: mergeable,
+            updatedAt: text(pr.updatedAt),
+            mergedAt: text(pr.mergedAt),
+            closedAt: text(pr.closedAt),
+            additions: nonNegativeCount(pr.additions),
+            deletions: nonNegativeCount(pr.deletions),
+            changedFiles: nonNegativeCount(pr.changedFiles),
+            landing: snapshotLanding(pr, state),
+          },
+        }
+      : {}),
     identity: {
       provider: identity.provider,
       host: identity.host.toLowerCase(),
@@ -284,12 +422,7 @@ export function normalizeGitHubFeedbackObservation(
     headRefName: pr.headRefName,
     baseRefName: pr.baseRefName,
     ...(headOwner ? { headOwner } : {}),
-    mergeable:
-      pr.mergeable === 'MERGEABLE'
-        ? 'mergeable'
-        : pr.mergeable === 'CONFLICTING'
-          ? 'conflicting'
-          : 'unknown',
+    mergeable,
     ...(text(pr.reviewDecision) ? { reviewDecision: pr.reviewDecision } : {}),
     checks: contextNodes
       .map(normalizeCheck)
@@ -383,6 +516,28 @@ export async function readGitHubFeedbackObservation(
         cause: 'not-found',
         reason: 'GitHub did not return this pull request.',
       };
+    if (observation.state === 'OPEN' && observation.snapshot) {
+      try {
+        const landingAnswer = await gh(
+          githubFeedbackArgs(identity, GITHUB_FEEDBACK_LANDING_QUERY),
+        );
+        const parsed = JSON.parse(landingAnswer.stdout);
+        const pullRequest = parsed?.data?.repository?.pullRequest;
+        if (
+          !parsed?.errors?.length &&
+          pullRequest?.headRefOid === observation.headSha
+        ) {
+          observation.snapshot.landing = snapshotLanding(
+            pullRequest,
+            observation.state,
+          );
+          if (pullRequest.mergeStateStatus === 'CLEAN')
+            observation.snapshot.reviewGateSatisfied = true;
+        }
+      } catch {
+        // Older Enterprise schemas may not support merge queues.
+      }
+    }
     return { state: 'observed', observation };
   } catch {
     return {

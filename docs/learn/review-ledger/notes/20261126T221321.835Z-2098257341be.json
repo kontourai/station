@@ -1,0 +1,7 @@
+{
+  "revision": "386987b38139d28a9627bf7c3766a467cb57fc42",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed the desktop workspace fixture delta: after starting a project task, explicitly click the shipped Show Chat control before terminal settlement and files/task-context/editor profiling. The observed collapsed-reader screenshot explains the missing prerequisite. Original visibility, real request, content and overflow assertions remain; this changes setup rather than the measured workload or deadlines. Coverage map/campaign remain diagnostic fixture claims, not whole-app or native qualification.","inputs":["tests/task-first-home.spec.ts"]}
+  ]
+}

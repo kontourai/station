@@ -9,7 +9,6 @@ import { getPathForView } from '../app-shell/routing';
 import { CheckGlyph, CloseGlyph } from '../components/icons/Glyph';
 import { PageRow } from '../components/PageRow';
 import { PageSection } from '../components/PageSection';
-import { PageEyebrowTrail, usePageHeader } from '../components/page-frame';
 import { SectionNav } from '../components/SectionNav';
 import { Empty, ErrorState, Skeleton } from '../components/state';
 import { useNavigation } from '../contexts/NavigationContext';
@@ -64,14 +63,6 @@ function IconGlobe() {
     </svg>
   );
 }
-
-/**
- * The eyebrow this view publishes standalone (not `embedded`) — see the
- * usage site below for why it is unlinked.
- */
-const CONNECTIONS_EYEBROW = (
-  <PageEyebrowTrail segments={[{ label: 'Connections' }]} />
-);
 
 export function KnowledgeConnectionView({
   embedded = false,
@@ -142,27 +133,14 @@ export function KnowledgeConnectionView({
   const dirty =
     dataDir !== null && dataDir !== (vectorDb?.config.dataDir as string);
   const { DiscardModal } = useUnsavedGuard(dirty);
-  useCloseShortcut(() => navigate('/connections'), !embedded);
-  /**
-   * Embedded in a Settings section this view is not a page, so it publishes
-   * nothing — the host page keeps its own title. Standalone, the frame
-   * renders the title this view used to draw itself.
-   *
-   * archive#4463: the eyebrow is the parent only
-   * ('Connections'), unlinked — not the retired 'Connections / Knowledge
-   * infrastructure' breadcrumb-as-eyebrow, which restated the title (the
-   * host's own page heading) one line above it. Unlinked because
-   * `/connections` is a redirect-only resolver: a click would be a no-op or
-   * a sibling jump dressed up as "go up", the same call made for the five
-   * `ConnectionsSectionFrame` sections.
-   */
-  usePageHeader(embedded ? null : { eyebrow: CONNECTIONS_EYEBROW });
+  useCloseShortcut(() => navigate('/customize'), !embedded);
 
   return (
     <>
       <div className="knowledge-view">
         <p className="knowledge-view__cross-link">
-          Manage your personal knowledge in Settings.{' '}
+          Project knowledge is in each project's settings. Your own knowledge is
+          in Settings:{' '}
           <button
             type="button"
             className="button button--link"
@@ -175,8 +153,6 @@ export function KnowledgeConnectionView({
           >
             Open Settings → My knowledge store
           </button>
-          <br />
-          For project knowledge, open the project's settings.
         </p>
 
         <SectionNav
@@ -412,7 +388,7 @@ export function KnowledgeConnectionView({
                     navigate(getPathForView({ type: 'connections-models' })!)
                   }
                 >
-                  Add one in Models →
+                  Add one in Providers →
                 </button>
               }
             />

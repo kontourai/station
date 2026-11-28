@@ -1,0 +1,15 @@
+{
+  "revision": "f8b6c4f01200fe67cc99f1dafb8222d5b0b24c80",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Scoped delta review at f8b6c4f012: all address, pairing-code, QR and Nearby identification producers now enter one synchronous in-flight guard and share mutation settlement. A scanned offer while Nearby identification is pending cannot replace its destination or strand its cleanup. Existing separate Device/peer approval and public-identity trust limits are unchanged. The deferred two-candidate plus scanned-offer caller regression and existing dialog tests passed (21 tests).","inputs":["src-ui/src/views/connections-hub/ConnectStationDialog.tsx"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Scoped delta review at f8b6c4f012: all address, pairing-code, QR and Nearby identification producers now enter one synchronous in-flight guard and share mutation settlement. A scanned offer while Nearby identification is pending cannot replace its destination or strand its cleanup. Existing separate Device/peer approval and public-identity trust limits are unchanged. The deferred two-candidate plus scanned-offer caller regression and existing dialog tests passed (21 tests).","inputs":["src-ui/src/views/connections-hub/ConnectStationDialog.tsx"]},
+
+    {"path":"docs/reference/connect.md","note":"Scoped delta review at f8b6c4f012: all address, pairing-code, QR and Nearby identification producers now enter one synchronous in-flight guard and share mutation settlement. A scanned offer while Nearby identification is pending cannot replace its destination or strand its cleanup. Existing separate Device/peer approval and public-identity trust limits are unchanged. The deferred two-candidate plus scanned-offer caller regression and existing dialog tests passed (21 tests).","inputs":["src-ui/src/views/connections-hub/ConnectStationDialog.tsx"]},
+
+    {"path":"docs/guides/connections.md","note":"Scoped delta review at f8b6c4f012: the existing provider-based concurrency test now also delivers a valid scanned offer while Nearby identification is deferred. It observes one compatibility request, no access grant or selection before approval, and the original destination after completion. Scanner is a pass-through spy for the callback boundary; camera capture tests still use the real component. No protocol or documented access claim changes.","inputs":["src-ui/src/__tests__/ConnectStationDialog.test.tsx"]},
+
+    {"path":"docs/reference/connect.md","note":"Scoped delta review at f8b6c4f012: the existing provider-based concurrency test now also delivers a valid scanned offer while Nearby identification is deferred. It observes one compatibility request, no access grant or selection before approval, and the original destination after completion. Scanner is a pass-through spy for the callback boundary; camera capture tests still use the real component. No protocol or documented access claim changes.","inputs":["src-ui/src/__tests__/ConnectStationDialog.test.tsx"]}
+  ]
+}

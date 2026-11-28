@@ -84,7 +84,7 @@ Moves so far:
   (`chat-show-reasoning`, `chat-show-tool-details`, `chat-dock-auto-hide`,
   `diff-style`, `diff-wrap`).
 - Color themes: the theme and accent controls moved to the Appearance page
-  (`/appearance`, listed in Customize). The `theme` and `accent-color` rows
+  (`/appearance`, opened from the command palette and these rows). The `theme` and `accent-color` rows
   stay in `appearance` with their ids, as links to that page (Theme also keeps
   the light/dark toggle), so `highlight=theme` and `highlight=accent-color`
   still reveal a row and Settings search still finds them.
@@ -100,7 +100,8 @@ Advanced → Developer tools reveals five independent, default-off device opt-in
 `experimental-flow`, `experimental-readiness`, `experimental-trust`,
 `experimental-station-routes`, and `experimental-sheet-gestures`.
 `surface-trust` is visible only with the Trust preview enabled, and the
-Devices page's `station-routes` section only with the Station routes preview. Search and the
+Devices page's `station-routes` section with either the Station routes device
+preview or the Station-wide Dynamic HTTPS routes preview. Search and the
 command palette omit hidden preview settings. A deep link to an opted-out
 control announces that the tool is off rather than waiting for a missing row.
 The registry remains a build-wide inventory; its presence does not mean a row

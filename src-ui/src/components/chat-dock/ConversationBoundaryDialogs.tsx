@@ -118,6 +118,11 @@ export function ConversationBoundaryDialogs({
     cancelFork,
   } = dialogs;
   const handoffIsActive = handoffSession?.id === activeSession?.id;
+  const handoffDraft =
+    handoffIsActive &&
+    handoffReturnFocusRef.current instanceof HTMLTextAreaElement
+      ? handoffReturnFocusRef.current
+      : undefined;
   // The client turn this chat is busy with (the handoff's own dispatch marks
   // it `handoff:<key>`), read live from the chat store.
   const handoffBusyTurnId = useActiveChatSelector(
@@ -198,8 +203,13 @@ export function ConversationBoundaryDialogs({
               refuseConversationHandoffUiState(state, clientTurnId),
             );
           }}
+          returnFocusTarget={handoffDraft}
           onClose={() => {
             setHandoffSource(null);
+            if (handoffDraft) {
+              handoffDraft.focus({ preventScroll: true });
+              return;
+            }
             // The engine picker has no trigger to return to: the composer.
             requestAnimationFrame(() => {
               // The trigger can be gone (Run setup closed on a phone, or the

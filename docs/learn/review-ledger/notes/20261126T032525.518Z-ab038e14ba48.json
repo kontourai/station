@@ -1,0 +1,9 @@
+{
+  "revision": "09fc618d14eabeab937ac8306658ba75b6f21280",
+
+  "notes": [
+    {"path":"docs/guides/native-releases.md","note":"Traced 09fc618d14 staging order: dependency aliases, bundled registry, server bundle and private Node are staged before Windows resource-path finalization. Existing README and Nightly distribution descriptions remain accurate; the new artifact-specific extraction limit is documented in native-releases. No signed Nightly delivery or full shell usability claim.","inputs":["scripts/stage-desktop-server-runtime.mjs"]},
+
+    {"path":"docs/guides/nightly.md","note":"Traced 09fc618d14 staging order: dependency aliases, bundled registry, server bundle and private Node are staged before Windows resource-path finalization. Existing README and Nightly distribution descriptions remain accurate; the new artifact-specific extraction limit is documented in native-releases. No signed Nightly delivery or full shell usability claim.","inputs":["scripts/stage-desktop-server-runtime.mjs"]}
+  ]
+}

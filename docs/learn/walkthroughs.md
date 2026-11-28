@@ -70,7 +70,10 @@ Its connection headings and test explanation predate the newer intent-first
 wording and the disclosure before Create. The current form explains credential
 prerequisites and its immediate, potentially billable check before creating a
 connection; this older capture does not show that guidance. The recorded
-capture revision and sample-data limits remain explicit.
+capture revision and sample-data limits remain explicit. Both captures here
+also predate the Customize page: they show the retired Connections section
+tabs, where Models is now **Customize → Providers** and Engines is
+**Customize → Engines**.
 
 ![The Models page with an example local connection selected.](media/connections-models.png)
 

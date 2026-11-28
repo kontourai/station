@@ -68,6 +68,7 @@ export type JsonRpcId = string | number;
 
 export interface PendingApprovalRequest {
   openedEventId?: string;
+  allOffered?: boolean;
   blocking?: boolean;
   rpcRequestId: JsonRpcId;
   method: string;
@@ -116,6 +117,7 @@ export interface CodexSessionRecord extends CodexUsageLimitState {
       turnId: string;
       rpcKey: string;
       toolName: string;
+      allOffered: boolean;
     }
   >;
   cancelledBoundTurns?: Set<string>;
@@ -140,6 +142,8 @@ export interface CodexSessionRecord extends CodexUsageLimitState {
    * auto-accepts later calls without re-prompting. Dies with the session.
    */
   approvedTools: Set<string>;
+  allGranted?: boolean;
+  denyApprovals?: boolean;
   /**
    * The approval mode the latest turn ran at (`never` is full access), from
    * the posture it was sent. Absent until a turn sends one.

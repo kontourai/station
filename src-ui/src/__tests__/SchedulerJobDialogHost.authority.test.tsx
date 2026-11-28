@@ -170,7 +170,7 @@ test('editing broken A stays in repair while ready B exists, then restores A and
     screen.getByRole('button', { name: 'Repair this agent’s setup' }),
   );
   await waitFor(() =>
-    expect(navigationStore.getSnapshot().pathname).toBe('/connections/models'),
+    expect(navigationStore.getSnapshot().pathname).toBe('/customize/providers'),
   );
   await act(async () => {});
   expect(screen.queryByRole('dialog')).toBeNull();
@@ -179,7 +179,7 @@ test('editing broken A stays in repair while ready B exists, then restores A and
   inputs.reconciling = true;
   view.rerender(<SchedulerJobDialogHost />);
   await act(async () => {});
-  expect(navigationStore.getSnapshot().pathname).toBe('/connections/models');
+  expect(navigationStore.getSnapshot().pathname).toBe('/customize/providers');
   expect(screen.queryByRole('dialog')).toBeNull();
   expect(inputs.refetch).not.toHaveBeenCalled();
   inputs.reconciling = false;
@@ -209,7 +209,7 @@ test('a reconciling final read refreshes unchanged snapshots until a current cat
     screen.getByRole('button', { name: 'Repair this agent’s setup' }),
   );
   await waitFor(() =>
-    expect(navigationStore.getSnapshot().pathname).toBe('/connections/models'),
+    expect(navigationStore.getSnapshot().pathname).toBe('/customize/providers'),
   );
   vi.useFakeTimers();
   inputs.refetch.mockImplementationOnce(async () => {

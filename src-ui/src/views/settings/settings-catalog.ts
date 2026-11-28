@@ -326,6 +326,13 @@ const SETTINGS_CATALOG_SOURCE = [
     configKeys: ['experimentalSheetGesturesEnabled'],
   },
   {
+    id: 'experimental-inbox-row-actions',
+    title: 'Inbox row actions preview',
+    section: 'developer-tools',
+    conditional: 'developer',
+    configKeys: ['experimentalInboxRowActionsEnabled'],
+  },
+  {
     id: 'shared-answers',
     title: 'Shared answers',
     section: 'answer-shares',
@@ -933,6 +940,7 @@ const SETTINGS_CATALOG_SOURCE = [
     section: 'station-routes',
     conditional: 'experimental-station-routes',
     keywords: ['tailscale', 'lan', 'address', 'failover', 'connection'],
+    configKeys: ['trustedConsentOrigin'],
   },
   {
     id: 'personal-knowledge-store',
@@ -1035,8 +1043,6 @@ const SETTING_SCOPE_OVERRIDES: Readonly<
   'deployed-build': 'informational',
   'message-context': 'temporary',
   'mobile-pairing': 'informational',
-  // Routes are saved in this device's own connection profile.
-  'station-routes': 'device',
 };
 
 /**

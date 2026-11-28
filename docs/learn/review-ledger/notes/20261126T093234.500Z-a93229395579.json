@@ -1,0 +1,13 @@
+{
+  "revision": "42452949f511896902dc9c11f0f346ec0b978bd5",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Checked the preview toolbar against the responsive inventory, shared controls, theme tokens, and SDK query ownership. The live browser rendered the controls and equal-height loading and loaded rows at 393 and 1440 CSS pixels in both themes.","inputs":["docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/guides/theming.md","note":"Checked the preview toolbar against the responsive inventory, shared controls, theme tokens, and SDK query ownership. The live browser rendered the controls and equal-height loading and loaded rows at 393 and 1440 CSS pixels in both themes.","inputs":["docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/backend.md","note":"Checked the preview toolbar against the responsive inventory, shared controls, theme tokens, and SDK query ownership. The live browser rendered the controls and equal-height loading and loaded rows at 393 and 1440 CSS pixels in both themes.","inputs":["docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Checked the preview toolbar against the responsive inventory, shared controls, theme tokens, and SDK query ownership. The live browser rendered the controls and equal-height loading and loaded rows at 393 and 1440 CSS pixels in both themes.","inputs":["docs/ui/responsive-action-surfaces.txt"]}
+  ]
+}

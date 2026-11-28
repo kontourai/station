@@ -3,6 +3,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   useCallback,
   useEffect,
+  useId,
   useLayoutEffect,
   useRef,
   useState,
@@ -21,20 +22,23 @@ export function ImageInspector({
   name,
   errorMessage = 'This image could not be loaded. Close the preview and try again.',
   onNavigate,
-  actions,
+  galleryHeader,
 }: {
   src: string;
   name: string;
   errorMessage?: string;
   onNavigate?: (direction: -1 | 1) => void;
-  /** Rendered at the end of the zoom toolbar (e.g. the preview's Download). */
-  actions?: ReactNode;
+  galleryHeader?: ReactNode;
 }) {
   const viewportRef = useRef<HTMLElement>(null);
   const [natural, setNatural] = useState({ width: 0, height: 0 });
   const [viewport, setViewport] = useState({ width: 0, height: 0 });
   const [manualScale, setManualScale] = useState<number | null>(null);
   const [failed, setFailed] = useState(false);
+  const [zoomOpen, setZoomOpen] = useState(false);
+  const zoomControlsId = useId();
+  const zoomTrigger = useRef<HTMLButtonElement>(null);
+  const swipeStart = useRef<Point | null>(null);
   const pointers = useRef(new Map<number, Point>());
   const anchor = useRef<{ x: number; y: number; at: Point } | null>(null);
   const fit =
@@ -61,6 +65,7 @@ export function ImageInspector({
     setManualScale(null);
     setFailed(false);
     pointers.current.clear();
+    swipeStart.current = null;
     anchor.current = null;
     const el = viewportRef.current;
     if (el) {
@@ -186,13 +191,22 @@ export function ImageInspector({
 
   const zoomControls = (
     <fieldset className="image-inspector__controls" aria-label="Image zoom">
-      <Button disabled={!ready} onClick={reset}>
+      <Button
+        variant={galleryHeader ? 'ghost' : undefined}
+        disabled={!ready}
+        onClick={reset}
+      >
         Fit
       </Button>
-      <Button disabled={!ready} onClick={() => zoom(1)}>
+      <Button
+        variant={galleryHeader ? 'ghost' : undefined}
+        disabled={!ready}
+        onClick={() => zoom(1)}
+      >
         Actual size
       </Button>
       <Button
+        variant={galleryHeader ? 'ghost' : undefined}
         className="image-inspector__zoom-step"
         disabled={!ready || scale <= minimum}
         onClick={() => zoom(scale / 1.25)}
@@ -205,6 +219,7 @@ export function ImageInspector({
         {ready ? `${Math.round(scale * 100)}%` : '—'}
       </output>
       <Button
+        variant={galleryHeader ? 'ghost' : undefined}
         className="image-inspector__zoom-step"
         disabled={!ready || scale >= 8}
         onClick={() => zoom(scale * 1.25)}
@@ -217,11 +232,42 @@ export function ImageInspector({
   );
 
   return (
-    <section className="image-inspector" aria-label="Image inspection">
-      {actions ? (
+    <section
+      className={
+        galleryHeader
+          ? 'image-inspector image-inspector--gallery'
+          : 'image-inspector'
+      }
+      aria-label="Image inspection"
+      onKeyDown={(event) => {
+        if (event.key === 'Escape' && zoomOpen) {
+          event.preventDefault();
+          setZoomOpen(false);
+          zoomTrigger.current?.focus();
+        }
+      }}
+    >
+      {galleryHeader ? (
         <div className="image-inspector__toolbar">
-          {zoomControls}
-          {actions}
+          {galleryHeader}
+          <Button
+            ref={zoomTrigger}
+            variant="ghost"
+            aria-label="Zoom controls"
+            aria-expanded={zoomOpen}
+            aria-controls={zoomControlsId}
+            title="Zoom controls"
+            onClick={() => setZoomOpen(!zoomOpen)}
+          >
+            <span aria-hidden="true">⋯</span>
+          </Button>
+          <div
+            id={zoomControlsId}
+            className="image-inspector__zoom-popover"
+            hidden={!zoomOpen}
+          >
+            {zoomOpen && zoomControls}
+          </div>
         </div>
       ) : (
         zoomControls
@@ -262,6 +308,13 @@ export function ImageInspector({
           if (!ready || event.button !== 0 || pointers.current.size >= 2)
             return;
           event.currentTarget.focus({ preventScroll: true });
+          swipeStart.current =
+            onNavigate &&
+            pointers.current.size === 0 &&
+            scaleRef.current <= fit &&
+            event.pointerType === 'touch'
+              ? { x: event.clientX, y: event.clientY }
+              : null;
           pointers.current.set(event.pointerId, {
             x: event.clientX,
             y: event.clientY,
@@ -271,14 +324,25 @@ export function ImageInspector({
         }}
         onPointerMove={move}
         onPointerUp={(event) => {
-          pointers.current.delete(event.pointerId);
+          if (!pointers.current.delete(event.pointerId)) return;
+          const start = swipeStart.current;
+          swipeStart.current = null;
           if (event.currentTarget.hasPointerCapture(event.pointerId))
             event.currentTarget.releasePointerCapture(event.pointerId);
+          if (!start) return;
+          const dx = event.clientX - start.x;
+          const dy = event.clientY - start.y;
+          if (Math.abs(dx) >= 48 && Math.abs(dx) > Math.abs(dy) * 1.4)
+            onNavigate?.(dx < 0 ? 1 : -1);
         }}
-        onPointerCancel={(event) => pointers.current.delete(event.pointerId)}
-        onLostPointerCapture={(event) =>
-          pointers.current.delete(event.pointerId)
-        }
+        onPointerCancel={(event) => {
+          if (pointers.current.delete(event.pointerId))
+            swipeStart.current = null;
+        }}
+        onLostPointerCapture={(event) => {
+          if (pointers.current.delete(event.pointerId))
+            swipeStart.current = null;
+        }}
       >
         {failed ? (
           <p role="alert">{errorMessage}</p>
@@ -309,14 +373,16 @@ export function ImageInspector({
           </div>
         )}
       </section>
-      <p className="image-inspector__hint">
-        <span className="image-inspector__hint-mobile">
-          Pinch to zoom. Drag to pan.
-        </span>
-        <span className="image-inspector__hint-desktop">
-          Drag to pan. Alt+scroll to zoom. Home fits the image.
-        </span>
-      </p>
+      {!galleryHeader && (
+        <p className="image-inspector__hint">
+          <span className="image-inspector__hint-mobile">
+            Pinch to zoom. Drag to pan.
+          </span>
+          <span className="image-inspector__hint-desktop">
+            Drag to pan. Alt+scroll to zoom. Home fits the image.
+          </span>
+        </p>
+      )}
     </section>
   );
 }

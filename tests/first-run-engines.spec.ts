@@ -1443,7 +1443,7 @@ for (const viewport of [
     const fixture = await setupReturnFixture(page, viewport.chrome);
     await connectFromAgentChip(page, fixture.modal);
     await expect(fixture.modal).toHaveCount(0);
-    await expect(page).toHaveURL(/\/connections/);
+    await expect(page).toHaveURL(/\/customize/);
     const returnButton = page.getByRole('button', {
       name: 'Return to New Chat',
       exact: true,

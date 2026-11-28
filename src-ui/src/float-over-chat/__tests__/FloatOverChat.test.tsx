@@ -350,7 +350,16 @@ test('phone chat opens the conversation’s live browser before any agent input'
       within(viewer).getByRole('button', { name: 'Close browser' }),
     );
     expect(screen.queryByRole('dialog', { name: 'Browser' })).toBeNull();
-    expect(screen.getByRole('button', { name: 'Open browser' })).toBeTruthy();
+    h.opener.mockReturnValue({ ok: true });
+    fireEvent.click(screen.getByRole('button', { name: 'Open browser' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Open in Browser pane' }),
+    );
+    expect(h.opener).toHaveBeenCalledWith({
+      projectId: 'p-alpha',
+      browserSessionId: SESSION,
+    });
+    expect(screen.queryByRole('dialog', { name: 'Browser' })).toBeNull();
   } finally {
     vi.unstubAllGlobals();
   }

@@ -523,7 +523,7 @@ describe('createStationEngineAvailabilityReader (#1536 D8 review H2)', () => {
       )({ name: 'Station', model: 'anthropic/opus' } as never),
     ).toBe(
       "Model connection 'anthropic-main' was refused by its provider at its " +
-        'last check. Fix its settings and test it again in Connections.',
+        'last check. Fix its settings and test it again in Customize › Providers.',
     );
   });
 
@@ -564,7 +564,7 @@ describe('createStationEngineAvailabilityReader (#1536 D8 review H2)', () => {
       } as never),
     ).toBe(
       "Model connection 'anthropic-main' was refused by its provider at its " +
-        'last check. Fix its settings and test it again in Connections.',
+        'last check. Fix its settings and test it again in Customize › Providers.',
     );
   });
 });

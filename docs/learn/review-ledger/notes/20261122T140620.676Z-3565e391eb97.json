@@ -1,0 +1,23 @@
+{
+  "revision": "1d9b1843d2314edf604ce49de0917602b1fc909e",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Only the Task inspection link changed: Find apps opens Apps › Discover. Citing pages describe the Task workspace and are unaffected.","inputs":["src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/contexts/workspace-surfaces/CONTEXT.md","note":"Only the Task inspection link changed: Find apps opens Apps › Discover. Citing pages describe the Task workspace and are unaffected.","inputs":["src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/glossary.md","note":"Only the Task inspection link changed: Find apps opens Apps › Discover. Citing pages describe the Task workspace and are unaffected.","inputs":["src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Only the Task inspection link changed: Find apps opens Apps › Discover. Citing pages describe the Task workspace and are unaffected.","inputs":["src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/learn/media/shared-task-document.png","note":"Only the Task inspection link changed: Find apps opens Apps › Discover. Citing pages describe the Task workspace and are unaffected.","inputs":["src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Only the Task inspection link changed: Find apps opens Apps › Discover. Citing pages describe the Task workspace and are unaffected.","inputs":["src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"Only the Task inspection link changed: Find apps opens Apps › Discover. Citing pages describe the Task workspace and are unaffected.","inputs":["src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/user/concepts.md","note":"Only the Task inspection link changed: Find apps opens Apps › Discover. Citing pages describe the Task workspace and are unaffected.","inputs":["src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/user/settings.md","note":"Only the Task inspection link changed: Find apps opens Apps › Discover. Citing pages describe the Task workspace and are unaffected.","inputs":["src-ui/src/views/TaskWorkspaceView.tsx"]}
+  ]
+}

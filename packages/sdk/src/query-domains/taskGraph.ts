@@ -175,10 +175,13 @@ export type TaskListRecord = TaskRecord &
 export async function fetchTaskPullRequestFacts(
   projectId: string,
   apiBase?: string,
+  taskId?: string,
 ): Promise<TaskPullRequestFactsProjection | null> {
   const resolvedApiBase = await resolveApiBase(apiBase);
+  const query = new URLSearchParams({ projectId });
+  if (taskId) query.set('taskId', taskId);
   const response = await authenticatedFetch(
-    `${resolvedApiBase}/api/tasks/pull-request-facts?${new URLSearchParams({ projectId })}`,
+    `${resolvedApiBase}/api/tasks/pull-request-facts?${query}`,
   );
   if (response.status === 404) {
     const body = await readJsonBody(response);
@@ -195,14 +198,15 @@ export async function fetchTaskPullRequestFacts(
  */
 export function useTaskPullRequestFactsQuery(
   projectId: string | undefined,
-  config: { enabled?: boolean } = {},
+  config: { enabled?: boolean; taskId?: string } = {},
 ) {
   return useApiQuery(
-    taskQueries.pullRequestFacts(projectId ?? '').queryKey,
-    () => fetchTaskPullRequestFacts(projectId ?? ''),
+    taskQueries.pullRequestFacts(projectId ?? '', config.taskId).queryKey,
+    () => fetchTaskPullRequestFacts(projectId ?? '', undefined, config.taskId),
     {
       enabled: Boolean(projectId) && (config.enabled ?? true),
-      staleTime: taskQueries.pullRequestFacts(projectId ?? '').staleTime,
+      staleTime: taskQueries.pullRequestFacts(projectId ?? '', config.taskId)
+        .staleTime,
       refetchInterval: 120_000,
       refetchOnWindowFocus: true,
       retry: false,
@@ -334,14 +338,19 @@ export async function dispatchTask(input: {
   taskId: string;
   dispatch?: TaskDispatchInput;
   apiBase?: string;
+  requestScope?: ApiRequestScope;
 }): Promise<TaskDispatchResult> {
-  const resolvedApiBase = await resolveApiBase(input.apiBase);
+  const resolvedApiBase =
+    input.requestScope?.apiBase ?? (await resolveApiBase(input.apiBase));
   const response = await authenticatedFetch(
     `${resolvedApiBase}/api/tasks/${encodeURIComponent(input.taskId)}/dispatch`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(input.dispatch ?? {}),
+      ...(input.requestScope === undefined
+        ? {}
+        : { requestScope: input.requestScope }),
     },
   );
   return readApiResult<TaskDispatchResult>(response);

@@ -130,6 +130,8 @@ describe('APP_SETTINGS_REGISTRY completeness', () => {
         // UX audit RT-02 — the durable first-run record for this home.
         'firstRun',
         'fleetContribution',
+        // #5401 — the default for new chats; its own route writes it.
+        'newChatDefault',
         // #1521 — candidate registry signature policy; applied separately.
         'registryTrust',
         // Operator policy records are composite data without generic Settings editors.
@@ -215,6 +217,21 @@ describe('APP_SETTINGS_REGISTRY completeness', () => {
     const region = APP_SETTINGS_REGISTRY.find((d) => d.key === 'region');
     expect(region?.envFallback).toBe('AWS_REGION');
     expect('envOverride' in (region ?? {})).toBe(false);
+  });
+
+  test('approval origin accepts automatic discovery and keeps environment as a fallback', () => {
+    const origin = APP_SETTINGS_REGISTRY.find(
+      (definition) => definition.key === 'trustedConsentOrigin',
+    );
+    expect(origin).toBeDefined();
+    if (!origin) throw new Error('Approval origin setting is missing');
+    expect(acceptsSettingValue(origin, '')).toBe(true);
+    expect(
+      acceptsSettingValue(origin, 'https://approval.example.com:8443'),
+    ).toBe(true);
+    expect(origin.scope).toBe('station');
+    expect(origin.envFallback).toBe('STATION_TRUSTED_CONSENT_ORIGIN');
+    expect('envOverride' in origin).toBe(false);
   });
 
   // station#settings-revamp slice-1 review finding (ALSO section): key
@@ -331,6 +348,7 @@ describe('APP_SETTINGS_REGISTRY completeness', () => {
         'terminalHistoryMaxAgeDays',
         'terminalHistoryMaxTerminalMiB',
         'terminalHistoryMaxTotalMiB',
+        'trustedConsentOrigin',
         // #3157: confirmed against `autoResumeAllowed` (the coordinator) and
         // the `=== true` wiring in orchestration-service.ts — absent is off.
         'usageLimitAutoResume',

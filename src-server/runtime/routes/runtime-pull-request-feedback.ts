@@ -12,6 +12,8 @@
 import { resolve } from 'node:path';
 import type {
   ConversationPullRequestLink,
+  ConversationPullRequestLinkObservation,
+  LinkedPullRequestSnapshot,
   PullRequestLinkIdentity,
 } from '@kontourai/station-contracts/conversation-pull-request-links';
 import {
@@ -43,11 +45,13 @@ import { readReviewRepositoryIdentity } from '../../services/evidence/git-review
 import type { ReviewEvidenceModule } from '../../services/evidence/review-evidence-module.js';
 import type { FeaturePreviewRegistry } from '../../services/feature-previews/feature-preview-registry.js';
 import type { NotificationService } from '../../services/notifications/notification-service.js';
+import type { DelegationResultDelivery } from '../../services/orchestration/delegation-result-delivery.js';
 import type { EventStore } from '../../services/orchestration/event-store.js';
 import { projectSessionLifecycle } from '../../services/orchestration/session-lifecycle-service.js';
 import type { ThreadInboxDelivery } from '../../services/orchestration/thread-inbox.js';
 import { declaredPullRequestsForConversation } from '../../services/pull-requests/conversation-declared-pull-requests.js';
 import type { ConversationPullRequestLinkStore } from '../../services/pull-requests/conversation-pull-request-link-store.js';
+import { LinkedPullRequestSnapshots } from '../../services/pull-requests/linked-pull-request-snapshots.js';
 import {
   type PullRequestFeedbackAttentionSource,
   schedulePullRequestFeedbackNotice,
@@ -153,6 +157,10 @@ const REDELIVER_METHODS = new Set([
 export interface PullRequestFeedbackRuntimeDeps {
   homeDir: string;
   hosted: boolean;
+  coordination?: Pick<
+    DelegationResultDelivery,
+    'watchPullRequest' | 'watchedPullRequests' | 'observePullRequest'
+  >;
   featurePreviews: FeaturePreviewRegistry;
   eventStore: EventStore | undefined;
   inbox: ThreadInboxDelivery | undefined;
@@ -169,6 +177,7 @@ export interface PullRequestFeedbackRuntimeDeps {
     ): () => void;
   };
   providers(): IPullRequestProvider[];
+  refreshWorkspaceFacts?(now: number, enabled: () => boolean): Promise<void>;
   links: ConversationPullRequestLinkStore;
   keptForSessions(
     sessionIds: readonly string[],
@@ -231,6 +240,23 @@ export interface PullRequestFeedbackRuntime {
    * pull request list. Empty while the preview is off.
    */
   derivedLinks(conversationId: string): ConversationPullRequestLink[];
+  snapshotFor(
+    identity: PullRequestLinkIdentity,
+  ): LinkedPullRequestSnapshot | undefined;
+  subscribeStatus(
+    sourceConversationId: string,
+    projectId: string,
+    ref: string,
+    owner: Omit<
+      Parameters<DelegationResultDelivery['watchPullRequest']>[0],
+      'taskId' | 'childConversationId'
+    >,
+  ): { id: string; status: 'armed' | 'already-armed' | 'capacity' } | undefined;
+  mayReadStatusWatch(sourceConversationId: string, prKey: string): boolean;
+  linkedSnapshotsEnabled(): boolean;
+  snapshotsForConversations(
+    ids: readonly string[],
+  ): ReadonlyMap<string, ConversationPullRequestLinkObservation[]>;
   /**
    * A kept pull request's feedback for the Task board, as this request may
    * see it: undefined while the preview is off or unless it may read the
@@ -550,6 +576,84 @@ export function composePullRequestFeedbackRuntime(
   };
   const linkedIdentities = async (conversationId: string) =>
     linkedNow(conversationId);
+  const feedbackSnapshot = (identity: PullRequestLinkIdentity) => {
+    const store = enabled() ? holder.forRead() : undefined;
+    return store?.observation(pullRequestFeedbackKey(identity))?.observation
+      .snapshot;
+  };
+  const snapshots = new LinkedPullRequestSnapshots(
+    deps.providers,
+    enabled,
+    feedbackSnapshot,
+  );
+  const snapshotFor = (identity: PullRequestLinkIdentity) =>
+    enabled() ? snapshots.get(identity) : undefined;
+  const snapshotsForConversations: PullRequestFeedbackRuntime['snapshotsForConversations'] =
+    (ids) => {
+      const result = new Map<
+        string,
+        ConversationPullRequestLinkObservation[]
+      >();
+      if (!enabled() || !ids.length) return result;
+      const sessionIds = new Map(ids.map((id) => [id, lineage(id)]));
+      try {
+        const distinctSessions = [...new Set([...sessionIds.values()].flat())];
+        const explicit = deps.links.listMany(distinctSessions);
+        const keepsBySession = new Map<string, TaskKeptDeclaredPullRequest[]>();
+        for (const keep of deps.keptForSessions(distinctSessions)) {
+          const sessionId = keep.provenance.sessionId;
+          const group = keepsBySession.get(sessionId);
+          if (group) group.push(keep);
+          else keepsBySession.set(sessionId, [keep]);
+        }
+        for (const [id, sessions] of sessionIds) {
+          const linked = [
+            ...sessions.flatMap((sessionId) => explicit.get(sessionId) ?? []),
+            ...declaredPullRequestsForConversation(
+              {
+                lineageSessionIds: () => sessions,
+                keptForSessions: () =>
+                  sessions.flatMap((id) => keepsBySession.get(id) ?? []),
+              },
+              id,
+            ),
+            ...(taskBranches?.derivedLinks(id) ?? []),
+          ];
+          const seen = new Set<string>();
+          const observations =
+            linked.flatMap<ConversationPullRequestLinkObservation>((link) => {
+              const key = pullRequestFeedbackKey(link);
+              if (seen.has(key)) return [];
+              seen.add(key);
+              const snapshot = snapshotFor(link);
+              if (!snapshot?.observedAt)
+                return [
+                  {
+                    ...link,
+                    observedAt: new Date().toISOString(),
+                    status: {
+                      state: 'unavailable' as const,
+                      reason: 'Status not observed',
+                    },
+                  },
+                ];
+              return [
+                {
+                  ...link,
+                  observedAt: snapshot.observedAt,
+                  status: { ...snapshot, state: 'current' as const },
+                },
+              ];
+            });
+          if (observations.length) result.set(id, observations);
+        }
+      } catch (error) {
+        deps.logger.warn('Linked pull request snapshots unavailable', {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      return result;
+    };
   let notifier: FeedbackNotifier | undefined;
   const access = {
     ...deps.access,
@@ -740,6 +844,9 @@ export function composePullRequestFeedbackRuntime(
     enabled,
     store: () => holder.forRead(),
     providers: deps.providers,
+    statusWatches: () => deps.coordination?.watchedPullRequests() ?? [],
+    observeStatus: (prKey, observation) =>
+      deps.coordination?.observePullRequest(prKey, observation),
     session,
     lastTurnAt,
     delivery: () => delivery,
@@ -849,6 +956,36 @@ export function composePullRequestFeedbackRuntime(
       taskBranches?.nudge(conversationId, sessionId),
   });
   return {
+    mayReadStatusWatch: (sourceConversationId, prKey) =>
+      enabled() &&
+      linkedNow(sourceConversationId).some(
+        (link) => pullRequestFeedbackKey(link) === prKey,
+      ),
+    subscribeStatus(sourceConversationId, projectId, ref, owner) {
+      if (!enabled() || !deps.coordination) return undefined;
+      const matching = new Map(
+        linkedNow(sourceConversationId)
+          .filter((link) => link.ref === ref)
+          .map((link) => [pullRequestFeedbackKey(link), link] as const),
+      );
+      if (matching.size !== 1) return undefined;
+      const entry = matching.entries().next().value;
+      if (!entry) return undefined;
+      const [prKey, { host, provider, repository }] = entry;
+      holder.forWrite();
+      const id = `pr-watch:${JSON.stringify([owner.parentConversationId, prKey])}`;
+      const status = deps.coordination.watchPullRequest(
+        {
+          ...owner,
+          childConversationId: id,
+          taskId: prKey,
+        },
+        prKey,
+        { host, provider, repository, ref },
+        { sourceConversationId, projectId },
+      );
+      return { id, status };
+    },
     routeArgs: [
       ownership,
       () => delivery,
@@ -881,6 +1018,9 @@ export function composePullRequestFeedbackRuntime(
         return [];
       }
     },
+    snapshotFor,
+    snapshotsForConversations,
+    linkedSnapshotsEnabled: enabled,
     factFor: (identity, request, taskSessionId) => {
       const store = enabled() ? holder.forRead() : undefined;
       if (!store || !deps.access.current(request)) return undefined;
@@ -907,6 +1047,11 @@ export function composePullRequestFeedbackRuntime(
       // on this one.
       watch?.sync();
       poller.tick(input);
+      snapshots.tick(input);
+      void deps.refreshWorkspaceFacts?.(
+        input.now,
+        () => enabled() && !input.signal.aborted,
+      );
     },
     ...(watch
       ? {

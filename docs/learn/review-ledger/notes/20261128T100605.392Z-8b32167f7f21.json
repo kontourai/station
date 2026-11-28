@@ -1,0 +1,7 @@
+{
+  "revision": "17394811b193d4a2bd28c4d89a7801e39f535c1a",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Verified added 390px and 1440px light/dark Inbox row actions Playwright journeys preserve responsive-ui verification claims.","inputs":["tests/chat-dock-inbox-open.spec.ts"]}
+  ]
+}

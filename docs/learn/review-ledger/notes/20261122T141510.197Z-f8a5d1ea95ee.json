@@ -1,0 +1,7 @@
+{
+  "revision": "1d9b1843d2314edf604ce49de0917602b1fc909e",
+
+  "notes": [
+    {"path":"docs/design/shell-skeletons.md","note":"The apps route uses the split-pane frame the plugins route used; shell-skeletons is unaffected.","inputs":["src-ui/src/app-shell/page-frame-registry.ts"]}
+  ]
+}

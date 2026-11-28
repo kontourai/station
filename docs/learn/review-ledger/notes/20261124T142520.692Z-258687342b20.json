@@ -1,0 +1,11 @@
+{
+  "revision": "921cb67cfe76fd511684da5d15fd30ea5f2cf0fc",
+
+  "notes": [
+    {"path":"README.md","note":"Pages linking the plugin guide only point readers at it for installation, recovery and inspection; the one changed sentence renames the dialog section to Source verification and changes no claim these pages make.","inputs":["docs/guides/plugins.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Pages linking the plugin guide only point readers at it for installation, recovery and inspection; the one changed sentence renames the dialog section to Source verification and changes no claim these pages make.","inputs":["docs/guides/plugins.md"]},
+
+    {"path":"docs/user/getting-started.md","note":"Pages linking the plugin guide only point readers at it for installation, recovery and inspection; the one changed sentence renames the dialog section to Source verification and changes no claim these pages make.","inputs":["docs/guides/plugins.md"]}
+  ]
+}

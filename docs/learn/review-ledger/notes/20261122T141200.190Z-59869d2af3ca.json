@@ -1,0 +1,7 @@
+{
+  "revision": "c0265ee6c2c9b4949b3cf4fc2853c41df7ac844d",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Import .md sentence checked against parseImportedSkillMarkdown (refused block removed from the body, description kept when it is one readable line within 1024 characters with no control or bidi character). Import from Codex symlink sentence checked against sources() (assertSafeDirectory and bindGuardedDirectories refuse a symlinked Codex home or prompts folder).","inputs":["docs/user/getting-started.md"]}
+  ]
+}

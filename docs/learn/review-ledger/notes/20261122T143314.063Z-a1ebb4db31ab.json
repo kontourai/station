@@ -1,0 +1,7 @@
+{
+  "revision": "1d9b1843d2314edf604ce49de0917602b1fc909e",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Listing paragraph field list now includes inProcessScreen, checked against catalog.ts.","inputs":["docs/reference/api.md"]}
+  ]
+}

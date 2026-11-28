@@ -499,12 +499,13 @@ async function assertReducedMotion(
 }
 
 /**
- * The Connections hub's shared tab bar (`ConnectionSectionFrame` via
- * `useConnectionSectionSignals`) renders a live count badge on every tab,
- * including Tools (`useIntegrationsQuery`, `GET /integrations`), Knowledge
- * (`useGlobalKnowledgeStatusQuery`, `GET /api/knowledge/status`), and
- * Computers (`useComputerRows` -> `useSshEnvironmentsQuery`,
- * `GET /api/environments/ssh`). None of the three is mocked (unlike
+ * The Customize list (`views/customize/CustomizeNav.tsx`, via
+ * `useConnectionSectionSignals`) renders a live count on its items, including
+ * Tools (`useIntegrationsQuery`, `GET /integrations`), the Knowledge dot
+ * (`useGlobalKnowledgeStatusQuery`, `GET /api/knowledge/status`), and Skills
+ * (`useSkillsQuery`, `GET /api/system/skills`). Before this list replaced the
+ * Connections section rail, the same race was measured on Computers
+ * (`GET /api/environments/ssh`), which the list no longer counts. None of the three is mocked (unlike
  * Models/Engines/sessions/action-operations above): each settles to a real,
  * deterministic value on a fresh temp-home (measured: Tools 2, Knowledge 1,
  * Computers 1 — matching what `connections-tools`/`connections-knowledge`
@@ -558,16 +559,17 @@ function armConnectionsHubBadgeSettle(page: Page): () => Promise<void> {
       );
       return undefined;
     });
-  const sshEnvironmentsSettled = page
+  // The Customize list also counts Skills, which nothing above waits for.
+  const skillsSettled = page
     .waitForResponse(
       (response) =>
         response.request().method() === 'GET' &&
-        new URL(response.url()).pathname.endsWith('/api/environments/ssh'),
+        new URL(response.url()).pathname.endsWith('/api/system/skills'),
       { timeout: 15_000 },
     )
     .catch(() => {
       console.warn(
-        '[screenshots.spec] armConnectionsHubBadgeSettle: no GET */api/environments/ssh ' +
+        '[screenshots.spec] armConnectionsHubBadgeSettle: no GET */api/system/skills ' +
           'response observed within 15s — the badge-settle guard did not fire ' +
           '(endpoint renamed/moved?). Proceeding without it.',
       );
@@ -577,7 +579,7 @@ function armConnectionsHubBadgeSettle(page: Page): () => Promise<void> {
     await Promise.all([
       integrationsSettled,
       knowledgeStatusSettled,
-      sshEnvironmentsSettled,
+      skillsSettled,
     ]);
   };
 }
@@ -869,7 +871,7 @@ function onboardingSetupBannerSettleHooks(): {
         recommendation: {
           code: 'unconfigured',
           type: 'connections',
-          actionLabel: 'Open Connections',
+          actionLabel: 'Open Customize',
           title: 'No usable AI path is configured yet',
           detail:
             'Start Ollama locally or add a provider/runtime connection to make Station ready for first-run chat.',
@@ -6488,7 +6490,130 @@ function projectCoordinationScreens(): Screen[] {
   );
 }
 
+function externalHistoryScreens(): Screen[] {
+  return [DESKTOP, MOBILE].flatMap((viewport) =>
+    (['dark', 'light'] as const).map((theme): Screen => {
+      const device = viewport === MOBILE ? 'mobile' : 'desktop';
+      const id = 'a'.repeat(64);
+      let cleanups: Array<() => Promise<void>> = [];
+      const read = (data: unknown) => async (route: Route) => {
+        if (route.request().method() !== 'GET')
+          return rejectUnexpectedFixtureRequest(route);
+        await route.fulfill({ json: { success: true, data } });
+      };
+      return {
+        name: `external-history-${theme}-${device}`,
+        title: `Third-party history — ${theme} (${device})`,
+        path: '/?dock=open',
+        viewport,
+        beforeGoto: async (page) => {
+          await clearDockGalleryStorage(page);
+          cleanups = [
+            await withRoute(page, '**/.well-known/station/v1', (route) =>
+              fulfillGalleryStationHandshake(route, true),
+            ),
+            await withRoute(
+              page,
+              '**/api/feature-previews',
+              read([
+                {
+                  id: 'external-session-history',
+                  label: 'Third-party history',
+                  description: 'Browse older conversations.',
+                  enabled: true,
+                },
+              ]),
+            ),
+            await withRoute(
+              page,
+              '**/api/orchestration/external-history?**',
+              read({
+                sessions: [
+                  {
+                    id,
+                    provider: 'claude',
+                    cwd: '/work/atlas',
+                    updatedAt: '2026-04-01T12:00:00.000Z',
+                    hasTranscript: true,
+                  },
+                ],
+                nextOffset: null,
+                partial: false,
+              }),
+            ),
+            await withRoute(
+              page,
+              `**/api/orchestration/external-history/${id}/transcript**`,
+              read({
+                messages: [
+                  {
+                    id: 'user',
+                    role: 'user',
+                    text: 'Check which tests cover the refresh behavior.',
+                  },
+                  {
+                    id: 'reply',
+                    role: 'assistant',
+                    text: 'The project tests cover refresh after a successful save and after a connection error.',
+                  },
+                ],
+                nextCursor: null,
+                startsNearEnd: false,
+              }),
+            ),
+          ];
+        },
+        afterGoto: async (page) => {
+          await page.evaluate(
+            (mode) => document.documentElement.setAttribute('data-theme', mode),
+            theme,
+          );
+          const dock = page.getByRole('region', { name: 'Chat dock' });
+          const inbox = dock.getByRole(
+            viewport === MOBILE ? 'region' : 'complementary',
+            { name: 'Chats', exact: true },
+          );
+          const browse = inbox.getByRole('button', {
+            name: 'Browse all conversations',
+            exact: true,
+          });
+          await expect(dock).toBeVisible();
+          const toggle = dock.getByRole('button', {
+            name: /^(Show )?Chats(?: [—·].*)?$/i,
+          });
+          await expect
+            .poll(
+              async () =>
+                (await browse.isVisible()) || (await toggle.isVisible()),
+            )
+            .toBe(true);
+          if (!(await browse.isVisible())) await toggle.click();
+          await browse.click();
+          await page
+            .getByRole('button', { name: 'Third-party history', exact: true })
+            .click();
+          const dialog = page.getByRole('dialog', {
+            name: 'Third-party history',
+          });
+          await dialog.getByRole('button', { name: /^Claude Code/ }).click();
+          await expect(
+            dialog.getByText('Check which tests cover the refresh behavior.'),
+          ).toBeVisible();
+          await expect(
+            dialog.getByRole('button', { name: 'Import conversation' }),
+          ).toBeVisible();
+        },
+        cleanup: async () => {
+          for (const cleanup of cleanups) await cleanup();
+          cleanups = [];
+        },
+      };
+    }),
+  );
+}
+
 const SCREENS: Screen[] = [
+  ...externalHistoryScreens(),
   ...projectCoordinationScreens(),
   ...roomConversationScreens(),
   ...roomCoordinatorScreens(),
@@ -6738,39 +6863,45 @@ const SCREENS: Screen[] = [
     path: '/guidance?tab=skills',
     viewport: DESKTOP,
   },
-  { name: 'registry', title: 'Registry', path: '/registry', viewport: DESKTOP },
+  // The plugin catalogue moved to Apps › Discover; the name is kept.
+  {
+    name: 'registry',
+    title: 'Apps › Discover',
+    path: '/apps/discover',
+    viewport: DESKTOP,
+  },
   {
     name: 'connections',
-    title: 'Connections',
-    path: '/connections',
+    title: 'Customize',
+    path: '/customize',
     viewport: DESKTOP,
     ...connectionsHubBadgeSettleHooks(),
   },
   {
     name: 'connections-models',
-    title: 'Connections — Models',
-    path: '/connections/providers',
+    title: 'Customize — Providers',
+    path: '/customize/providers',
     viewport: DESKTOP,
     ...connectionsHubBadgeSettleHooks(),
   },
   {
     name: 'connections-agent-apps',
-    title: 'Connections — Engines',
-    path: '/connections/engines',
+    title: 'Customize — Engines',
+    path: '/customize/engines',
     viewport: DESKTOP,
     ...connectionsHubBadgeSettleHooks(),
   },
   {
     name: 'connections-tools',
-    title: 'Connections — Tools',
-    path: '/connections/tools',
+    title: 'Customize — Tools',
+    path: '/customize/tools',
     viewport: DESKTOP,
     ...connectionsHubBadgeSettleHooks(),
   },
   {
     name: 'connections-knowledge',
-    title: 'Connections — Knowledge',
-    path: '/connections/knowledge',
+    title: 'Customize — Knowledge',
+    path: '/customize/knowledge',
     viewport: DESKTOP,
     ...connectionsHubBadgeSettleHooks(),
   },
@@ -6781,7 +6912,13 @@ const SCREENS: Screen[] = [
   // Flow reviews, review evidence) this spec does not stub, so pointing the
   // same entry at it would photograph an empty state under a name that claims
   // otherwise. A real capture is new work with its own fixtures.
-  { name: 'plugins', title: 'Plugins', path: '/plugins', viewport: DESKTOP },
+  // Installed plugins moved to Apps › Library; the name is kept.
+  {
+    name: 'plugins',
+    title: 'Apps › Library',
+    path: '/apps/library',
+    viewport: DESKTOP,
+  },
   (() => {
     let cleanup: () => Promise<void> = async () => {};
     return {
@@ -8336,8 +8473,8 @@ const SCREENS: Screen[] = [
   },
   {
     name: 'mobile-connections',
-    title: 'Mobile — Connections',
-    path: '/connections',
+    title: 'Mobile — Customize',
+    path: '/customize',
     viewport: MOBILE,
     ...connectionsHubBadgeSettleHooks(),
   },

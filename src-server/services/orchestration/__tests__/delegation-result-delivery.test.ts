@@ -1,4 +1,8 @@
-import { unframeAgentMessage } from '@kontourai/station-shared/agent-message-frame';
+import { type ClientOriginSender } from '@kontourai/station-contracts/client-origin';
+import {
+  frameAgentMessage,
+  unframeAgentMessage,
+} from '@kontourai/station-shared/agent-message-frame';
 /**
  * #3158 fix round 2: the delivery store's retention against a controllable
  * clock, driven through the coordinator's own event subscription, and the
@@ -2339,6 +2343,140 @@ describe("a delivered result carries the child's untrusted read (#4828)", () => 
       markedAtStart: [false],
       parent: false,
       parentSession: false,
+    });
+  });
+});
+
+describe('a delivered turn names the chat its result came from (#5606)', () => {
+  const actor = {
+    userId: 'human:local:owner',
+    attribution: 'verified-bound' as const,
+  };
+  const identity = {
+    title: 'Check the Inbox row',
+    agent: 'Reviewer',
+    engine: 'claude',
+  };
+
+  /** Delivers one pending row; what the start port was asked, in order. */
+  async function deliver(row: {
+    transition: 'settled' | 'pull_request';
+    child: string;
+    session: string;
+  }): Promise<Array<{ sender: ClientOriginSender; text: string }>> {
+    const db = new DatabaseSync(':memory:');
+    db.exec(DELEGATION_RESULT_DELIVERY_SCHEMA);
+    const store = createSqliteDelegationResultStore(db, () => Date.now());
+    const asked: Array<{ sender: ClientOriginSender; text: string }> = [];
+    const delivery = new DelegationResultDelivery({
+      store,
+      untrustedContentLedger: new UntrustedContentLedger(),
+      foldEvents: () => [],
+      headSequence: () => 0,
+      turnEvents: () => [],
+      conversationOf: (threadId) => threadId,
+      currentSessionId: (conversationId) => `${conversationId}-session`,
+      readInputlessTurnDisposition: () => ({ kind: 'inputless' }),
+      coordinatorBusy: () => false,
+      sessionOwnerId: () => actor.userId,
+      senderIdentity: () => identity,
+      mayReadPullRequestWatch: () => true,
+      start: async ({ parentConversationId, sender, text }) => {
+        asked.push({ sender, text });
+        return {
+          outcome: 'started',
+          conversationId: parentConversationId,
+          sessionId: `${parentConversationId}-session`,
+          turnId: 'parent-turn',
+        };
+      },
+      steer: async () => ({ outcome: 'unsupported-engine' }),
+      subscribe: () => () => {},
+      logger: { warn: vi.fn() },
+      retryDelaysMs: [],
+    });
+    const owner = {
+      childConversationId: row.child,
+      taskId: row.child,
+      parentConversationId: 'parent',
+      actor,
+    };
+    if (row.transition === 'settled') delivery.arm(owner);
+    else
+      delivery.watchPullRequest(
+        owner,
+        row.child,
+        {
+          provider: 'github',
+          host: 'github.com',
+          repository: { owner: 'acme', name: 'notes' },
+          ref: '72',
+        },
+        { sourceConversationId: 'source', projectId: 'project' },
+      );
+    const now = Date.now();
+    db.prepare(
+      `INSERT INTO delegation_result_deliveries
+         (child_conversation_id, transition_key, transition, parent_conversation_id,
+          child_session_id, child_turn_id, outcome, delivery_id, text, state,
+          created_at, updated_at)
+       VALUES (?, ?, ?, 'parent', ?, 'turn-1', ?, 'dr-1', 'child result',
+               'pending', ?, ?)`,
+    ).run(
+      row.child,
+      row.transition === 'settled'
+        ? `settled:${row.session}:turn-1`
+        : 'pull_request:initial:MERGED',
+      row.transition,
+      row.session,
+      row.transition === 'settled' ? 'completed' : 'pull-request-status',
+      now,
+      now,
+    );
+    await delivery.reconcile();
+    delivery.stop();
+    return asked;
+  }
+
+  test("a chat's result is recorded under that chat's title, Agent and engine, and the engine is told what it was before", async () => {
+    const asked = await deliver({
+      transition: 'settled',
+      child: 'child',
+      session: 'child-session',
+    });
+    expect(asked).toHaveLength(1);
+    expect(asked[0]!.sender).toEqual({
+      kind: 'delegation-result',
+      sessionId: 'child-session',
+      requestKey: 'dr-1',
+      ...identity,
+    });
+    // The frame carries the sender without its identity: a row re-driven
+    // after the identity was added repeats the bytes an earlier attempt
+    // may have started.
+    expect(asked[0]!.text).toBe(
+      frameAgentMessage(
+        {
+          kind: 'delegation-result',
+          sessionId: 'child-session',
+          requestKey: 'dr-1',
+        },
+        'child result',
+      ),
+    );
+  });
+
+  test('a pull request update records no chat: the Session it names is the subscriber itself', async () => {
+    const asked = await deliver({
+      transition: 'pull_request',
+      child: 'pr-watch',
+      session: 'parent-session',
+    });
+    expect(asked).toHaveLength(1);
+    expect(asked[0]!.sender).toEqual({
+      kind: 'delegation-result',
+      sessionId: 'parent-session',
+      requestKey: 'dr-1',
     });
   });
 });

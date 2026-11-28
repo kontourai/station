@@ -350,6 +350,7 @@ function consentNotFound(c: Context): Response {
 
 export function createConsentApp(deps: ConsentListenerDeps): Hono {
   const app = new Hono();
+  app.use('*', async (_context, next) => deps.channel.withPublication(next));
   app.notFound(consentNotFound);
   registerConsentRoutes(
     app,
@@ -365,13 +366,28 @@ export function registerConsentRoutes(
   deps: ConsentListenerDeps,
   store: ConsentListenerStore = deps.channel.store,
 ): void {
-  app.use('*', async (c, next) => {
+  app.use('*', async (context, next) => {
     await next();
     for (const [name, value] of Object.entries(SECURITY_HEADERS)) {
-      // A route that needs a narrower or wider policy of its own (the
-      // enrollment page's `script-src 'self'`) sets the header itself.
-      if (!c.res.headers.has(name)) c.res.headers.set(name, value);
+      if (!context.res.headers.has(name)) context.res.headers.set(name, value);
     }
+  });
+  app.use('*', async (context, next) => {
+    const publication = deps.channel.publication;
+    if (
+      publication &&
+      context.req.path.startsWith('/consent/') &&
+      (!publication.consentOrigin ||
+        context.req.header('host') !== new URL(publication.consentOrigin).host)
+    )
+      return context.html(
+        statusPage(
+          'Review unavailable',
+          'The private HTTPS approval route is unavailable. Check Routes in Station settings.',
+        ),
+        403,
+      );
+    return next();
   });
 
   const stepUpSession = (cookie: string | undefined) => {
@@ -396,6 +412,11 @@ export function registerConsentRoutes(
       const origin = deps.channel.trustedOrigin;
       if (
         !origin ||
+        !deps.channel.acceptsReviewOrigin(
+          transaction.id,
+          deps.channel.tenantId,
+          origin,
+        ) ||
         c.req.header('host') !== new URL(origin).host ||
         c.req.header('origin') !== origin ||
         c.req.header('sec-fetch-site') !== 'same-origin'
@@ -495,6 +516,7 @@ export function registerConsentRoutes(
       const actor = stepUpSession(c.req.header('cookie'));
       if (
         !origin ||
+        !deps.channel.acceptsReviewOrigin(id, partition, origin) ||
         c.req.header('host') !== new URL(origin).host ||
         !actor ||
         actor.session.sessionId !== transaction.operatorSessionId
@@ -547,6 +569,16 @@ export function registerConsentRoutes(
         statusPage(
           'Sign in to Station first',
           'This review page can only be opened by the Station operator, a device promoted to decide consent, or the Station page that requested it.',
+        ),
+        403,
+      );
+    }
+    const origin = deps.channel.trustedOrigin;
+    if (origin && !deps.channel.acceptsReviewOrigin(id, partition, origin)) {
+      return c.html(
+        statusPage(
+          'Review unavailable',
+          'The approval address changed. Open a new request from Station.',
         ),
         403,
       );
@@ -615,7 +647,10 @@ export function registerConsentRoutes(
             consentPort,
             deps.channel.trustedOrigin,
           );
-    if (expectedOrigin === null) {
+    if (
+      expectedOrigin === null ||
+      !deps.channel.acceptsReviewOrigin(id, partition, expectedOrigin)
+    ) {
       return refuse(
         'origin_unresolvable',
         'Decision refused',
@@ -787,9 +822,9 @@ export function registerConsentRoutes(
               ? view.effect?.status === 'winding-down'
                 ? `${view.description.title} — approved. Runtime cleanup is still winding down under operation ${view.effect.operationId}.`
                 : view.effect?.status === 'incomplete'
-                  ? `${view.description.title} — approved, but runtime cleanup is incomplete under operation ${view.effect.operationId}. Retry from Plugins.`
+                  ? `${view.description.title} — approved, but runtime cleanup is incomplete under operation ${view.effect.operationId}. Retry from Apps › Library.`
                   : view.effect?.status === 'superseded'
-                    ? `${view.description.title} — approved, but the plugin changed again while runtime state was reconciling. Check Plugins for the current state.`
+                    ? `${view.description.title} — approved, but the plugin changed again while runtime state was reconciling. Check Apps › Library for the current state.`
                     : `${view.description.title} — approved. The requester is ready to continue.`
               : 'The request was approved.',
           )

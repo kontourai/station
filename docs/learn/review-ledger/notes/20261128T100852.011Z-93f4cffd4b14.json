@@ -1,0 +1,9 @@
+{
+  "revision": "17394811b193d4a2bd28c4d89a7801e39f535c1a",
+
+  "notes": [
+    {"path":"docs/guides/agent-efficiency.md","note":"Verified additive Inbox row actions device preview in docs/user/settings.md preserves feature-previews and agent-efficiency guide claims.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Verified additive Inbox row actions device preview in docs/user/settings.md preserves feature-previews and agent-efficiency guide claims.","inputs":["docs/user/settings.md"]}
+  ]
+}

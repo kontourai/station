@@ -20,7 +20,10 @@ import {
   createProviderAdapterRegistry,
   providerAdapterLaunchabilitySource,
 } from '../../providers/registries/registry.js';
-import { engineHostAuthPolicy } from '../../security/managed-engine-limits.js';
+import {
+  engineHostAuthPolicy,
+  managedEngineRefusalFor,
+} from '../../security/managed-engine-limits.js';
 import { ACPManager } from '../../services/acp/acp-bridge.js';
 import { engineLaunchFactsFor } from '../../services/acp/acp-engine-descriptors.js';
 import {
@@ -174,13 +177,20 @@ export function createRuntimeServiceBundle(
     }
     const connection =
       await connectionService?.getConnection(engineConnectionId);
+    if (connection?.kind !== 'agent') return { available: false };
+    const managedRefusal = managedEngineRefusalFor(connection.type);
+    if (managedRefusal) {
+      return { available: false, reason: managedRefusal.message };
+    }
+    if (!connection.enabled) {
+      const name = connection.name.trim() || 'This agent’s engine';
+      return { available: false, reason: `${name} is turned off.` };
+    }
+    if (connection.status === 'ready') return { available: true };
+    const reason = connection.config.readinessReason;
     return {
-      available: connection?.status === 'ready',
-      ...(connection?.status === 'ready'
-        ? {}
-        : {
-            reason: connection?.config?.readinessReason as string | undefined,
-          }),
+      available: false,
+      reason: typeof reason === 'string' && reason.trim() ? reason : undefined,
     };
   };
 

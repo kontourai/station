@@ -2,14 +2,24 @@
 
 import type { SavedConnection } from '@kontourai/station-connect';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const state = vi.hoisted(() => ({
   preview: true,
+  publicationPreview: false,
   connections: {} as Record<string, unknown>,
   health: {} as Record<string, unknown>,
   fetch: vi.fn(),
+  config: {} as Record<string, unknown>,
+  update: {} as Record<string, unknown>,
+  mutate: vi.fn(),
 }));
 
 vi.mock('@kontourai/station-connect', async (importOriginal) => ({
@@ -20,9 +30,15 @@ vi.mock('@kontourai/station-connect', async (importOriginal) => ({
 vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
   authenticatedFetch: (...args: unknown[]) => state.fetch(...args),
+  useConfigQuery: () => state.config,
+  useUpdateConfigMutation: () => state.update,
 }));
 vi.mock('../../../hooks/useDeveloperFeatures', () => ({
   useDeveloperFeatures: () => ({ stationRoutes: state.preview }),
+}));
+vi.mock('../../../hooks/useSurfaceVisibilityFlags', () => ({
+  useSurfaceVisibilityFlags: () =>
+    new Set(state.publicationPreview ? ['dynamic-route-publications'] : []),
 }));
 
 import { StationRoutesSection } from '../StationRoutesSection';
@@ -90,7 +106,18 @@ const removeRoute = vi.fn(() => true);
 const recheck = vi.fn();
 
 beforeEach(() => {
+  state.fetch.mockImplementation(async () =>
+    Response.json({ environmentId: 'env-home', routes: [] }),
+  );
+  state.config = {
+    data: { trustedConsentOrigin: '' },
+    isPending: false,
+    isError: false,
+    refetch: vi.fn(),
+  };
+  state.update = { mutate: state.mutate, isPending: false, isError: false };
   state.preview = true;
+  state.publicationPreview = false;
   state.connections = {
     activeConnection: station(),
     addRoute,
@@ -118,12 +145,15 @@ afterEach(() => {
   removeRoute.mockClear();
   recheck.mockClear();
   state.fetch.mockReset();
+  state.mutate.mockReset();
 });
 
 describe('StationRoutesSection', () => {
   it('shows the failure once and notes only what differs on each route', () => {
     renderPanel(station());
-    expect(screen.getByRole('status').textContent).toBe("Can't reach Kontour.");
+    expect(screen.getByText("Can't reach Kontour.").getAttribute('role')).toBe(
+      'status',
+    );
     const rows = screen.getAllByRole('listitem');
     expect(rows).toHaveLength(3);
     expect(within(rows[0]!).getByText('Local network')).toBeTruthy();
@@ -140,7 +170,7 @@ describe('StationRoutesSection', () => {
     ).toBeTruthy();
   });
 
-  it('marks the route in use and shows no status line when connected', () => {
+  it('marks the route in use and shows no status line when connected', async () => {
     state.health = {
       ...state.health,
       status: 'connected',
@@ -151,6 +181,9 @@ describe('StationRoutesSection', () => {
       ],
     };
     renderPanel(station());
+    await waitFor(() =>
+      expect(screen.queryByLabelText('Reading published routes')).toBeNull(),
+    );
     expect(screen.queryByRole('status')).toBeNull();
     const inUse = screen.getByText('In use').closest('li');
     expect(within(inUse!).getByText('Tailscale HTTPS')).toBeTruthy();
@@ -194,6 +227,198 @@ describe('StationRoutesSection', () => {
     state.preview = false;
     const { container } = renderPanel(station());
     expect(container.textContent).toBe('');
+    expect(state.fetch).not.toHaveBeenCalled();
+  });
+
+  it('reveals Routes with only the Station-wide publication preview enabled', async () => {
+    state.preview = false;
+    state.publicationPreview = true;
+    renderPanel(station());
+    expect(screen.getByText('Routes')).toBeTruthy();
+    await waitFor(() => expect(state.fetch).toHaveBeenCalled());
+  });
+
+  it('keeps the approval editor absent when the server omits publication', async () => {
+    renderPanel(station());
+    await waitFor(() =>
+      expect(screen.queryByLabelText('Reading published routes')).toBeNull(),
+    );
+    expect(screen.queryByLabelText('Approval HTTPS origin')).toBeNull();
+    expect(state.mutate).not.toHaveBeenCalled();
+  });
+
+  it('retries a failed publication read without changing configuration', async () => {
+    state.fetch.mockRejectedValueOnce(new Error('offline'));
+    renderPanel(station());
+    expect(
+      await screen.findByText('Published routes could not be refreshed'),
+    ).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Retry published routes' }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.queryByText('Published routes could not be refreshed'),
+      ).toBeNull(),
+    );
+    expect(state.fetch).toHaveBeenCalledTimes(2);
+    expect(state.mutate).not.toHaveBeenCalled();
+  });
+
+  it.each(['unsafe-origin', 'different-station'])(
+    'hides publication controls for a %s response',
+    async (scenario) => {
+      state.fetch.mockImplementation(async () =>
+        Response.json({
+          environmentId:
+            scenario === 'different-station' ? 'env-other' : 'env-home',
+          routes: [],
+          publication: {
+            consentOrigin:
+              scenario === 'unsafe-origin'
+                ? 'https://approval.example.com/path'
+                : 'https://approval.example.com',
+            source: 'configured',
+            appOrigins: [],
+            status: 'ready',
+          },
+        }),
+      );
+      renderPanel(station());
+      await waitFor(() =>
+        expect(screen.queryByLabelText('Reading published routes')).toBeNull(),
+      );
+      expect(screen.queryByLabelText('Approval HTTPS origin')).toBeNull();
+      expect(state.mutate).not.toHaveBeenCalled();
+    },
+  );
+
+  it('renders parsed publication for editable connections and saves origin choices through config', async () => {
+    state.fetch.mockImplementation(async () =>
+      Response.json({
+        environmentId: 'env-home',
+        routes: [],
+        publication: {
+          consentOrigin: 'https://approval.example.com',
+          source: 'tailscale',
+          appOrigins: ['http://100.77.142.114:3774'],
+          status: 'ready',
+        },
+      }),
+    );
+    renderPanel(station());
+    const input = await screen.findByLabelText('Approval HTTPS origin');
+    expect(screen.getByText('Approval HTTPS route ready')).toBeTruthy();
+    expect(screen.getByText('http://100.77.142.114:3774')).toBeTruthy();
+    expect(
+      screen.queryByRole('button', { name: /configure tailscale/i }),
+    ).toBeNull();
+    fireEvent.change(input, {
+      target: { value: 'https://chosen.example.com' },
+    });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Save approval origin' }),
+    );
+    expect(state.mutate).toHaveBeenCalledWith(
+      { trustedConsentOrigin: 'https://chosen.example.com' },
+      expect.anything(),
+    );
+  });
+
+  it('replaces an absent saved choice and legacy startup fallback with automatic discovery', async () => {
+    state.config = { ...state.config, data: {} };
+    state.fetch.mockImplementation(async () =>
+      Response.json({
+        environmentId: 'env-home',
+        routes: [],
+        publication: {
+          consentOrigin: 'https://legacy.example.com',
+          source: 'configured',
+          appOrigins: [],
+          status: 'ready',
+        },
+      }),
+    );
+    renderPanel(station());
+    await screen.findByLabelText('Approval HTTPS origin');
+    const save = screen.getByRole('button', { name: 'Save approval origin' });
+    expect(save.hasAttribute('disabled')).toBe(true);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Use automatic discovery' }),
+    );
+    expect(save.hasAttribute('disabled')).toBe(false);
+    fireEvent.click(save);
+    expect(state.mutate).toHaveBeenCalledWith(
+      { trustedConsentOrigin: '' },
+      expect.anything(),
+    );
+  });
+
+  it('blocks unsafe origin edits and persists empty as automatic discovery', async () => {
+    state.config = {
+      ...state.config,
+      data: { trustedConsentOrigin: 'https://saved.example.com' },
+    };
+    state.fetch.mockImplementation(async () =>
+      Response.json({
+        environmentId: 'env-home',
+        routes: [],
+        publication: {
+          consentOrigin: null,
+          source: 'unavailable',
+          appOrigins: [],
+          status: 'ambiguous',
+        },
+      }),
+    );
+    renderPanel(station());
+    const input = await screen.findByLabelText('Approval HTTPS origin');
+    fireEvent.change(input, {
+      target: { value: 'https://user:secret@approval.example.com' },
+    });
+    expect(screen.getByRole('alert').textContent).toMatch(
+      /exact HTTPS DNS origin/,
+    );
+    expect(
+      screen
+        .getByRole('button', { name: 'Save approval origin' })
+        .hasAttribute('disabled'),
+    ).toBe(true);
+    expect(state.mutate).not.toHaveBeenCalled();
+    fireEvent.change(input, { target: { value: '' } });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Save approval origin' }),
+    );
+    expect(state.mutate).toHaveBeenCalledWith(
+      { trustedConsentOrigin: '' },
+      expect.anything(),
+    );
+  });
+
+  it.each([
+    ['unavailable', 'Approval HTTPS route unavailable'],
+    ['ambiguous', 'Multiple approval HTTPS routes found; choose an origin'],
+    ['disabled', 'Approval HTTPS publication disabled'],
+  ])('shows %s and keeps manual setup explicit', async (status, message) => {
+    state.fetch.mockImplementation(async () =>
+      Response.json({
+        environmentId: 'env-home',
+        routes: [],
+        publication: {
+          consentOrigin: null,
+          source: 'unavailable',
+          appOrigins: [],
+          status,
+        },
+      }),
+    );
+    renderPanel(station());
+    expect(await screen.findByText(message)).toBeTruthy();
+    if (status === 'unavailable') {
+      expect(
+        screen.getByText(/Manually configure an HTTPS mapping/),
+      ).toBeTruthy();
+    }
   });
 
   it('lists what a native profile’s Station reports without changing it', async () => {

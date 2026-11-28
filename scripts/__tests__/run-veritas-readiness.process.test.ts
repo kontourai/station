@@ -25,7 +25,10 @@ if (from) {
   files = diff.stdout.split('\\n').filter(Boolean);
   for (const file of files) readFileSync(file);
 }
-process.stdout.write(JSON.stringify({ args, files }));
+const shellProbe = args.includes('--probe-shell')
+  ? spawnSync('sh', ['-c', 'npm --version'], { encoding: 'utf8', windowsHide: true })
+  : undefined;
+process.stdout.write(JSON.stringify({ args, files, shellProbe }));
 `;
 
 const gitEnv = (): NodeJS.ProcessEnv => {
@@ -68,11 +71,17 @@ describe('run-veritas-readiness merge-base range (#5120)', () => {
   };
   const runWrapper = (
     args: string[],
-  ): { args: string[]; files: string[]; stderr: string } => {
+    env = gitEnv(),
+  ): {
+    args: string[];
+    files: string[];
+    stderr: string;
+    shellProbe?: { status: number; stdout: string; stderr: string };
+  } => {
     const result = spawnSync(process.execPath, [wrapper, ...args], {
       cwd: repo,
       encoding: 'utf8',
-      env: gitEnv(),
+      env,
       windowsHide: true,
     });
     expect(result.status, result.stderr).toBe(0);
@@ -108,6 +117,24 @@ describe('run-veritas-readiness merge-base range (#5120)', () => {
     git('update-ref', 'refs/remotes/origin/main', 'main');
     git('checkout', '-q', 'feature');
   });
+
+  test.runIf(process.platform === 'win32')(
+    'preserves a mixed-case Windows Path for shell evidence commands',
+    () => {
+      const env = gitEnv();
+      const pathKey = Object.keys(env).find(
+        (key) => key.toLowerCase() === 'path',
+      )!;
+      const originalPath = env[pathKey];
+      for (const key of Object.keys(env)) {
+        if (key.toLowerCase() === 'path') delete env[key];
+      }
+      env.Path = originalPath;
+      const run = runWrapper(['--probe-shell'], env);
+      expect(run.shellProbe?.status, run.shellProbe?.stderr).toBe(0);
+      expect(run.shellProbe?.stdout.trim()).toMatch(/^\d+\.\d+\.\d+$/);
+    },
+  );
 
   test('a moving ref past the branch base evaluates only the branch changes', () => {
     const run = runWrapper([

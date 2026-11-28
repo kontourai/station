@@ -1,0 +1,7 @@
+{
+  "revision": "9840f6d0ba3dbf1b7e17163b5f75686f4080a828",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed host observation against scripts/lib/journey-host-observation.mjs, profileJourney lifecycle, receipt validator and tests. CPU deltas, unknown inventory/counter values, Windows null load average, entry/interval/exit sampling and timing alignment match the implementation. Author and independent fault injections prove timer cleanup and unavailable-inventory assertions catch their intended defects; actual Chromium diagnostics cover rejected actions and lost browser endpoint cleanup. Added explicit uncalibrated-overhead, sampling-gap, host-only and same-instrumentation limits; no performance improvement, physical-device, process attribution or contention threshold claimed.","inputs":["docs/guides/testing.md","scripts/run-journey-profiles.mjs"]}
+  ]
+}

@@ -3,24 +3,31 @@ import type { NavigationView } from '../types';
 type ManagementDestinationId =
   | 'agents'
   | 'guidance'
-  | 'registry'
-  | 'connections'
+  | 'customize'
   | 'plugins'
   | 'developer'
   | 'notifications'
   | 'schedule';
-/** Stable chooser ordering groups; independent of Settings topics. */
-export type CustomizeNavGroupId = 'set-up' | 'control' | 'this-station';
+/**
+ * The Customize page's groups, in the order the page lists them. Their words
+ * live with the page (`views/customize/`), which loads on demand.
+ */
+export const CUSTOMIZE_NAV_GROUP_ORDER = [
+  'your-agents',
+  'run-on',
+  'can-reach',
+] as const;
+
+export type CustomizeNavGroupId = (typeof CUSTOMIZE_NAV_GROUP_ORDER)[number];
 
 export type DestinationIconId =
   | 'agents'
   | 'appearance'
-  | 'connections'
+  | 'customize'
   | 'developer'
   | 'guidance'
   | 'notifications'
   | 'plugins'
-  | 'registry'
   | 'schedule'
   | 'activity'
   | 'settings';
@@ -52,6 +59,12 @@ export interface DestinationBadge {
 
 export interface DestinationDefinition {
   id: string;
+  /**
+   * Retired ids a published plugin may still name (a palette command's
+   * `surfaceId`, a frame's `app-surface` target). `get` answers to them; no
+   * list shows them.
+   */
+  aliases?: readonly string[];
   route: string;
   label: () => string;
   keywords?: readonly string[];
@@ -68,7 +81,7 @@ export interface DestinationDefinition {
    * `localeCompare` had sorted the top-level band into the middle.
    */
   sidebar?: { order: number };
-  /** A Customize chooser entry. Overrides select the destination's entry tab. */
+  /** An item in the Customize page's list. Overrides select the destination's entry tab. */
   customizeNav?: {
     group: CustomizeNavGroupId;
     order: number;
@@ -89,7 +102,7 @@ export interface DestinationDefinition {
   view?: NavigationView;
 }
 
-/** A resolved destination entry for the Customize chooser. */
+/** A resolved item in the Customize page's list. */
 export interface CustomizeNavEntry {
   id: string;
   group: CustomizeNavGroupId;
@@ -107,7 +120,7 @@ export interface DestinationRegistry {
   getSidebar(
     enabledPreviewFlags?: ReadonlySet<string>,
   ): readonly DestinationDefinition[];
-  /** Resolved chooser entries, ordered and filtered by the same live flags as other navigation. */
+  /** Resolved Customize items, in group then item order, filtered by the same live flags as other navigation. */
   getCustomizeNav(
     enabledPreviewFlags?: ReadonlySet<string>,
   ): readonly CustomizeNavEntry[];
@@ -140,6 +153,9 @@ export function createDestinationRegistry(
         route,
         keywords: definition.keywords
           ? Object.freeze([...definition.keywords])
+          : undefined,
+        aliases: definition.aliases
+          ? Object.freeze(definition.aliases.map((alias) => alias.trim()))
           : undefined,
         sidebar: definition.sidebar
           ? Object.freeze({ ...definition.sidebar })
@@ -241,6 +257,17 @@ export function createDestinationRegistry(
       byManagementView.set(viewType, definition);
     }
   }
+  // After every id is known, so an alias cannot shadow a later id either.
+  for (const definition of registered) {
+    for (const alias of definition.aliases ?? []) {
+      if (!alias || byId.has(alias)) {
+        throw new Error(
+          `Destination ${definition.id} alias must be a free, nonempty id: ${alias}`,
+        );
+      }
+      byId.set(alias, definition);
+    }
+  }
   const advertised = (flags: ReadonlySet<string>) =>
     Object.freeze(
       registered.filter(
@@ -275,8 +302,13 @@ export function createDestinationRegistry(
               route: definition.customizeNav!.route ?? definition.route,
             }),
           )
-          // Order slots are unique within each group. Stable ties preserve registration order.
-          .sort((left, right) => left.order - right.order),
+          // Order slots are unique within each group, so group then order is total.
+          .sort(
+            (left, right) =>
+              CUSTOMIZE_NAV_GROUP_ORDER.indexOf(left.group) -
+                CUSTOMIZE_NAV_GROUP_ORDER.indexOf(right.group) ||
+              left.order - right.order,
+          ),
       ),
     getPalette: (flags = defaultFlags) =>
       Object.freeze(
@@ -312,7 +344,7 @@ export const APP_DESTINATION_REGISTRY = createDestinationRegistry([
     label: () => 'Agents',
     keywords: ['agents', 'manage'],
     icon: 'agents',
-    customizeNav: { group: 'set-up', order: 10 },
+    customizeNav: { group: 'your-agents', order: 10 },
     managementGroup: 'agents',
     palette: { order: 10 },
     managementViewTypes: ['agents', 'agent-new', 'agent-edit'],
@@ -327,7 +359,13 @@ export const APP_DESTINATION_REGISTRY = createDestinationRegistry([
     label: () => 'Skills',
     keywords: ['guidance', 'skills', 'commands', 'playbooks', 'prompts'],
     icon: 'guidance',
-    customizeNav: { group: 'set-up', order: 20 },
+    // Straight to the tab the page would add, so opening Skills is one
+    // history entry and Back leaves it.
+    customizeNav: {
+      group: 'your-agents',
+      order: 20,
+      route: '/guidance?tab=skills',
+    },
     managementGroup: 'guidance',
     managementViewTypes: ['guidance'],
   },
@@ -351,61 +389,93 @@ export const APP_DESTINATION_REGISTRY = createDestinationRegistry([
     palette: { order: 30, params: { tab: 'skills' } },
   },
   {
-    id: 'connections',
-    route: '/connections',
-    label: () => 'Connections',
-    keywords: ['connections', 'providers', 'integrations'],
-    icon: 'connections',
-    // Entered at its Engines tab and named for what a reader is looking for.
-    // `/connections` itself is a resolver frame that immediately picks a
-    // section, so listing the hub root put a reader one redirect from the
-    // place the row is about.
-    customizeNav: {
-      group: 'set-up',
-      order: 30,
-      label: 'Connections',
-      route: '/connections/engines',
-    },
-    managementGroup: 'connections',
+    // Connections is no longer a destination: its parts are the items below,
+    // and this page lists them. Its old words stay as keywords so ⌘K still
+    // answers someone who learned them. Item keywords drop only words the
+    // label already matches; the palette test pins the rest.
+    id: 'customize',
+    // The published id of the destination Customize replaced.
+    aliases: ['connections'],
+    route: '/customize',
+    label: () => 'Customize',
+    keywords: ['connections', 'set up', 'providers', 'models', 'integrations'],
+    icon: 'customize',
+    managementGroup: 'customize',
     palette: { order: 50 },
+    managementViewTypes: ['customize'],
+    view: { type: 'customize' },
+  },
+  {
+    id: 'engines',
+    route: '/customize/engines',
+    label: () => 'Engines',
+    keywords: ['claude code', 'codex', 'acp'],
+    customizeNav: { group: 'run-on', order: 10 },
+    managementGroup: 'customize',
+    palette: { order: 51 },
     managementViewTypes: [
-      'connections',
-      'connections-models',
-      'connections-model-edit',
       'connections-engines',
       'connections-engine-edit',
       'connections-engine-new',
-      'connections-tools',
-      'connections-tool-edit',
-      'connections-knowledge',
     ],
-    view: { type: 'connections' },
   },
   {
-    id: 'registry',
-    route: '/registry',
-    label: () => 'Registry',
-    keywords: ['registry', 'browse', 'install'],
-    icon: 'registry',
-    managementGroup: 'registry',
-    palette: { order: 40 },
-    managementViewTypes: ['registry'],
-    view: { type: 'registry' },
+    id: 'providers',
+    route: '/customize/providers',
+    label: () => 'Providers',
+    keywords: ['models', 'api keys'],
+    customizeNav: { group: 'run-on', order: 20 },
+    managementGroup: 'customize',
+    palette: { order: 52 },
+    managementViewTypes: ['connections-models', 'connections-model-edit'],
+  },
+  {
+    id: 'tools',
+    route: '/customize/tools',
+    label: () => 'Tools',
+    keywords: ['tool servers', 'mcp', 'integrations'],
+    customizeNav: { group: 'can-reach', order: 10 },
+    managementGroup: 'customize',
+    palette: { order: 53 },
+    managementViewTypes: ['connections-tools', 'connections-tool-edit'],
+  },
+  {
+    id: 'knowledge',
+    route: '/customize/knowledge',
+    label: () => 'Knowledge',
+    keywords: ['search', 'embeddings'],
+    customizeNav: { group: 'can-reach', order: 20 },
+    managementGroup: 'customize',
+    palette: { order: 54 },
+    managementViewTypes: ['connections-knowledge'],
+  },
+  {
+    // Not a Customize item: devices move to the Station page. Until then the
+    // palette and the Customize landing are its doors.
+    id: 'computers',
+    route: '/connections/computers',
+    label: () => 'Computers',
+    keywords: ['devices', 'ssh'],
+    hiddenFromNav: true,
+    palette: { order: 56 },
+    managementViewTypes: ['connections-computers'],
   },
   {
     id: 'plugins',
-    route: '/plugins',
-    label: () => 'Plugins',
-    keywords: ['plugins'],
+    // The published id of the Registry, which Apps › Discover replaced.
+    aliases: ['registry'],
+    route: '/apps',
+    label: () => 'Apps',
+    keywords: ['apps', 'discover', 'library', 'plugins', 'registry'],
     icon: 'plugins',
-    // #2144 decision 4: Registry FOLDS in here. Browsing the catalogue and
-    // managing what it installed are one errand, so Customize offers one row
-    // for it; /registry keeps its route, its palette entry and its keywords.
-    customizeNav: { group: 'set-up', order: 40 },
+    // Apps is not a Customize item. Until it has a sidebar row, the palette,
+    // the Customize landing's note, the links that point here and the
+    // redirects from `/plugins` and `/registry` are its doors. There is no Registry destination: each
+    // remaining catalogue is a page entered from where its kind is used.
     managementGroup: 'plugins',
     palette: { order: 60 },
-    managementViewTypes: ['plugins'],
-    view: { type: 'plugins' },
+    managementViewTypes: ['apps'],
+    view: { type: 'apps', tab: 'discover' },
   },
   {
     id: 'notifications',
@@ -463,10 +533,8 @@ export const APP_DESTINATION_REGISTRY = createDestinationRegistry([
     keywords: ['developer', 'logs', 'system', 'telemetry'],
     icon: 'developer',
     previewFlag: DEVELOPER_TOOLS_FLAG,
-    // The device flag gates ADVERTISEMENT only, here exactly as it gated the
-    // Manage entry and the panel row before it: /developer stays deep-linkable
-    // whether or not this row is offered.
-    customizeNav: { group: 'this-station', order: 100 },
+    // The device flag gates ADVERTISEMENT only: /developer stays
+    // deep-linkable whether or not the palette offers it.
     managementGroup: 'developer',
     palette: {
       order: 80,
@@ -498,7 +566,6 @@ export const APP_DESTINATION_REGISTRY = createDestinationRegistry([
       'palette',
     ],
     icon: 'appearance',
-    customizeNav: { group: 'this-station', order: 90 },
     palette: { order: 95 },
     managementViewTypes: ['appearance'],
     view: { type: 'appearance' },
@@ -524,9 +591,7 @@ export const APP_DESTINATION_REGISTRY = createDestinationRegistry([
     label: () => 'Settings',
     keywords: ['settings', 'preferences', 'config'],
     icon: 'settings',
-    // Listed last in Customize as well, without leaving its other doors: the
-    // footer's account menu, ⌘, and the palette still open it directly.
-    customizeNav: { group: 'this-station', order: 110 },
+    // The footer's account menu, ⌘, and the palette open it.
     palette: { order: 100 },
     managementViewTypes: ['settings'],
     view: { type: 'settings' },
@@ -581,3 +646,14 @@ export const APP_DESTINATION_REGISTRY = createDestinationRegistry([
     view: { type: 'profile' },
   },
 ] as const satisfies readonly DestinationDefinition[]);
+
+/**
+ * Which Customize item a view belongs to: `customize` for the landing, the
+ * item's destination id for a view one of its items hosts, or null for a
+ * view outside Customize. The registry's Customize list is the only source.
+ */
+export function customizeItemForView(view: NavigationView): string | null {
+  if (view.type === 'customize') return 'customize';
+  const destination = APP_DESTINATION_REGISTRY.getDestinationForView(view);
+  return destination?.customizeNav ? destination.id : null;
+}

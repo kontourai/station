@@ -1,0 +1,9 @@
+{
+  "revision": "2f8a9e3fa26c68d18ff56f4f22297ce3db0809ac",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Checked the link to the current Session API. The API clarification concerns follow-up queue positions and does not change what this historical decision describes or its superseded rollout status.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","docs/reference/session-api.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Checked the regenerated bundle against the canonical module text. It reflects the revised inbox delivery precedence. The catalog, static retrieval interface, and scope of the credential-free documentation remain the same.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

@@ -199,6 +199,52 @@ Agent and contributor smoke runs should use unique ports and `--temp-home`
 unless the task explicitly needs the selected channel's default runtime home.
 See [release channel ports](release-channel-ports.md) for the canonical map.
 
+A concrete `--host` keeps the public API bound to that interface and adds a
+separate `127.0.0.1` API listener on the same port for lifecycle readiness and
+the UI proxy. Both listeners serve the same authorization middleware and share
+terminal capacity. The supervisor retains both sockets across generation
+handoff. A private LAN peer does not become a local operator: internal lifecycle
+credentials still require a loopback socket. If either bind fails, startup
+fails rather than falling back to a wildcard listener.
+
+When a launcher supplies a readiness file, the UI also requires a private
+snapshot declaring the expected SHA ready before authenticating the backend's
+boot identity. POSIX files must belong to the current user with no group or
+other permissions. On Windows, synthetic mode bits are not ACL evidence: a
+bounded [asynchronous verifier](../../packages/cli/src/commands/windows-readiness-reader.ts)
+checks the [shared current-user-only DACL policy](../../packages/shared/src/windows-path-trust.ts)
+on the same open handle used to read the snapshot, rejects reparse paths, and
+compares the final path's file identity. It checks each new observation rather
+than caching an ACL verdict by `ctime` or `mtime`. Concurrent requests share
+the next pending observation, not an earlier result. The verifier is owned by
+the UI listener inside the existing [parent-bound Windows Job guard](../../packages/shared/src/windows-command-guard.ts).
+Stop waits for the guard's empty-Job acknowledgment and process closure before
+allowing a replacement; unconfirmed cleanup fences further verification.
+Parent loss closes the owned Job without a PID-based tree kill. Startup warms
+the verifier before binding so a cold PowerShell launch does not consume the
+HTTP identity budget. Installed Windows runtimes use their digest-verified
+staged guard; source checkouts compile the existing guard when needed. The
+verifier's startup deadline cancels pending compilation and owner-identity
+lookup, and a cancelled lookup cannot subsequently start a worker. Failed or
+timed-out file verification leaves the original file unchanged and reports unavailable;
+a connected backend that misses its identity deadline remains degraded, not
+ready. A private file alone never substitutes for the authenticated matching boot.
+
+Windows lifecycle instance records use the shared native private-file owner,
+not synthetic POSIX mode bits. The state directory and each record must be
+current-user-only; an inherited owner-only ACL can be protected in place, but
+an ACL granting unrelated access is refused before record contents are read.
+Publication and removal retain file identity checks, including rollback when
+publication fails. Native handles are transferred to real runtime descriptors
+when Node filesystem calls or child stdio require one; the descriptor owns
+the handle's lifetime.
+
+An existing explicit log directory must be execution-safe. Station leaves its
+ACL unchanged, preserves existing log bytes, and repairs a current-user-owned
+log file to a protected current-user-only ACL before writing. The server gets
+an append-only descriptor, so child output does not overwrite earlier logs.
+An untrusted directory or a log owned by another user is refused, not repaired.
+
 ### Handing a running instance to the operator
 
 Starting the app is not the whole handoff. The UI signs in through a
@@ -277,7 +323,7 @@ Ollama-compatible server whose models are scripted scenarios:
 `scripted-showcase` (Markdown with a list, table and code block),
 `scripted-echo`, `scripted-long`, `scripted-truncated` (finish reason
 `length`) and `scripted-error` (fails mid-stream). In the dev instance, add an
-Ollama connection under Connections with base URL `http://127.0.0.1:4417` and
+Ollama connection under Customize › Providers with base URL `http://127.0.0.1:4417` and
 pick a scenario as the model. The turn then runs through the real Ollama
 adapter, orchestration, persistence and live stream; only the model is
 replaced. It offers no tools, so a scripted turn never asks Station to run
@@ -1312,3 +1358,28 @@ npm run docs:pages:build
 ```
 
 The generated `dist-pages/` directory is disposable and should not be edited by hand.
+
+### UI component catalog
+
+Run `npm run dev:ui -- --host 127.0.0.1 --port 4178 --strictPort` and open
+`/component-catalog.html` on that development server. The catalog lists UI
+source files in Station and its UI packages, including files that still
+need a story or coverage through a composed example. The first stories use
+the shared button, disclosure, and loading, empty, and error primitives.
+The control stories also exercise action overflow, editable and disabled
+switches, icon buttons, and settings provenance. Use the source filter and **Unmapped only** to check coverage.
+
+Open **Inbox Task rows** in the catalog to compare the current row with
+the proposed layout. The Inbox storyboard also has a direct entry at
+`/inbox-storyboard.html`. It uses
+Station’s Task row, status rendering, theme tokens, buttons, and swipe hook.
+Compare the shipping row anatomy and the proposed attention actions with the
+same fixtures. Toggle phone width and swipe left on a proposed row to reveal
+actions. Replies, approvals, retries, acknowledgements, and snoozes use
+temporary fixture state. They make no Station API requests.
+
+When adding a story, give it a stable section ID and list the source files
+it actually exercises in the catalog. For composed flows, use the same
+fixtures for current and proposed views. Import the production components
+and keep fixtures local. Catalog and storyboard entries run through Vite
+in development and are outside the product build inputs.

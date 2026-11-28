@@ -37,6 +37,18 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* The default for new chats: an outlined tag on the purpose line under the
+   name, so it never reads as an engine and never takes the name's width. */
+/* The purpose line's indent, without its two-line clamp, which cut the
+   tag's border. */
+.new-chat-modal__agent-purpose.new-chat-modal__agent-default-line {
+  display: flex;
+  overflow: visible;
+}
+.new-chat-modal__agent-default-line > .new-chat-modal__agent-default {
+  background: transparent;
+  border: var(--k-border-thin) solid var(--k-line-strong);
+}
 .new-chat-modal__agent-header
   > .agent-readiness__status.agent-readiness__status {
   grid-column: 4;

@@ -268,7 +268,7 @@ function unprovenEngineRefusal(connection: RuntimeConnectionSummary): string {
     : 'No live engine observation is available.';
   const action =
     connection.type === 'acp'
-      ? `Reconnect the engine from its setup page in Station's Connections (or run: station acp connections reconnect ${connection.id}), then retry.`
+      ? `Reconnect the engine from its page in Station's Customize → Engines (or run: station acp connections reconnect ${connection.id}), then retry.`
       : 'Run the connection\u2019s explicit smoke, then retry.';
   return `${engine} has not yet proved it can complete a chat turn. ${observed} ${action}`;
 }

@@ -161,8 +161,8 @@ Send-while-busy uses `sessionAdapterSupportsSteering`, not a connection
 Code, Codex, Muse and the GitHub Copilot (SDK) preview engine. Station-owned
 steering waits for an observed post-tool boundary in the accepted turn. ACP reports native channels from the live
 handshake; otherwise an explicit Steer uses cancel-and-reprompt after waiting
-for cancellation to finish, with a continuation instruction. Queue remains
-the default on that interrupting fallback. A steer fold appends a user row and
+for cancellation to finish, with a continuation instruction. Queue is the
+default across engines. A steer fold appends a user row and
 **does not** reset `streamingMessage`. The event-log projection
 (`projectRuntimeEventsToMessages`) keeps the turn open at a steer but emits
 what the engine produced before it as its own assistant row, so the steer

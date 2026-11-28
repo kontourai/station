@@ -1,0 +1,7 @@
+{
+  "revision": "c22884a9a0eedcc97c83de2d467487e44e37fb63",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed responsive-ui caller-journey and focus-return guidance against the new Inbox refresh cases and unchanged existing approval/open/placement cases. Both1440 and390 phases passed with a64-session fixture, writable retained draft, updated non-retained title, post-click four-source reads, nonzero final list-scroll retention and trigger focus. Reader URL/draft/answer position checked after returning. No CSS/layout/physical-keyboard, transient-frame or scrolled-transcript claim.","inputs":["tests/chat-dock-inbox-open.spec.ts"]}
+  ]
+}

@@ -698,7 +698,7 @@ DELETE /api/orchestration/conversations/<conversationId>/inbox/<clientTurnId>
 
 `GET` lists the conversation's held messages (`ConversationInboxEntry`:
 `state` is `queued`, `sending`, `sent`, `unconfirmed`, `refused` or
-`cancelled`, with `position` among those still waiting, and for a `refused`
+`cancelled`, with `position` among the follow-ups still waiting, and for a `refused`
 or `unconfirmed` one a `reasonCode` and a fixed `reason`, never the refusal's
 own text). `reasonCode` is one of `not_permitted`, `device_not_permitted`,
 `may_have_been_sent`, `start_deadline`, `unreadable_entry`, `session_ended`,
@@ -782,6 +782,25 @@ HTTP409 `inbox_stale_head` and `currentHead`, without a write.
   notes older than seven days (`inboxSettledRetentionMs`). Steer replay fences
   remain until conversation deletion.
 
+When the inbox read includes `data.queueControls: true`, the same POST
+supports these actions on the caller's still-waiting follow-ups:
+
+- `{kind: 'edit', key, previous, message}` replaces the text if the previously
+  read text still matches. It preserves the key, attachments and position.
+- `{kind: 'move', key, neighbor, direction}` swaps two adjacent entries from
+  the same sender if the observed order still matches. Direction is `up` or
+  `down`.
+- `{kind: 'promote', key, source, message, expectedTurn}` uses a fresh UUID for
+  `key`, the waiting entry's key for `source`, and the inbox read's opaque
+  `data.queueSteerTarget` for `expectedTurn`. The target stays stable as the
+  turn streams. Station withdraws the source and admits an attachment-free
+  steer in the same transaction. The source key stays retired so an older
+  client retry cannot restore the follow-up. A changed turn or unavailable
+  steering leaves the source queued.
+
+Edit and move return 200, while accepted promotion returns 202 with the steer
+entry. An entry already claimed for placement cannot be edited or moved.
+
 A handoff occurs at most once per durable claim. A crash between claim and
 acknowledgement leaves `unconfirmed`: the UI says **May have been sent** and
 never automatically replays it. **Review and resend** restores text into an
@@ -796,8 +815,12 @@ with `whenBusy: 'queue'`; a definitive unqueued refusal of a composer send
 restores the draft. A replay neither clears nor restores the composer.
 Legacy sessionStorage records lack a Station/authority identity and remain
 review-only, without automatic drain or reassignment to the current account.
-Offline steering can retain an already observed, authority-scoped head; without
-one the text stays in the composer.
+New hosts expose `steerHead` in the inbox snapshot. Pass it as the steer’s
+`expectedHead`. It identifies the running turn and stays valid while that turn
+streams; a different turn refuses it. A null value means there is no running
+turn to steer. Older hosts expose only `currentHead`. Offline steering can
+retain an already observed, authority-scoped head; without one the text stays
+in the composer.
 
 ### State the engine you expect
 
@@ -1192,9 +1215,9 @@ not offered. The inbox offers it as the
 `acceptForSession` answer to every later request in that Session that a
 grant may answer. It is for a Session that cannot run at full access, such
 as a confined, automation-dispatched one, and changes neither its
-confinement nor its approval mode. An OpenCode Session (native or over ACP)
-and an ACP Session offer it on a request whose `request.opened` payload
-carries `sessionGrantAll: true`. Requests addressed to a person (a plan exit,
+confinement nor its approval mode. Claude, Codex, native OpenCode, and ACP
+Sessions offer it when the `request.opened` payload carries
+`sessionGrantAll: true`. Requests addressed to a person (a plan exit,
 a question, a Station authority change) are excluded. ACP requires an
 allow-once option and rejects an `all` answer without one, leaving the request
 open. Orchestration keeps `sessionGrantAll` only for adapters that declare the
@@ -1206,7 +1229,7 @@ rejections and staged policy, and never for a request addressed to a
 person, an OpenCode configuration edit Station gives a person, or a
 delegated child that may not grant approvals. A change of approval mode
 drops it, and a reply still in flight across that change grants nothing.
-An engine that does not declare the scope (Claude, Codex and the others)
+An engine that does not declare the scope
 takes the answer as the plain per-tool `acceptForSession`, which is
 narrower. The inbox offers it as the `acceptForSessionAll` action.
 
@@ -2841,3 +2864,27 @@ reply**. This display does not enable Stop or Steer for a closed turn.
 
 Elapsed displays share `src-ui/src/utils/relativeTime.ts` and use `45s`,
 `2m 1s`, and `1h 4m`. Under an hour, live clocks retain seconds.
+
+## Third-party history preview
+
+A Station owner can browse the host's provider transcripts through the enabled
+**Third-party history** Feature Preview on a personal Station.
+
+- `GET /api/orchestration/external-history?offset=0&search=` returns one bounded
+  recent catalog page. Specify `provider` to page further through that engine.
+  It reports partial results when a scan reaches its budget or cannot complete.
+- `GET /api/orchestration/external-history/:id/transcript` reads a bounded text
+  preview without importing it. The response sets `truncated` when it shortens
+  or omits text to keep the preview small. Pass the returned `nextCursor` on a later
+  request to keep reading the same transcript. Pass `from=start` to start at the
+  beginning. Only sources that can read
+  transcripts expose this operation.
+- `POST /api/orchestration/external-history/:id/import?operationId=…` saves a bounded batch
+  through the ordinary attached-session owner. The returned `threadId` is
+  the saved Session. Repeat with the same operation ID while `more` is true.
+  Use `DELETE /api/orchestration/external-history/:id/import/:operationId` to
+  cancel independently of the HTTP transport. Canceling stops pending work
+  between writes. Already committed records and progress remain available.
+
+The catalog IDs and cursors are opaque and scoped to the serving Station.
+Refresh the catalog if a source or its cursor expires.

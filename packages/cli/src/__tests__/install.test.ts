@@ -263,7 +263,7 @@ describe('plugin CLI API authority', () => {
     expect(printed).toContain(
       'shared-lib requires host approval for providers.register',
     );
-    expect(printed).toContain('Station host in the Plugins page');
+    expect(printed).toContain('Station host in Apps › Library');
     expect(printed).not.toContain('✅ Installed demo@1.0.0 through Station');
   });
 

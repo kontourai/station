@@ -18,7 +18,9 @@ cannot reveal a newer sidecar.
 
 If an installed service owns the home, or Desktop owns no sidecar, the host can
 instead reveal the mounted connection/recovery surface. That does not establish
-that a backend is reachable or ready. On macOS, an activation request can make
+that a backend is reachable or ready. If Desktop cannot find its local service
+profile, it can still reconnect to the remote Station you previously selected.
+On macOS, an activation request can make
 a native startup cover visible while readiness is pending. It looks like
 Station's own startup screen, with the Station wordmark and **Starting
 Station**, and it does not expose application content.

@@ -1,0 +1,7 @@
+{
+  "revision": "247642bd9e3398c7430e3310b7eb956bd48668ce",
+
+  "notes": [
+    {"path":"docs/guides/native-shell-verification.md","note":"Reconciled the hostile plugin lane explanation with its actual native WebDriver actions and observed Windows child-frame CSP denial. Preserved NOT_VERIFIED release matrix and limits for fallback transport, command authorization, secure storage and exact binary provenance; unrelated native operating contracts are unchanged.","inputs":["docs/guides/native-shell-verification.md"]}
+  ]
+}

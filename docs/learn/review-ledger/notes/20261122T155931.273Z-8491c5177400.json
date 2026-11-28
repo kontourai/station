@@ -1,0 +1,15 @@
+{
+  "revision": "f5c5b850666bdfd5328b58f29ff07e80fd441486",
+
+  "notes": [
+    {"path":"docs/contexts/extension-ecosystem/CONTEXT.md","note":"The install refusal now names Apps › Library; citing pages describe the refusal, not its wording, and plugin-authority-model was updated.","inputs":["src-server/services/plugins/plugin-install-consent.ts"]},
+
+    {"path":"docs/design/plugin-authority-model.md","note":"The install refusal now names Apps › Library; citing pages describe the refusal, not its wording, and plugin-authority-model was updated.","inputs":["src-server/services/plugins/plugin-install-consent.ts"]},
+
+    {"path":"docs/reference/api.md","note":"The install refusal now names Apps › Library; citing pages describe the refusal, not its wording, and plugin-authority-model was updated.","inputs":["src-server/services/plugins/plugin-install-consent.ts"]},
+
+    {"path":"examples/demo-layout/README.md","note":"The install refusal now names Apps › Library; citing pages describe the refusal, not its wording, and plugin-authority-model was updated.","inputs":["src-server/services/plugins/plugin-install-consent.ts"]},
+
+    {"path":"examples/registry/README.md","note":"The install refusal now names Apps › Library; citing pages describe the refusal, not its wording, and plugin-authority-model was updated.","inputs":["src-server/services/plugins/plugin-install-consent.ts"]}
+  ]
+}

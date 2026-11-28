@@ -1,0 +1,7 @@
+{
+  "revision": "1a9112350383f27c8b1a925e0333adeb2672b7fa",
+
+  "notes": [
+    {"path":"docs/security/remote-access-threat-model.md","note":"Reviewed the log access boundary at the diagnostics route, station-control caller guard, and the owner-only decision path. The new preview grants exactly one redacted query.","inputs":["docs/security/remote-access-threat-model.md","src-server/runtime/routes/runtime-routes.ts","src-server/security/station-control-authority-guard.ts"]}
+  ]
+}

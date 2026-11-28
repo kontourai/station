@@ -1,0 +1,7 @@
+{
+  "revision": "bd8b067c5172b111f781c7f727ab4b49eb28ec12",
+
+  "notes": [
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Reviewed cited pages for Claude and Codex sessionGrantScope 'all' support (sessionGrantAll on eligible approvals, allow-once answers, person-addressed exclusions, clearing on mode change/session end); unrelated pages make no conflicting session-grant claims.","inputs":["docs/guides/agent-configuration.md"]}
+  ]
+}

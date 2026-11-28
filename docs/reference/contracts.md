@@ -398,7 +398,7 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/native-relay-enrollment` | Native challenge/candidate, fixed HPKE recipient, ciphertext delivery, signed activation/status, retained fixed request and owned transition/resume DTOs. Declarations grant no authority; server/native/UI owners compose them separately, and no Device bearer crosses renderer IPC |
 | `@kontourai/station-contracts/native-relay-link` | Closed v1 public route intent or unchanged native v2 invitation envelope, untrusted origin hints, fixed native channels and secret-free host delivery metadata/opaque handles; no trust, person, Device, Project or compute authority |
 | `@kontourai/station-contracts/deployment-authentication` | Public operator-installed authentication provider configuration, factory, descriptor, operations and verified account-session results; see [deployment authentication](../guides/deployment-authentication.md) |
-| `@kontourai/station-contracts/catalog` | Registry items, install results, skills, guidance assets. `RegistryItem.mcpServer` (`RegistryMcpServerListing`) describes an MCP subregistry entry: name, version, schema, usable remote, `authMode`, derived `qualification` (`qualified`, `setup-required`, `blocked`, `unqualified`), launch stage, `contentTrust`, `trustReadOnlyHints` and the `unavailable` reasons that refuse Add; `RegistryMcpSourceStatus` is one source's freshness and refusals ([design](../design/mcp-subregistry-curation.md)) |
+| `@kontourai/station-contracts/catalog` | Registry items, install results, skills, guidance assets. `RegistryItem.mcpServer` (`RegistryMcpServerListing`) describes an MCP subregistry entry: name, version, schema, usable remote, `authMode`, derived `qualification` (`qualified`, `setup-required`, `blocked`, `unqualified`), launch stage, `contentTrust`, `trustReadOnlyHints` and the `unavailable` reasons that refuse Add; `RegistryMcpSourceStatus` is one source's freshness and refusals ([design](../design/mcp-subregistry-curation.md)). `RegistryItem.app` (`RegistryAppFacts`) says what a plugin catalog entry is: `none`, or an app's screens, panes, where it opens, what it works with, what it brings and needs, and whether a view is a sandboxed MCP tool UI. `deriveRegistryAppFacts` derives it from a parsed manifest and its layout documents, and `parseRegistryAppFacts` reads a stored value; both refuse a list over its bound rather than truncating it |
 | `@kontourai/station-contracts/child-work` | Provider-neutral child work (engine subagents and Station delegates): items, deltas, the session read model, and the one pure reducer over them. An item's optional `workKind` says what it is (`agent`, `command` for a background shell command, `monitor` for one a Monitor launched); `childWorkKindOf` reads it, treating older Claude history whose `kindLabel` is the raw `local_bash` task type as a command and anything else as an agent, and only an agent has a model, instructions or transcript. An item's optional `model` is the child's own model with its `source` (never the parent's), and `transcript` names the engine records its read-only transcript is served from: a Claude subagent by session and agent id (`claude-subagent`), a Codex child by its thread id under the session's `CODEX_HOME` (`codex-thread`, its rollout file), never by a path. An `unresolved` child may carry `endedBy: 'engine-exit'`: the engine process it ran in died under it (a crash, a signal, memory exhaustion). A stop someone requested is not one: its children read "No result". Unlike a bare `unresolved` that is an observed end, so no later settle corrects it, and `childWorkDisplayStatus` reads it as `interrupted`. It is a field rather than a status so a client built before it, which drops unknown members, keeps showing "No result" instead of an unknown status; the wire statuses stay the six released clients know. Its optional bounded `latestTool` is the latest reported child tool name, independent of `progress`; it carries no tool arguments or inferred execution state. Missing reports retain the last observed name through reducer updates and settlement, and a new resumed child has a separate identity. `usageProvisional` marks a terminal child whose usage still holds figures from while it ran; settles that report usage replace its running fields, and a field a settle reported stays sticky, even while `usageRunningFields` names other fields still running. `childWorkSettleFromItem` restates a stored settled item as a settle that keeps both, for seeding a registry from history or a session view |
 | `@kontourai/station-contracts/thread-usage-tree` | A conversation's usage tree: own figures, each child's usage relation to its parent (`added`, `included-in-parent`, `not-reported`) for tokens and cost, and a roll-up total that names what it leaves out |
 | `@kontourai/station-contracts/cloud-move` | Cloud preparation target/inventory, enrolled target observations, unavailable-transfer projection, and workspace package capture/inspection/verification receipts |
@@ -2104,10 +2104,24 @@ it does not discover every provider's quota policy.
 `conversation-pull-request-links` defines exact provider, host, repository, and
 native-ref identities for Conversation links. Explicit links, branch-derived
 associations, and Task-kept declarations retain distinct `source` values.
-Provider refresh results carry an observation time and either current state or
-an explicit unsupported/unavailable reason. `PullRequest.headSha` and
-`baseSha` are optional because a provider that omits exact revisions must not
-be presented as current by inference.
+A current observation can include a timed `LinkedPullRequestSnapshot` with
+draft, checks, review decision, mergeability, updated, closed and merged
+times, diff counts and landing state. Checks can be passing, failing,
+pending or awaiting approval. Queue entries can include a position and
+removals have a forge event ID, a timestamp and an optional reason. A
+removal matches the failing filter for up to 15 minutes unless checks pass.
+A forge can explicitly report that review requirements are satisfied even
+when it omits a review decision. GitLab has no merge queue status here.
+A missing fact is unknown. Unsupported and unavailable observations carry a
+reason. `PullRequest.headSha` and `baseSha` carry exact revisions when the
+provider supplies them.
+
+With the Pull request agent feedback preview enabled, conversation
+inventory pages carry optional linked observations and local workspace
+observations. Workspace diff counts name their observed base and time.
+Task pull request facts can also carry readable linked observations from
+the Task's chats. Both projections reuse observations and keep missing
+facts visible when they aggregate links.
 
 `pull-request-feedback` defines pull request agent feedback: a person's
 switches, the forge observation (checks with their required flag, review
@@ -2120,7 +2134,8 @@ the `pull-request-head-review` preview is on. The newest review reads as
 `PullRequestHeadReview` (`headReview` on both views, with `current`), why
 the observed head has none yet as `PullRequestHeadReviewWaiting`
 (`headReviewWaiting`), and its required findings go as a `review-findings`
-delivery. `IPullRequestProvider.getFeedbackObservation` is
+delivery. Merge queue removals use a `merge-queue-removal` delivery keyed by
+the forge event ID. `IPullRequestProvider.getFeedbackObservation` is
 optional; a provider without it reads as `unsupported`. A `paused` status
 carries `cap` (`head` or `day`, for a round limit) and `at` when it paused.
 The attention subpath's `PullRequestFeedbackAttentionItem`
@@ -2192,6 +2207,21 @@ A structured completed tool return takes precedence over an earlier provider
 summary. Existing result handles are preserved, and later summaries do not
 overwrite returned text. A returned result remains reported output, not
 verification of its correctness.
+
+### Task end time and resume
+
+`TaskRecord.endedAt` is when a Task moved into `done` or `canceled`, written in
+the same store write as that move and never by an edit; it is absent on a live
+Task and on one that ended before the field existed. `TaskRecord.resumes` holds
+the incarnation's resume records (`TaskResumeRecord`), oldest first, at most
+`TASK_RESUME_MAX_PER_INCARNATION` (20). `@kontourai/station-contracts/task-resume`
+owns `TaskResumeRecord`, `TaskResumeRequest`, `TaskResumeResult`, the
+`task_resume_*` refusal codes, `validateTaskResumeRequest`,
+`taskResumeDeadline` and `taskResumeRefusal(task, now)`, the one reading of the
+Task-intrinsic rules (supported work item, `done` not `canceled`, a known end
+within `TASK_RESUME_WINDOW_MS`, under the record bound) that both the server and
+the UI use. `TASK_STATUS_TRANSITIONS` still gives `done` and `canceled` no
+transitions; only `TaskGraphService.resumeTask` leaves `done`.
 
 ### Task deliverable and work-chat relationships
 

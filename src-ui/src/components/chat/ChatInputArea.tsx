@@ -58,7 +58,13 @@ import type { StartComposerVoice } from '../chat-start/StartComposer';
 import { ConversationStopControl } from '../conversation/ConversationStopControl';
 import { AgentIcon } from '../icons/AgentIcon';
 import { BrandIcon } from '../icons/BrandIcon';
-import { AgentGlyph, ArrowDownGlyph, EngineGlyph } from '../icons/Glyph';
+import {
+  AgentGlyph,
+  ArrowDownGlyph,
+  EngineGlyph,
+  SendGlyph,
+  TrashGlyph,
+} from '../icons/Glyph';
 import { ModelIcon } from '../icons/ModelIcon';
 import { ResponsiveDialogSurface } from '../ResponsiveDialogSurface';
 import { VoiceOrb } from '../voice/VoiceOrb';
@@ -175,6 +181,9 @@ interface ChatInputAreaProps {
   // Input state
   hasQuotedContext?: boolean;
   draftText?: string;
+  editingQueue?: boolean;
+  queueEditSaving?: boolean;
+  queueEditTargetRef?: (node: HTMLDivElement | null) => void;
   quoteContext?: readonly DraftQuote[];
   input: string;
   workingDirectory?: string | null;
@@ -219,6 +228,11 @@ interface ChatInputAreaProps {
   busySteeringUnavailableReason?: string;
   /** Hold the draft as a follow-up instead of steering the open turn. */
   onQueueFollowUp?: () => Promise<void>;
+  queueToolbarRef?: (element: HTMLDivElement | null) => void;
+  followUpPresentation?: {
+    effect?: string;
+    showEffect?: boolean;
+  };
   /**
    * a Stop request is in flight. The control stays visible (the
    * turn is still the thing on screen) but is disabled and labelled with what
@@ -511,6 +525,8 @@ function placeStatusRow(body: HTMLElement, composer: HTMLElement) {
     body.toggleAttribute('data-status-floats', floats);
 }
 
+const draftMeasurementMirrors = new WeakSet<Node>();
+
 /**
  * The textarea's auto-height, clamped to the viewport, and the draft's floor:
  * two lines (or its whole content, when shorter). In a short dock the draft
@@ -527,6 +543,7 @@ function sizeDraft(
   // Measure out of flow: collapsing the live draft lets the browser clamp
   // the pinned transcript while the composer is temporarily shorter (#3661).
   const mirror = textarea.cloneNode(false) as HTMLTextAreaElement;
+  draftMeasurementMirrors.add(mirror);
   mirror.removeAttribute('id');
   mirror.removeAttribute('name');
   mirror.setAttribute('aria-hidden', 'true');
@@ -634,6 +651,9 @@ export function ChatInputArea({
   mentionAuthority,
   hasQuotedContext = false,
   draftText,
+  editingQueue = false,
+  queueEditSaving = false,
+  queueEditTargetRef,
   quoteContext,
   attachments = [],
   textareaRef,
@@ -647,6 +667,8 @@ export function ChatInputArea({
   busySteeringUnavailableReason,
   busyFollowUp = 'queue',
   onQueueFollowUp,
+  followUpPresentation,
+  queueToolbarRef,
   stopPending = false,
   modelSupportsAttachments = false,
   fileAttachmentsSupported = modelSupportsAttachments,
@@ -755,19 +777,36 @@ export function ChatInputArea({
   // On a phone an engine switch opens the handoff picker, which replaces Run
   // setup rather than stacking over it (as choosing another Agent does).
   const runSetupClose = useRef<(() => void) | null>(null);
+  const modelReturnDraft = useRef<HTMLTextAreaElement | null>(null);
+  const restoreModelDraft = () => {
+    modelReturnDraft.current?.focus({ preventScroll: true });
+    modelReturnDraft.current = null;
+  };
+  const closeModel = () => {
+    restoreModelDraft();
+    onModelClose?.();
+  };
   const selectModel = (model: SelectableModel) => {
     if (isMobile && model.executionAgentId !== currentExecutionAgentId)
       runSetupClose.current?.();
+    restoreModelDraft();
     onModelSelect?.(model);
   };
   const resetModel = () => {
     if (isMobile && currentExecutionAgentId) runSetupClose.current?.();
+    restoreModelDraft();
     onModelReset?.();
   };
   const hasSendableDraft = Boolean(
     input.trim() || hasQuotedContext || attachments.length,
   );
-  const hideMobileSubmit = isMobile && !hasSendableDraft;
+  const compactSendMode =
+    turnInFlight &&
+    onQueueFollowUp &&
+    followUpPresentation &&
+    !submitAction &&
+    !workspaceRefused;
+  const hideMobileSubmit = isMobile && !hasSendableDraft && !compactSendMode;
   // #3290: while Station governs OpenCode (it reports running a Station
   // mode), only build and plan are offered: the server refuses the user's own
   // agents then. On OpenCode's own settings the full list stays.
@@ -800,6 +839,12 @@ export function ChatInputArea({
     (sendBlockedReasonProp === undefined && busyAttachmentReason !== undefined);
   const [sendMode, setSendMode] = useState<'queue' | 'steer'>('queue');
   const [sendModeOpen, setSendModeOpen] = useState(false);
+  const steeringSelected = sendMode === 'steer' && busyFollowUp === 'steer';
+  const sendLabel = compactSendMode
+    ? steeringSelected
+      ? 'Steer current turn'
+      : 'Queue for next turn'
+    : (submitAction?.label ?? 'Send');
   useEffect(() => {
     void sessionId;
     setSendMode('queue');
@@ -812,6 +857,7 @@ export function ChatInputArea({
     chatReturnBehavior === 'send' ||
     (chatReturnBehavior === 'auto' && !coarsePointer);
   const submitPending = useRef(false);
+  const sendPointerDraft = useRef<HTMLTextAreaElement | null>(null);
   const [submitting, setSubmitting] = useState(false);
   // Send while a file is still uploading: the send waits for the upload and
   // goes by itself once every file is staged, never without its files. An
@@ -820,8 +866,8 @@ export function ChatInputArea({
   const uploadsInFlight = hasUploadsInFlight(attachmentStages);
   const [sendAfterUploads, setSendAfterUploads] = useState(false);
   const waitingForUploads = sendQueuedForUploads || sendAfterUploads;
-  const submit = async () => {
-    if (submitPending.current || sendQueuedForUploads) return;
+  const submit = async (intent = sendMode) => {
+    if (editingQueue || submitPending.current || sendQueuedForUploads) return;
     if (uploadsInFlight) {
       setSendAfterUploads(true);
       return;
@@ -829,7 +875,7 @@ export function ChatInputArea({
     submitPending.current = true;
     setSubmitting(true);
     try {
-      if (turnInFlight && sendMode === 'steer' && busyFollowUp === 'steer') {
+      if (turnInFlight && intent === 'steer' && busyFollowUp === 'steer') {
         await onSend('steer');
       } else if (turnInFlight && onQueueFollowUp) {
         await onQueueFollowUp();
@@ -1024,11 +1070,13 @@ export function ChatInputArea({
               ? 'Draft a follow-up while this turn finishes…'
               : 'Waiting on this chat — check again above to send…'
             : turnInFlight
-              ? sendMode === 'steer' && busyFollowUp === 'steer'
-                ? busySteeringKind === 'native'
-                  ? 'Steer this turn…'
-                  : 'Send at a safe boundary…'
-                : 'Queue a follow-up…'
+              ? followUpPresentation
+                ? 'Write a message…'
+                : sendMode === 'steer' && busyFollowUp === 'steer'
+                  ? busySteeringKind === 'native'
+                    ? 'Steer this turn…'
+                    : 'Send at a safe boundary…'
+                  : 'Queue a follow-up…'
               : mentionLocation && mentionRequestScope
                 ? 'Type a message — @ files, / for commands…'
                 : 'Type a message — / for commands…');
@@ -1083,6 +1131,10 @@ export function ChatInputArea({
   // The draft's two-line floor, written by the per-keystroke sizing below and
   // read by the reservation.
   const draftFloorRef = useRef(0);
+  const visualViewportHeightRef = useRef(visualViewport.height);
+  useLayoutEffect(() => {
+    visualViewportHeightRef.current = visualViewport.height;
+  }, [visualViewport.height]);
   const scheduleReserveRef = useRef<(() => void) | null>(null);
   // The draft could not be measured yet (the composer was hidden).
   const draftUnsizedRef = useRef(false);
@@ -1095,7 +1147,10 @@ export function ChatInputArea({
     const root = composerRootRef.current;
     if (!textarea || !root) return;
     const sizeIfShown = () => {
-      const floor = sizeDraft(textarea, visualViewport.height || dockHeight);
+      const floor = sizeDraft(
+        textarea,
+        visualViewportHeightRef.current || dockHeight,
+      );
       draftUnsizedRef.current = floor === null;
       if (floor !== null) draftFloorRef.current = floor;
     };
@@ -1281,7 +1336,19 @@ export function ChatInputArea({
       for (const row of root.querySelectorAll(observed)) observer.observe(row);
     };
     observeRows();
-    const mutations = new MutationObserver(() => {
+    const mutations = new MutationObserver((records) => {
+      if (
+        records.length > 0 &&
+        records.every((record) => {
+          if (record.type !== 'childList') return false;
+          const changedNodes = [...record.addedNodes, ...record.removedNodes];
+          return (
+            changedNodes.length > 0 &&
+            changedNodes.every((node) => draftMeasurementMirrors.has(node))
+          );
+        })
+      )
+        return;
       observeRows();
       placeNow();
       scheduleReserve();
@@ -1293,7 +1360,7 @@ export function ChatInputArea({
       mutations.disconnect();
       cleanup();
     };
-  }, [dockHeight, textareaRef, visualViewport.height]);
+  }, [dockHeight, textareaRef]);
 
   // Per keystroke (and per row that changes what the composer needs): the
   // textarea's own auto-height, then one coalesced reservation.
@@ -1333,21 +1400,39 @@ export function ChatInputArea({
   // shortcut stays dead.
   useEffect(() => () => setShortcutContext('composerFocused', false), []);
 
+  const keepDraftFocus = (event: React.MouseEvent<HTMLDivElement>) => {
+    const target = event.target;
+    if (
+      event.button === 0 &&
+      document.activeElement === textareaRef.current &&
+      target instanceof Element &&
+      event.currentTarget.contains(target) &&
+      target.closest(
+        '.chat-input__send-btn, .chat-input__send-mode, .chat-input__clear, .chat-input__blocked-action, .composer-attachments button, .composer-run-control',
+      )
+    )
+      event.preventDefault();
+  };
+
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: delegates pointer focus protection for composer buttons.
     <div
       className="chat-input"
       data-surface="composer"
       // Composer popovers stay inside this column (ResponsiveDialogSurface).
       data-popover-boundary=""
       ref={composerRootRef}
+      onMouseDown={keepDraftFocus}
+      onPointerDown={keepDraftFocus}
     >
       {!childReply && modelPickerOpen && (
         <ResponsiveDialogSurface
           layer="popover"
           ariaLabel="Model"
           ariaLabelledBy={modelPickerTitleId}
-          onClose={onModelClose}
+          onClose={closeModel}
           historyMode="entry"
+          returnFocusTarget={modelReturnDraft.current ?? undefined}
           anchorRef={modelButtonRef}
           overlayClassName="composer-popover-overlay composer-popover-overlay--start"
           panelClassName="composer-popover-panel chat-input__model-popover-panel"
@@ -1408,7 +1493,7 @@ export function ChatInputArea({
                 onReset={resetModel}
                 resetDisabledReason={modelResetDisabledReason}
                 onRuntimeOptionChange={onModelRuntimeOptionChange}
-                onClose={onModelClose}
+                onClose={closeModel}
               />
             </React.Suspense>
           )}
@@ -1615,8 +1700,16 @@ export function ChatInputArea({
               />
             </React.Suspense>
           )}
+          {queueEditTargetRef && (
+            <div
+              ref={queueEditTargetRef}
+              className="chat-input__queue-edit-slot"
+            />
+          )}
           <textarea
-            maxLength={childReply ? CHAT_INPUT_MAX_CHARS : undefined}
+            maxLength={
+              childReply || editingQueue ? CHAT_INPUT_MAX_CHARS : undefined
+            }
             ref={textareaRef}
             data-native-image-paste={
               selectAttachmentFiles && modelSupportsAttachments
@@ -1643,6 +1736,7 @@ export function ChatInputArea({
             placeholder={placeholder}
             value={displayInput}
             disabled={textareaDisabled}
+            readOnly={queueEditSaving}
             tabIndex={0}
             onFocus={(e) => {
               setShortcutContext('composerFocused', true);
@@ -1666,7 +1760,7 @@ export function ChatInputArea({
             }}
             onBlur={() => {
               setShortcutContext('composerFocused', false);
-              closeAll?.();
+              if (!modelPickerOpen) closeAll?.();
               // The file picker is portaled out of the composer, so it no
               // longer hides with it; close it like the other pickers.
               setMentionQuery(null);
@@ -1683,6 +1777,7 @@ export function ChatInputArea({
               );
             }}
             onPaste={(event) => {
+              if (editingQueue) return;
               const files = filesFromDataTransfer(event.clipboardData);
               if (files.length === 0) return;
               if (childReply && !selectAttachmentFiles) {
@@ -1764,6 +1859,7 @@ export function ChatInputArea({
               textareaRef.current?.focus();
             }}
             onKeyDown={async (e) => {
+              if (editingQueue) return;
               if (isComposing.current || isComposingKeyEvent(e)) return;
               if (e.defaultPrevented) return;
 
@@ -1998,17 +2094,7 @@ export function ChatInputArea({
               className="chat-input__clear"
               onClick={onClearInput}
             >
-              <svg
-                viewBox="0 0 24 24"
-                width="18"
-                height="18"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                aria-hidden="true"
-              >
-                <path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7" />
-              </svg>
+              <TrashGlyph className="chat-input__send-glyph" />
             </ComposerIconAction>
           )}
           {queuedRetryNotice && (
@@ -2040,6 +2126,7 @@ export function ChatInputArea({
           <div className="composer-choices chat-input__settings">
             <ComposerRunControl
               closeHandle={runSetupClose}
+              textareaRef={textareaRef}
               label={[
                 agentLabel ?? 'Current Agent',
                 modelLabel !== 'Model' ? modelLabel : undefined,
@@ -2182,7 +2269,19 @@ export function ChatInputArea({
                 changedForConversation={Boolean(
                   currentExecutionAgentId || isOverride,
                 )}
-                onClick={canModelSelect ? onModelOpen : undefined}
+                onClick={
+                  canModelSelect
+                    ? (event) => {
+                        const textarea = textareaRef.current;
+                        modelReturnDraft.current =
+                          event.detail > 0 &&
+                          textarea === document.activeElement
+                            ? textarea
+                            : null;
+                        onModelOpen();
+                      }
+                    : undefined
+                }
                 aria-disabled={!canModelSelect}
                 className={`chat-input__model-btn ${isOverride ? 'chat-input__model-btn--override' : 'chat-input__model-btn--default'}`}
                 aria-haspopup="dialog"
@@ -2321,14 +2420,41 @@ export function ChatInputArea({
                 stopPending={stopPending}
               />
             )}
+            {queueToolbarRef && (
+              <div className="chat-input__queue-slot" ref={queueToolbarRef} />
+            )}
             <div
               className="chat-input__submit-controls"
+              data-follow-up-mode={
+                compactSendMode
+                  ? steeringSelected
+                    ? 'steer'
+                    : 'queue'
+                  : undefined
+              }
               aria-hidden={hideMobileSubmit || undefined}
               data-concealed={hideMobileSubmit || undefined}
             >
               <button
                 type="button"
-                onClick={async () => {
+                onPointerDown={(event) => {
+                  const textarea = textareaRef.current;
+                  sendPointerDraft.current =
+                    event.button === 0 && textarea === document.activeElement
+                      ? textarea
+                      : null;
+                }}
+                onClick={async (event) => {
+                  const draft = sendPointerDraft.current;
+                  sendPointerDraft.current = null;
+                  if (
+                    event.detail > 0 &&
+                    draft &&
+                    draft === textareaRef.current &&
+                    draft !== document.activeElement
+                  ) {
+                    draft.focus({ preventScroll: true });
+                  }
                   if (workspaceRefused && !isOverLimit) {
                     await onStartNewChat?.(input, attachments);
                   } else if (
@@ -2359,6 +2485,7 @@ export function ChatInputArea({
                   }
                 }}
                 disabled={
+                  editingQueue ||
                   disabled ||
                   submitting ||
                   waitingForUploads ||
@@ -2371,11 +2498,7 @@ export function ChatInputArea({
                       attachments.length === 0)
                 }
                 tabIndex={hideMobileSubmit ? -1 : 0}
-                aria-label={
-                  workspaceRefused
-                    ? 'Start new chat'
-                    : (submitAction?.label ?? 'Send')
-                }
+                aria-label={workspaceRefused ? 'Start new chat' : sendLabel}
                 data-submit-action={submitAction ? 'continuation' : undefined}
                 aria-describedby={
                   sendBlockedReason
@@ -2385,7 +2508,7 @@ export function ChatInputArea({
                 title={
                   workspaceRefused
                     ? 'Start new chat'
-                    : (sendBlockedReason ?? submitAction?.label ?? 'Send')
+                    : (sendBlockedReason ?? sendLabel)
                 }
                 className={`send-button chat-input__send-btn ${
                   sendReady
@@ -2393,47 +2516,77 @@ export function ChatInputArea({
                     : 'chat-input__send-btn--inactive'
                 }`}
               >
-                <svg
-                  viewBox="0 0 24 24"
-                  width="18"
-                  height="18"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                  focusable="false"
-                >
-                  <path d="M12 19V5M5 12l7-7 7 7" />
-                </svg>
-                <span className="chat-input__send-label">
-                  {submitAction?.label ?? 'Send'}
-                </span>
+                {compactSendMode && !steeringSelected ? (
+                  <svg
+                    viewBox="0 0 24 24"
+                    width="18"
+                    height="18"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    aria-hidden="true"
+                    focusable="false"
+                  >
+                    <path d="M9 6h10M9 12h10M9 18h10M5 6h.01M5 12h.01M5 18h.01" />
+                  </svg>
+                ) : (
+                  <SendGlyph className="chat-input__send-glyph" />
+                )}
+                {!compactSendMode && (
+                  <span className="chat-input__send-label">{sendLabel}</span>
+                )}
               </button>
               {/* The mode is a choice about a draft: with nothing to send it
                   takes no room, on any screen. */}
-              {turnInFlight && onQueueFollowUp && hasSendableDraft && (
-                <button
-                  type="button"
-                  className={`chat-input__send-mode ${
-                    sendReady ? 'chat-input__send-mode--active' : ''
-                  }`}
-                  aria-label={`Send mode: ${sendMode === 'steer' && busyFollowUp === 'steer' ? 'Steer' : 'Queue'}`}
-                  title={`Send mode: ${sendMode === 'steer' && busyFollowUp === 'steer' ? 'Steer' : 'Queue'}`}
-                  tabIndex={hideMobileSubmit ? -1 : 0}
-                  aria-haspopup="dialog"
-                  aria-expanded={sendModeOpen}
-                  onClick={() => setSendModeOpen(true)}
-                >
-                  <span className="chat-input__mode-label">
-                    {sendMode === 'steer' && busyFollowUp === 'steer'
-                      ? 'Steer'
-                      : 'Queue'}
-                  </span>
-                  <ArrowDownGlyph />
-                </button>
-              )}
+              {turnInFlight &&
+                onQueueFollowUp &&
+                (hasSendableDraft || compactSendMode) && (
+                  <button
+                    type="button"
+                    className={`chat-input__send-mode ${
+                      sendReady ? 'chat-input__send-mode--active' : ''
+                    }`}
+                    aria-label={
+                      compactSendMode
+                        ? 'Steering mode'
+                        : `Send mode: ${steeringSelected ? 'Steer' : 'Queue'}`
+                    }
+                    title={
+                      busyFollowUp === 'steer'
+                        ? steeringSelected
+                          ? 'Switch to Queue'
+                          : busySteeringKind === 'safe-stop'
+                            ? 'Steer when safe'
+                            : 'Switch to Steer'
+                        : busySteeringUnavailableReason
+                    }
+                    aria-pressed={
+                      busyFollowUp === 'steer' ? steeringSelected : undefined
+                    }
+                    tabIndex={hideMobileSubmit ? -1 : 0}
+                    aria-haspopup={
+                      busyFollowUp === 'steer' ? undefined : 'dialog'
+                    }
+                    aria-expanded={
+                      busyFollowUp === 'steer' ? undefined : sendModeOpen
+                    }
+                    onClick={() => {
+                      if (busyFollowUp === 'steer')
+                        setSendMode(steeringSelected ? 'queue' : 'steer');
+                      else setSendModeOpen(true);
+                    }}
+                  >
+                    {!compactSendMode && (
+                      <span className="chat-input__mode-label">
+                        {sendMode === 'steer' && busyFollowUp === 'steer'
+                          ? 'Steer'
+                          : 'Queue'}
+                      </span>
+                    )}
+                    <ArrowDownGlyph />
+                  </button>
+                )}
             </div>
             {turnInFlight && onCancel && !stopInActivity && isMobile && (
               <ConversationStopControl
@@ -2442,47 +2595,44 @@ export function ChatInputArea({
               />
             )}
           </div>
-          {sendModeOpen && hasSendableDraft && (
-            <ResponsiveDialogSurface
-              layer="popover"
-              ariaLabel="Send mode"
-              onClose={() => setSendModeOpen(false)}
-              overlayClassName="composer-popover-overlay composer-popover-overlay--end"
-              panelClassName="composer-popover-panel"
-            >
-              <Button
-                variant="ghost"
-                className="chat-input__mode-option"
-                type="button"
-                onClick={() => {
-                  setSendMode('queue');
-                  setSendModeOpen(false);
-                }}
+          {sendModeOpen &&
+            busyFollowUp !== 'steer' &&
+            (hasSendableDraft || compactSendMode) && (
+              <ResponsiveDialogSurface
+                layer="popover"
+                preserveComposerFocus
+                composerTextareaRef={textareaRef}
+                ariaLabel="Send mode"
+                onClose={() => setSendModeOpen(false)}
+                overlayClassName="composer-popover-overlay composer-popover-overlay--end"
+                panelClassName="composer-popover-panel"
               >
-                Queue for next turn
-              </Button>
-              <Button
-                variant="ghost"
-                className="chat-input__mode-option"
-                type="button"
-                disabled={busyFollowUp !== 'steer'}
-                onClick={() => {
-                  setSendMode('steer');
-                  setSendModeOpen(false);
-                }}
-              >
-                {busySteeringKind === 'native'
-                  ? 'Steer this turn'
-                  : 'Steer when safe'}
-              </Button>
-              {busySteeringUnavailableReason && (
+                <Button
+                  variant="ghost"
+                  className="chat-input__mode-option"
+                  disabled
+                >
+                  Steer this turn
+                </Button>
                 <p role="status" className="chat-input__mode-note">
-                  {busySteeringUnavailableReason}
+                  {busySteeringUnavailableReason ??
+                    'Steering unavailable for this draft'}
                 </p>
-              )}
-            </ResponsiveDialogSurface>
-          )}
+              </ResponsiveDialogSurface>
+            )}
         </div>
+        {turnInFlight &&
+          followUpPresentation?.effect &&
+          hasSendableDraft &&
+          ((followUpPresentation.showEffect && steeringSelected) ||
+            (busyFollowUp !== 'steer' && sendMode === 'steer')) && (
+            <small className="chat-follow-up-effect" role="status">
+              {busyFollowUp === 'steer'
+                ? followUpPresentation.effect
+                : (busySteeringUnavailableReason ??
+                  'Steering unavailable for this draft')}
+            </small>
+          )}
         {/* The composer clips what overflows it in a short dock, which is
             the only dock that shows this Discard…. Its question opens as the
             composer's own popover (a sheet on a phone): above everything,

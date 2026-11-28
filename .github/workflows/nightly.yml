@@ -273,15 +273,18 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         if: steps.cli_source_decide.outputs.build == 'true'
         with: { node-version-file: .nvmrc, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
+      - name: Setup pinned Node for CLI receipt recovery
+        if: steps.cli_source_decide.outputs.build != 'true'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: { node-version-file: .nvmrc, package-manager-cache: false }
       - id: identity
         name: Build exact-SHA CLI nightly identity
-        if: steps.cli_source_decide.outputs.build == 'true'
         env:
+          BUILD_CLI: ${{ steps.cli_source_decide.outputs.build }}
           GH_TOKEN: ${{ github.token }}
           STATION_CLI_BUILD_CHANNEL: nightly
           STATION_CLI_SOURCE_SHA: ${{ needs.test-gate.outputs.source_sha }}
         run: |
-          npm run dependencies:ci
           # Run creation time is immutable across reruns, including midnight.
           export NIGHTLY_RUN_CREATED_AT
           NIGHTLY_RUN_CREATED_AT=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq '.created_at')
@@ -289,8 +292,11 @@ jobs:
           # A raw `npm version` walks the workspace to refresh a lockfile this
           # pnpm-managed repository does not have, and fails on peer conflicts
           # (ERESOLVE) before it ever writes the field. Only the field changes.
-          node scripts/lib/nightly-build-identity.mjs --cli-version "$version" --package-json packages/cli/package.json
-          npm run build:cli
+          if [ "$BUILD_CLI" = true ]; then
+            npm run dependencies:ci
+            node scripts/lib/nightly-build-identity.mjs --cli-version "$version" --package-json packages/cli/package.json
+            npm run build:cli
+          fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
       - id: cli_npm_preflight
         name: Check npm trusted publishing for @kontourai/station-cli
@@ -319,7 +325,6 @@ jobs:
           echo 'trusted_publisher=true' >> "$GITHUB_OUTPUT"
       - id: npm_idempotency
         name: Refuse a conflicting CLI version and skip an exact rerun
-        if: steps.cli_source_decide.outputs.build == 'true'
         env:
           CLI_VERSION: ${{ steps.identity.outputs.version }}
           SOURCE_SHA: ${{ needs.test-gate.outputs.source_sha }}
@@ -353,7 +358,7 @@ jobs:
         run: npm publish --tag nightly --access public
       - id: cli_registry_provenance
         name: Bind the published CLI receipt to npm registry provenance
-        if: ${{ always() && steps.cli_npm_publish.outcome == 'success' }}
+        if: ${{ always() && (steps.cli_npm_publish.outcome == 'success' || (steps.npm_idempotency.outcome == 'success' && steps.npm_idempotency.outputs.publish == 'false')) }}
         env:
           SOURCE_SHA: ${{ needs.test-gate.outputs.source_sha }}
           CLI_VERSION: ${{ steps.identity.outputs.version }}

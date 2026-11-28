@@ -1,0 +1,17 @@
+{
+  "revision": "bd8b067c5172b111f781c7f727ab4b49eb28ec12",
+
+  "notes": [
+    {"path":"docs/design/connections-onboarding.md","note":"Reviewed cited pages for Claude and Codex sessionGrantScope 'all' support (sessionGrantAll on eligible approvals, allow-once answers, person-addressed exclusions, clearing on mode change/session end); unrelated pages make no conflicting session-grant claims.","inputs":["src-server/providers/adapters/codex-adapter-transport.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed cited pages for Claude and Codex sessionGrantScope 'all' support (sessionGrantAll on eligible approvals, allow-once answers, person-addressed exclusions, clearing on mode change/session end); unrelated pages make no conflicting session-grant claims.","inputs":["src-server/providers/adapters/codex-adapter-transport.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed cited pages for Claude and Codex sessionGrantScope 'all' support (sessionGrantAll on eligible approvals, allow-once answers, person-addressed exclusions, clearing on mode change/session end); unrelated pages make no conflicting session-grant claims.","inputs":["src-server/providers/adapters/codex-adapter-transport.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed cited pages for Claude and Codex sessionGrantScope 'all' support (sessionGrantAll on eligible approvals, allow-once answers, person-addressed exclusions, clearing on mode change/session end); unrelated pages make no conflicting session-grant claims.","inputs":["src-server/providers/adapters/codex-adapter-transport.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed cited pages for Claude and Codex sessionGrantScope 'all' support (sessionGrantAll on eligible approvals, allow-once answers, person-addressed exclusions, clearing on mode change/session end); unrelated pages make no conflicting session-grant claims.","inputs":["src-server/providers/adapters/codex-adapter-transport.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Reviewed cited pages for Claude and Codex sessionGrantScope 'all' support (sessionGrantAll on eligible approvals, allow-once answers, person-addressed exclusions, clearing on mode change/session end); unrelated pages make no conflicting session-grant claims.","inputs":["src-server/providers/adapters/codex-adapter-transport.ts"]}
+  ]
+}

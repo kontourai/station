@@ -4193,15 +4193,21 @@ export class OrchestrationService {
             detail,
             authority,
           );
+        const describesHandoffPredecessor =
+          session.threadId !== lineageTail &&
+          !this.sessionReadModel.has(lineageTail) &&
+          this.conversationLineage.unstartedHandoffPredecessor(
+            conversationId,
+            lineageTail,
+          ) === session.threadId;
         return {
           sessionId: session.threadId,
-          // Only `readCurrentConversationSession`'s reserved-tail fallback
-          // answers with a Session other than the lineage tail, and only a
-          // plain reservation may be described by it (#2424). A handoff or
-          // context-boundary tail stays a mismatch, as before.
-          ...(session.threadId !== lineageTail &&
-          session.threadId ===
-            this.conversationLineage.plainReservationPredecessor(conversationId)
+          ...(describesHandoffPredecessor ||
+          (session.threadId !== lineageTail &&
+            session.threadId ===
+              this.conversationLineage.plainReservationPredecessor(
+                conversationId,
+              ))
             ? { reservedSuccessorSessionId: lineageTail }
             : {}),
           ...(session.assignedAgentSlug
@@ -4239,8 +4245,12 @@ export class OrchestrationService {
           // does not become writable merely because the selected Agent has a
           // provider today.
           canContinue:
-            !disconnected && canResolveConversationContinuation(detail),
-          continuationPending: isConversationContinuationPending(detail),
+            !describesHandoffPredecessor &&
+            !disconnected &&
+            canResolveConversationContinuation(detail),
+          continuationPending: describesHandoffPredecessor
+            ? this.startsUnderway.has(lineageTail)
+            : isConversationContinuationPending(detail),
           ...(disconnected || nextTurnStartsSession === undefined
             ? {}
             : { nextTurnStartsSession }),
@@ -4249,8 +4259,9 @@ export class OrchestrationService {
             : {}),
         };
       },
-      reportUnavailable: (error) =>
+      reportUnavailable: (conversationId, error) =>
         options.logger.warn('Conversation open resolution is unavailable', {
+          conversationId,
           error: errorMessage(error),
         }),
     });
@@ -5538,6 +5549,8 @@ export class OrchestrationService {
   async shutdown(): Promise<void> {
     // Revoke reattachment now; existing consumers still observe the room-parking exits below.
     this.eventConsumptionStopped = true;
+    this.serverLogReadGrants.clear();
+    for (const read of this.serverLogReads.values()) read.settle('cancelled');
     this.adapterRegistryUnsubscribe?.();
     this.adapterRegistryUnsubscribe = undefined;
     this.stopCascadeDelivery();
@@ -7506,6 +7519,7 @@ export class OrchestrationService {
         new Error("This message key belongs to someone else's queued message."),
         { code: 'inbox_key_held' },
       );
+    if (pending?.retired) throw new ClientTurnInputConflictError();
     return pending;
   }
 
@@ -9090,7 +9104,15 @@ export class OrchestrationService {
       detail.session.threadId !== currentSessionId &&
       (freshContextPredecessor ||
         detail.session.threadId ===
-          this.conversationLineage.plainReservationPredecessor(conversationId))
+          this.conversationLineage.plainReservationPredecessor(
+            conversationId,
+          ) ||
+        (!this.sessionReadModel.has(currentSessionId) &&
+          detail.session.threadId ===
+            this.conversationLineage.unstartedHandoffPredecessor(
+              conversationId,
+              currentSessionId,
+            )))
         ? detail.session.threadId
         : currentSessionId;
     // One whole-history read per open: the conversation query and the
@@ -10572,6 +10594,7 @@ export class OrchestrationService {
        * untrusted-content permission asks about at a Station seam.
        */
       personAnswer?: true;
+      serverLogReadDecisionAuthorized?: () => boolean;
       /**
        * Set by the orchestration command route on an `interruptTurn` that
        * passes Station's person check (`personCredentialRequest`). Recorded
@@ -13108,6 +13131,34 @@ export class OrchestrationService {
               'request_event_changed',
               settledRefusal,
             );
+          const logRead = this.serverLogReads.get(command.threadId);
+          if (logRead?.requestId === command.requestId) {
+            if (
+              context?.serverLogReadDecisionAuthorized?.() !== true ||
+              command.expectedRequestEventId !== logRead.eventId ||
+              this.activeTurnIdOfThread(command.threadId) !== logRead.turnId ||
+              (command.decision !== 'accept' &&
+                command.decision !== 'acceptForSession' &&
+                command.decision !== 'decline')
+            )
+              throw new RequestEventGuardError(
+                'request_event_changed',
+                'The Station owner must answer the current log request in chat.',
+              );
+            if (
+              !logRead.settle(
+                command.decision === 'decline' ? 'denied' : 'approved',
+              )
+            )
+              throw new RequestEventGuardError(
+                'request_verification_unavailable',
+                'Station could not record the server log decision.',
+              );
+            if (command.decision === 'acceptForSession')
+              this.serverLogReadGrants.add(command.threadId);
+            this.persistReceipt(receipt);
+            return { receipt, result: undefined };
+          }
           const adapter = await resolveOrchestrationAdapterForThread({
             threadId: command.threadId,
             threadProviders: this.threadProviders,
@@ -14795,6 +14846,7 @@ export class OrchestrationService {
     threadId: string,
     cascade = true,
   ): Promise<void> {
+    this.retireServerLogReads(threadId);
     // The engine this mark describes is being stopped; its warning stays in
     // the log for a later turn.
     this.engineContextStartedFreshThreads.delete(threadId);
@@ -16187,6 +16239,7 @@ export class OrchestrationService {
       this.nativeTurnGenerations.delete(threadId);
       this.nativeOutputGrants.retireTerminal(threadId, nativeTurnId);
     }
+    this.retireServerLogReads(threadId);
     this.stationControlPullRequests?.retireSession(threadId);
     this.sessionAdapters.delete(threadId);
     this.lastEngineActivityAt.delete(threadId);
@@ -16378,8 +16431,8 @@ export class OrchestrationService {
    * session answer whose grant (`toolRequestSessionGrantFromPayload`, the
    * computation the approval surfaces and the Claude adapter use) is
    * `edit-mode`, read from the request as it stands before it is answered.
-   * A scoped answer (`sessionGrantScope`) is never one: an edit request
-   * offers no scope, so the adapter takes it as a one-call accept.
+   * An all-scoped answer to an edit uses the adapter’s session-wide grant
+   * and leaves the approval mode as recorded.
    */
   private isEditModeSessionAnswer(
     command: {
@@ -17029,6 +17082,99 @@ export class OrchestrationService {
         !this.quarantinedThreads.has(threadId) &&
         this.activeTurnIdOfThread(threadId) === turnId,
     };
+  }
+
+  private readonly serverLogReadGrants = new Set<string>();
+  private readonly serverLogReads = new Map<
+    string,
+    {
+      requestId: string;
+      eventId: string;
+      turnId: string;
+      settle: (
+        status: 'approved' | 'denied' | 'cancelled' | 'expired',
+      ) => boolean;
+    }
+  >();
+
+  private retireServerLogReads(threadId: string): void {
+    this.serverLogReadGrants.delete(threadId);
+    this.serverLogReads.get(threadId)?.settle('cancelled');
+  }
+
+  async requestServerLogRead(
+    threadId: string,
+    description: string,
+    signal: AbortSignal,
+  ): Promise<boolean> {
+    const provider = this.threadProviderForPosture(threadId);
+    const turnId = this.activeTurnIdOfThread(threadId);
+    if (
+      !provider ||
+      !turnId ||
+      signal.aborted ||
+      this.eventConsumptionStopped ||
+      this.serverLogReads.has(threadId)
+    )
+      return false;
+
+    if (this.serverLogReadGrants.has(threadId)) return true;
+
+    const requestId = crypto.randomUUID();
+    const eventId = crypto.randomUUID();
+    const base = { threadId, turnId, provider, requestId };
+    const publish = (event: CanonicalRuntimeEvent) => {
+      try {
+        return this.projectAndPublishEvent(event);
+      } catch (error) {
+        this.options.logger.warn('Could not publish the server log approval', {
+          threadId,
+          requestId,
+          error,
+        });
+        return false;
+      }
+    };
+    return new Promise<boolean>((resolve) => {
+      const cancel = () => settle('cancelled');
+      const timeout = setTimeout(() => settle('expired'), 60_000);
+      const retire = () => {
+        clearTimeout(timeout);
+        signal.removeEventListener('abort', cancel);
+        this.serverLogReads.delete(threadId);
+      };
+      const settle = (
+        status: 'approved' | 'denied' | 'cancelled' | 'expired',
+      ) => {
+        retire();
+        const persisted = publish({
+          ...base,
+          eventId: crypto.randomUUID(),
+          createdAt: new Date().toISOString(),
+          method: 'request.resolved',
+          status,
+        });
+        resolve(persisted && status === 'approved');
+        return persisted;
+      };
+      this.serverLogReads.set(threadId, { requestId, eventId, turnId, settle });
+      signal.addEventListener('abort', cancel, { once: true });
+      if (
+        !publish({
+          ...base,
+          eventId,
+          createdAt: new Date().toISOString(),
+          method: 'request.opened',
+          requestType: 'approval',
+          title: 'Allow this server log query?',
+          payload: { toolName: 'read_logs' },
+          description,
+        })
+      ) {
+        retire();
+        resolve(false);
+      }
+    });
   }
 
   private activeTurnIdOfThread(threadId: string): string | undefined {
@@ -18004,8 +18150,10 @@ export class OrchestrationService {
     }
     // An engine that exits mid-turn ends with `session.exited` and no turn
     // terminal: nothing else would release the session's declaration grants.
-    if (projectedEvent.method === 'session.exited')
+    if (projectedEvent.method === 'session.exited') {
       this.stationControlPullRequests?.retireSession(projectedEvent.threadId);
+      this.retireServerLogReads(projectedEvent.threadId);
+    }
     // Already observed raw at the coalescing seam above; observing the merged
     // delta again would double-count progress for one stretch of text.
     this.monitoringBridge.onRuntimeEvent(projectedEvent);
@@ -18529,6 +18677,7 @@ export class OrchestrationService {
           this.parkingThreads.delete(threadId);
           this.parkedExitWaiters.delete(threadId);
         }
+        this.retireServerLogReads(threadId);
         this.sessionAdapters.delete(threadId);
         this.parkedThreads.add(threadId);
         // What the absorbed exit would have cleared: a respawned engine
@@ -19115,8 +19264,10 @@ export class OrchestrationService {
           : undefined,
       ),
     });
-    if (started.engineContextStartedFresh)
+    if (started.engineContextStartedFresh) {
+      this.retireServerLogReads(threadId);
       this.engineContextStartedFreshThreads.add(threadId);
+    }
     return adapter;
   }
 

@@ -1,0 +1,7 @@
+{
+  "revision": "eab032cf19f8f218ff968d8261948cd14a6ae075",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"#5592 updates the Home dock-open step: the dock shows its own draft and Home's composer steps aside. The coverage-matrix row (continuation, deep links, composer reachability) remains accurate.","inputs":["tests/task-first-home.spec.ts"]}
+  ]
+}

@@ -83,9 +83,27 @@ jobs:
           done
           umask 077
           signing="$RUNNER_TEMP/macos-store-signing"
-          mkdir "$signing"
           keychain="$signing/signing.keychain-db"
-          trap 'security delete-keychain "$keychain" >/dev/null 2>&1 || true; rm -f "$signing/application.p12" "$signing/installer.p12" "$signing/store.provisionprofile"' EXIT
+          search_list="$(security list-keychains -d user)"
+          previous_keychains=()
+          keychain_path='^[[:space:]]*"(/[^"\]+)"$'
+          if [[ -n "$search_list" ]]; then
+            while IFS= read -r entry; do
+              [[ "$entry" =~ $keychain_path ]] || { echo 'Unexpected macOS keychain search-list entry.' >&2; exit 1; }
+              previous_keychains+=("${BASH_REMATCH[1]}")
+            done <<< "$search_list"
+          fi
+          mkdir "$signing"
+          cleanup_signing() {
+            local status=$?
+            if [[ -e "$keychain" ]]; then
+              security delete-keychain "$keychain" || status=1
+            fi
+            security list-keychains -d user -s ${previous_keychains[@]+"${previous_keychains[@]}"} || status=1
+            rm -f "$signing/application.p12" "$signing/installer.p12" "$signing/store.provisionprofile" "$signing/codesign-probe" || status=1
+            exit "$status"
+          }
+          trap cleanup_signing EXIT
           printf '%s' "$APP_CERTIFICATE" | base64 --decode > "$signing/application.p12"
           printf '%s' "$INSTALLER_CERTIFICATE" | base64 --decode > "$signing/installer.p12"
           printf '%s' "$STORE_PROFILE" | base64 --decode > "$signing/store.provisionprofile"
@@ -97,8 +115,13 @@ jobs:
           security import "$signing/application.p12" -k "$keychain" -P "$APP_PASSWORD" -T /usr/bin/codesign
           security import "$signing/installer.p12" -k "$keychain" -P "$INSTALLER_PASSWORD" -T /usr/bin/productbuild
           security set-key-partition-list -S apple-tool:,apple: -s -k "$password" "$keychain" >/dev/null
+          security list-keychains -d user -s "$keychain"
           app_sha="$(security find-identity -v -p codesigning "$keychain" | awk -v identity="\"$APP_IDENTITY\"" 'index($0, identity) { print $2 }')"
           installer_sha="$(security find-identity -v -p basic "$keychain" | awk '/"3rd Party Mac Developer Installer: / { print $2 }')"
+          [[ "$app_sha" =~ ^[A-F0-9]{40}$ && "$installer_sha" =~ ^[A-F0-9]{40}$ ]] || { echo 'Expected exactly one app and one installer signing identity.' >&2; exit 1; }
+          cp /usr/bin/true "$signing/codesign-probe"
+          /usr/bin/codesign --force --sign "$app_sha" --timestamp=none --keychain "$keychain" "$signing/codesign-probe"
+          /usr/bin/codesign --verify --strict "$signing/codesign-probe"
           node ops/release/macos-store-stage.mjs --store \
             "src-desktop/target/aarch64-apple-darwin/release/bundle/macos/Station.app" \
             "$RUNNER_TEMP/macos-store-package" "$RELEASE_TAG" "$signing/store.provisionprofile" \

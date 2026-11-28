@@ -1,0 +1,9 @@
+{
+  "revision": "bec3730fa62e8ec760413961b24f777041a01b2b",
+
+  "notes": [
+    {"path":"docs/design/pane-relationships.md","note":"Reviewed bec3730fa6 against placement phone-layer and pane-relationships guarded-return contracts. Restored synchronous owner-guard fallback for both browser and synthetic history exits; rejected deferred region-state admission. Guarded quote now closes via existing closePhoneLayer continuation before canonical navigation. Current Project/page Cancel retains draft/history; Discard closes; quote once-only, focus and reload suite 29/29 in92.42s. No contract prose change; supersedes initial ae0 phone-exit disposition.","inputs":["src-ui/src/contexts/RegionModelContext.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Reviewed bec3730fa6 against placement phone-layer and pane-relationships guarded-return contracts. Restored synchronous owner-guard fallback for both browser and synthetic history exits; rejected deferred region-state admission. Guarded quote now closes via existing closePhoneLayer continuation before canonical navigation. Current Project/page Cancel retains draft/history; Discard closes; quote once-only, focus and reload suite 29/29 in92.42s. No contract prose change; supersedes initial ae0 phone-exit disposition.","inputs":["src-ui/src/contexts/RegionModelContext.tsx"]}
+  ]
+}

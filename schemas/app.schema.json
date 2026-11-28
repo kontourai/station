@@ -272,6 +272,11 @@
       "default": false,
       "description": "Publish the bound API listener to nearby private LAN devices through DNS-SD. Disabled by default; discovery never grants access."
     },
+    "trustedConsentOrigin": {
+      "type": "string",
+      "maxLength": 267,
+      "description": "Approval HTTPS DNS origin for the Dynamic HTTPS routes Feature Preview. Empty selects automatic discovery; absent preserves the legacy environment fallback. Changing it requires the local operator."
+    },
     "telemetryEnabled": {
       "type": "boolean",
       "description": "Legacy input: true requests pseudonymous operator Full telemetry, requiring the current disclosure acknowledgement and a configured endpoint; false turns off all known publisher choices."
@@ -492,6 +497,22 @@
         },
         "skippedAt": {
           "type": "string"
+        }
+      }
+    },
+    "newChatDefault": {
+      "description": "The agent new chats on this Station start with when nothing closer names one, and why: the first engine signed in, or a person's choice. Absent means Station has not chosen one yet.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["agent", "reason"],
+      "properties": {
+        "agent": {
+          "type": "string",
+          "pattern": "^[a-z](?:[a-z0-9-]{0,62}[a-z0-9])?$"
+        },
+        "reason": {
+          "type": "string",
+          "enum": ["first-signed-in", "chosen"]
         }
       }
     },

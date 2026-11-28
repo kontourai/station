@@ -563,10 +563,20 @@ npm run test:tauri-shell -- --build --lane=plugin-host-security
 
 [`scripts/run-tauri-shell-e2e.mjs`](../../scripts/run-tauri-shell-e2e.mjs)
 selects [`tests/tauri-shell/plugin-host-security.e2e.ts`](../../tests/tauri-shell/plugin-host-security.e2e.ts).
-Its isolated fixture checks that the host has Tauri internals while a hostile
-cross-origin plugin frame has no own bridge and cannot reach the parent's
-bridge, storage or DOM. It also checks blocked network/API destinations and
-navigation containment. The default sweep runs this lane and `device-pane`;
+Its isolated fixture waits for the bundled server, navigates the WebView and
+awaits hydration of its seeded default remote Station. It does not reselect
+that Station while startup is already activating it. The fixture releases the
+hostile bundle only after its diagnostic observers are installed. The hostile plugin
+cannot reach the parent's bridge, storage or DOM. Where the child has no
+callable native bridge, the fixture observes its absence. WebView2 can inject
+Tauri internals into child frames; there the fixture invokes a read-only native
+command and requires an actual CSP violation for its native fetch transport,
+not merely an unanswered promise. This does not independently qualify Tauri's
+fallback message transport or every native command's origin authorization.
+The fixture also checks blocked network/API destinations and navigation
+containment. Unrelated, explicitly named services return unavailable errors;
+unknown requests fail the proof instead of receiving empty success responses.
+The default sweep runs this lane and `device-pane`;
 the key-approval and grant-lifecycle lanes are explicit opt-ins. Harness
 availability is source evidence, not an executed platform result. Record the
 exact binary, revision, host and completed lane result when running it.
@@ -806,6 +816,35 @@ contents are preserved. It refuses elevated execution so administrator
 privileges cannot hide the regression. This is helper evidence; native GUI
 startup and in-app installation/relaunch remain separate checks.
 
+On Windows the ACL and profile-lock helpers run without allocating a console.
+During packaged-shell verification, capture child process names and parent
+PIDs along with visible-window events. Exercise a fresh profile and a second
+launch with a profile lock. Capture process identities without command-line
+arguments, which can contain credentials.
+
+## Windows update disk-space refusal
+
+For in-app `/UPDATE` installs, the NSIS preinstall hook checks free space on the actual installation volume
+before clearing the previous runtime. It requires the bundler's expanded
+payload estimate plus 512 MiB of working space, without crediting files it
+will remove. A failed space query or insufficient space exits with code 3
+and leaves runtime files untouched. This is a preflight, not transactional
+rollback: a later disk, permission, or extraction failure can still interrupt
+installation. Preserve the installer dialog and compare the executable and
+Windows registration versions before treating an interrupted update as usable.
+
+The Windows Nightly builder runs `scripts/verify-windows-installer-space.ps1`
+after NSIS is available. Its isolated native installers compile the actual
+hook, refuse a payload larger than the volume's available space while keeping
+the previous runtime sentinel byte-identical, and accept a small payload that
+replaces that runtime. The proof directory retains scripts, installers, and a
+receipt bound to the hook hash. This proves the hook's refusal and success
+branches, not the signed release artifact or in-app update/relaunch journey.
+Those still require an installed old-to-new update with retained connection
+and credential state, a usable window, and matching release identity.
+
+## Desktop log locations
+
 The desktop host writes its own log through `tauri-plugin-log`. The configured
 application identifier selects the shell log directory, so each release channel
 has a distinct path:
@@ -961,10 +1000,38 @@ frames, microphone capture, and persistence still require runtime acceptance.
 
 ## Nearby Station discovery
 
+Windows registers the same `station-discovery` IPC provider and shared candidate
+panel. Its Rust browser uses `mdns-sd` 0.22.0, with private/link-local IPv4
+interfaces, a five-second foreground scan, exact scan-ID cancellation, bounded
+results and confirmed daemon shutdown. The native host obtains `desktop-nearby`
+preview admission only from the selected host-authorized Station's exact origin;
+redirects are disabled and its credential never goes to an advertisement.
+Both `prepare` and `discover` fail closed while the default-off preview is
+disabled or unavailable. Each operation rechecks it; turning it off does not
+retroactively extend or authorize another scan. HTTPS TXT publication remains a
+different preview and untrusted hints never authorize pairing or selection.
+
+Owners: [Windows browser and lifecycle](../../src-desktop/plugins/station-discovery/src/windows.rs),
+[selected-controller admission](../../src-desktop/src/desktop_discovery.rs), and
+[manual Windows shell journey](../../tests/tauri-shell/native-nearby-discovery.e2e.ts).
+The journey uses an owned same-interface multicast advertisement separately
+from the remote host's supported Tailscale HTTPS ingress; a tailnet peer is not
+evidence of multicast reachability. Its [remote fixture](../../tests/tauri-shell/nearby-remote-host.ts)
+preserves existing Serve mappings and requires explicit operator approval.
+Send `{"action":"observe"}` first, then approve only its observed request with
+`{"action":"approve","requestId":"<observed requestId>"}`. The fixture restores
+its owned HTTPS listener on `stop`, stdin closure, SIGINT or SIGTERM; retain its
+exit status to distinguish completed cleanup from interruption.
+This journey is an execution procedure, not a qualification receipt; record its
+actual artifact, revision, interaction results and cleanup outcome separately.
+
 The mobile `station-discovery` plugin uses iOS NWBrowser/NetService and Android
 NsdManager for `_station._tcp.local.` services with TXT `v=1` and `transport`.
-It returns resolved private host/port hints, never credentials or authenticated
-Station identity. Android requires API 34 for resolver cancellation; earlier
+It returns resolved private host/port hints and optional TXT `appOrigin`, never
+credentials or authenticated Station identity. With the default-off dynamic
+publication preview, the adapter prefers a valid canonical HTTPS DNS app hint
+while retaining private LAN endpoint validation and legacy LAN fallback.
+Android requires API 34 for resolver cancellation; earlier
 versions report unavailable. iOS declares the exact Bonjour service and local
 network usage description. A fixed declared service does not require the
 multicast entitlement.
@@ -978,8 +1045,9 @@ existing bounded NSD path. iOS `prepare` does not start browsing or request acce
 
 Scans are bounded and cancelled on explicit cancellation, foreground loss and
 provider disposal. The adapter validates every result before passing it to the
-candidate registry. Selection enters the existing address review, explicit HTTP
-consent and host approval path. Discovery does not widen server binding or
+candidate registry. Selection enters the existing address review and host
+approval path, with explicit unencrypted consent when selecting HTTP.
+Discovery does not widen server binding or
 enable publication; the host's local-operator toggle owns publication.
 
 Unit checks cover adapter filtering, status mapping, late results and cancel
@@ -988,3 +1056,15 @@ real host's actual bound listener, exercise local-network permission, cancel,
 background and foreground recovery, and complete the intended pairing journey.
 iOS simulator compilation and Android builds alone do not establish physical
 LAN or permission behavior.
+
+### Same-Station native route admission
+
+The Rust host's `station_profile_refresh_routes` reads authenticated routes at
+the saved canonical anchor and admits only published HTTPS app origins with a
+matching fresh, credential-free public nonce proof. Nearby hints are not this
+authority. Admission stays in host memory for at most ten minutes, bound to the
+active binding epoch and profile revision; it does not rewrite the saved endpoint.
+See the [route threat boundary](../design/station-routes.md#native-host-authorized-alternate-origins).
+Rust fixtures and live host proof requests do not establish native IPC or
+physical-shell failover: those remain NOT_VERIFIED until exercised in an
+installed shell, including expiry, profile changes and unavailable-anchor recovery.

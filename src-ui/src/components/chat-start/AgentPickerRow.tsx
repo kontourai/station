@@ -40,6 +40,8 @@ function engineQualifiedBy(
   return { ...engine, name: match[2] };
 }
 
+const NEW_CHAT_DEFAULT_TAG = 'Default for new chats';
+
 /**
  * One Agent in a start picker: the New Chat list (fork) and the start
  * composer's Agent menu render this same row, so readiness, the model
@@ -59,6 +61,7 @@ function AgentPickerRow({
   fixLabel,
   fixDisabled,
   onFix,
+  isNewChatDefault = false,
 }: {
   agent: AgentData;
   isSelected: boolean;
@@ -76,6 +79,8 @@ function AgentPickerRow({
   fixLabel?: 'Enable' | 'Connect' | 'Set up';
   fixDisabled?: boolean;
   onFix: (route: AgentFixRoute) => void;
+  /** The Station's recorded default for new chats names this Agent. */
+  isNewChatDefault?: boolean;
 }) {
   const unavailability = resolveNewChatAgentUnavailability(agent);
   // archive#3843: the picker and the Agents list mount the SAME cell, so they
@@ -124,7 +129,12 @@ function AgentPickerRow({
         onClick={onSelect}
         disabled={interactionDisabled || (!selectionOnly && !runnable)}
         aria-describedby={
-          unavailability ? `agent-${agent.slug}-unavailable` : undefined
+          [
+            isNewChatDefault ? `agent-${agent.slug}-new-chat-default` : '',
+            unavailability ? `agent-${agent.slug}-unavailable` : '',
+          ]
+            .filter(Boolean)
+            .join(' ') || undefined
         }
       >
         <div className="new-chat-modal__agent-header">
@@ -162,6 +172,22 @@ function AgentPickerRow({
             <AgentReadinessCell agent={agent} part="status" compact />
           )}
         </div>
+        {/* The Station's default for new chats, on its own line so the
+            name keeps its width in a narrow menu. Hidden from the button's
+            name and read once as its description instead. */}
+        {isNewChatDefault && (
+          <div
+            className="new-chat-modal__agent-purpose new-chat-modal__agent-default-line"
+            aria-hidden="true"
+          >
+            <span
+              id={`agent-${agent.slug}-new-chat-default`}
+              className="engine-chip__pill new-chat-modal__agent-default"
+            >
+              {NEW_CHAT_DEFAULT_TAG}
+            </span>
+          </div>
+        )}
         {!agent.engineDefault && agent.description && (
           <div
             className="new-chat-modal__agent-purpose"
@@ -270,6 +296,7 @@ export function AgentPickerGroups({
   selectionOnly,
   fixDisabledFor,
   onFix,
+  newChatDefaultSlug,
 }: {
   groups: AgentPickerGroup[];
   flatList: AgentData[];
@@ -284,6 +311,8 @@ export function AgentPickerGroups({
   selectionOnly?: boolean;
   fixDisabledFor: (agent: AgentData) => boolean | undefined;
   onFix: (agent: AgentData, route: AgentFixRoute) => void;
+  /** The Agent the Station's default for new chats names, if one is recorded. */
+  newChatDefaultSlug?: string;
 }) {
   return (
     <>
@@ -315,6 +344,7 @@ export function AgentPickerGroups({
                 selectionOnly={selectionOnly}
                 fixDisabled={fixDisabledFor(agent)}
                 onFix={(route) => onFix(agent, route)}
+                isNewChatDefault={agent.slug === newChatDefaultSlug}
               />
             );
           })}

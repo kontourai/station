@@ -210,7 +210,9 @@ export function DiscardDraftButton({
   closeSessionIds = [],
   onDiscarded,
   label,
+  buttonRef,
 }: {
+  buttonRef?: React.Ref<HTMLButtonElement>;
   /** Visible words beside the icon, for a host that lists it as a button
    *  among other labelled buttons rather than as an icon in a row. */
   label?: string;
@@ -233,6 +235,7 @@ export function DiscardDraftButton({
   return (
     <>
       <Button
+        ref={buttonRef}
         className={`${className}${discard.waiting ? ' discard-draft__cancel' : ''}`}
         aria-label={
           discard.waiting

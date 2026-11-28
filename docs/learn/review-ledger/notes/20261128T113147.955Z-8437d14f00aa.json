@@ -1,0 +1,7 @@
+{
+  "revision": "d56886ea2bb003ea3a0b55c1b0674b14a6d4b299",
+
+  "notes": [
+    {"path":"docs/user/personal-boards.md","note":"Reviewed the projectless Build with chat draft handoff against the ChatDock row-action delta. Board request, single-pane draft claim and picker path are unchanged and separate from Fork/Resend dispatch. No prose change indicated; downstream Board authoring claims excluded.","inputs":["docs/user/personal-boards.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

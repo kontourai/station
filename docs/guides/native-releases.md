@@ -140,8 +140,14 @@ signatures.
 
 Release Stage invokes the same `npm run build:desktop` wrapper as Windows
 Nightly. It supplies the Stable signing and version overlays. The wrapper
-appends the generated WiX resource overlay, which uses shallow source paths
-while preserving the installed Node dependency layout.
+appends the generated WiX resource overlay, which uses shallow source paths.
+The runtime planner separately shortens installed dependency paths without
+changing Node's required versions, and refuses Windows dependency paths that
+cannot fit beneath a 45-character installation root. The generated installer
+path budget covers all resource destinations and is consumed by the NSIS preinstall
+hook, which rejects a longer root before its runtime cleanup. This hook does not
+govern MSI custom installation roots. See [desktop staging](desktop-build.md)
+for the runtime layout and pruning contract.
 
 The release tag is also the native application version authority. The root
 `package.json` records one stable release-train base (`X.Y.Z`); preflight

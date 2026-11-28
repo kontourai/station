@@ -48,7 +48,7 @@ export function stationHonoServer(
   discovery?: LanDiscovery,
 ): ServerProviderFactory {
   return (deps): IServerProvider => {
-    let server: HttpServer | null = null;
+    let servers: HttpServer[] = [];
     let running = false;
     let terminalGateway: TerminalGateway<Request> | undefined;
     return {
@@ -57,33 +57,56 @@ export function stationHonoServer(
         if (running) throw new Error('Server is already running');
         const { app } = await createVoltAgentApp(deps, config, config.port);
         const hostname = config.hostname || '0.0.0.0';
-        const next = createAdaptorServer({
-          fetch: app.fetch.bind(app),
-          // The request URL's host when a request names none (HTTP/1.0
-          // without Host), as VoltAgent's own provider passes it.
-          hostname,
-        }) as HttpServer;
-        configureHttpReceive(
-          next,
-          (method, path) =>
-            mediaUploadPolicy(method, path, MEDIA_UPLOAD_POLICIES),
-          MEDIA_UPLOAD_POLICIES.walkthrough.totalMs,
-        );
-        configureHttpKeepAlive(next);
+        const createServer = () => {
+          const next = createAdaptorServer({
+            fetch: app.fetch.bind(app),
+            // The request URL's host when a request names none (HTTP/1.0
+            // without Host), as VoltAgent's own provider passes it.
+            hostname,
+          }) as HttpServer;
+          configureHttpReceive(
+            next,
+            (method, path) =>
+              mediaUploadPolicy(method, path, MEDIA_UPLOAD_POLICIES),
+            MEDIA_UPLOAD_POLICIES.walkthrough.totalMs,
+          );
+          configureHttpKeepAlive(next);
+          return next;
+        };
+        const next = createServer();
+        const starting = [next];
         terminalGateway = terminalGatewayFor(app);
-        terminalGateway?.mount(next, link());
         let port: number;
         try {
           ({ port } = await link().listen('api', next, {
             port: config.port,
             host: hostname,
           }));
+          const address = next.address();
+          if (
+            address &&
+            typeof address === 'object' &&
+            !['0.0.0.0', '::', '127.0.0.1'].includes(
+              address.address.replace(/^::ffff:/, ''),
+            )
+          ) {
+            const local = createServer();
+            starting.push(local);
+            await link().listen('api-local', local, {
+              port,
+              host: '127.0.0.1',
+            });
+          }
+          for (const listening of starting) {
+            terminalGateway?.mount(listening, link());
+          }
         } catch (error) {
           terminalGateway?.stop();
           terminalGateway = undefined;
+          await Promise.all(starting.map(closeStableListener));
           throw error;
         }
-        server = next;
+        servers = starting;
         running = true;
         await discovery?.bound(next);
         return { port };
@@ -94,11 +117,11 @@ export function stationHonoServer(
         terminalGateway?.stop();
         terminalGateway = undefined;
         await discovery?.stop();
-        const stopping = server;
-        server = null;
+        const stopping = servers;
+        servers = [];
         // Not awaited, as with VoltAgent's provider: open streams must not
         // hold shutdown until their clients leave.
-        if (stopping) void closeStableListener(stopping);
+        for (const server of stopping) void closeStableListener(server);
       },
     };
   };

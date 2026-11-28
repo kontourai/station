@@ -83,6 +83,11 @@ function buildHarness(laneName) {
 
 export const SHELL_E2E_LANES = [
   {
+    name: 'native-nearby-discovery',
+    spec: 'tests/tauri-shell/native-nearby-discovery.e2e.ts',
+    manual: true,
+  },
+  {
     name: 'native-chat-dispatch',
     spec: 'tests/tauri-shell/native-chat-dispatch.e2e.ts',
     manual: true,

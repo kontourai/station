@@ -1,0 +1,7 @@
+{
+  "revision": "b1fb955b25687584a7fb88d9de7b0f200dcdc086",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"AppViewContent now wraps every route in the Customize shell, which draws the list only for Customize items, so the routed outlet keeps one place in the tree; the module map's description of the outlet, its page frame and the Customize page holds.","inputs":["src-ui/src/app-shell/AppViewContent.tsx"]}
+  ]
+}

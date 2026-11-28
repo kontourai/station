@@ -1002,7 +1002,8 @@ id is not projected.
 
 `GET /api/tasks/pull-request-facts?projectId=` answers
 `{observedAt, tasks: {[taskId]: {taskCreatedAt, pullRequests, partial?}}}`
-for the Project's live Tasks (not done or canceled). Each entry lists the
+for the Project's live Tasks (not done or canceled). Pass `taskId` to
+restrict the read to one Task in that Project. Each entry lists the
 pull requests kept on that Task whose declaring session the requester may
 read, each read from its provider at its exact identity:
 `status: {state: "current", pullRequestState, title, draft?, reviewDecision?,
@@ -1717,6 +1718,39 @@ Station Control tool call. There is no timer, so a merge is noticed when an
 operate-tier viewer next refreshes that conversation, and nothing reconciles
 without one. A store carrying the flag is refused by older Station builds: clear
 it before a rollback.
+
+`GET` and `POST /api/tasks/:taskId/resume` resume an ended Task (#4554), behind
+the default-off `task-resume` Feature Preview and only on a personal Station:
+hosted mode mounts neither, and its handshake withdraws the `taskResume` flag.
+With the preview off both answer `404` `task_resume_unavailable`. The caller must
+be the Station operator in person and not a request that may be an agent's
+(`isOperatorInPersonNotAgent`), on top of the task family's tier (read for the
+`GET`, operate for the `POST`), and must currently be able to read the Task,
+execute in its Project and reach `POST /api/tasks/:taskId/dispatch`; no Station
+Control tool names either route, so the authority guard refuses an agent's
+request. The `GET` answers what the confirmation shows: `endedAt`, the resume
+`deadline` (14 days after it), `refusal` when the Task itself rules resume out,
+the earlier lead (`previousLead`), and the GitHub follow-ups recorded since the
+end (`followUps.items`, newest first, at most 20, with `total` and
+`seenThrough`). Those observations may be stale or absent, and their text is
+quoted data. The `POST` takes exactly `{resumeId, expectedCreatedAt,
+expectedEndedAt, reason, followUpsSeenThrough?}` (`reason` 1–500 characters)
+and moves a `done` Task on a board-checked GitHub work item, not created by an
+automation, to `ready` within 14 days of `endedAt`: it clears `endedAt`,
+`closeOnMerge` and the lead attachment (`sessionId`, `dispatchedAt`), appends one
+immutable record to `TaskRecord.resumes`, and starts nothing; dispatch the Task
+separately. It answers `{task, resume, replayed}`, where `task` is the Task as it
+is now. A retry with the same `resumeId` and inputs by the same person answers
+the stored record with `replayed: true`; other inputs are `409`
+`task_resume_conflict`. Refusals write nothing: `403` `task_resume_not_permitted`;
+`409` `task_resume_not_supported`, `task_resume_not_ended`,
+`task_resume_canceled`, `task_resume_end_unknown` (ended before Station recorded
+end times), `task_resume_expired`, `task_resume_conflict`,
+`task_resume_work_item_taken` (with `details.existingTask`),
+`task_resume_dispatch_reserved`, `task_resume_turn_running` or
+`task_resume_limit` (20 per Task incarnation); `503` `task_resume_unavailable`
+when the Task store cannot be read. `PATCH /api/tasks/:taskId/status` still
+refuses every move out of `done` and `canceled`.
 
 New snapshots store their Task creation identity and, for admitted Session
 declarations, the declaration's Session/event/turn/tool identities privately.
@@ -3225,8 +3259,8 @@ sanitizer and serialized config mutation. The response contains the public
 updated `data`, optional `ignoredKeys`, and an activation receipt when relevant.
 Ordinary success is 200; persisted changes awaiting activation can return 202.
 A field being present in `AppConfig` does not mean this generic endpoint may
-write it: first-run decisions and revisioned log-level changes have separate
-routes, and contribution/full-access choices have additional checks. A
+write it: first-run decisions, the default for new chats and revisioned
+log-level changes have separate routes, and contribution/full-access choices have additional checks. A
 `confinedNetwork` whose shape or any `allowedHosts` entry the egress broker
 cannot read is refused with 400 and nothing is saved (#4769).
 A change to a setting the managed policy locks is refused before any other
@@ -3246,6 +3280,31 @@ may lower tiers, including to Off. An internal-agent request cannot write these 
 addresses fail before persistence. Product destination changes fence the old
 queue and requests; saved collector changes require restart activation. See
 [telemetry settings](config.md#telemetry-destinations) for the exact fields.
+
+### Default for new chats
+
+```http
+POST /config/new-chat-default
+```
+
+```json
+{ "agent": "codex", "reason": "first-signed-in" }
+```
+
+The [route](../../src-server/routes/system/config.ts) records
+`AppConfig.newChatDefault`, the Agent new chats on this Station start with when
+nothing closer names one (`GET /config/app` reports it). The body has exactly
+`agent`, a clean Agent id, and `reason`: `first-signed-in` when Station picks
+the first engine whose sign-in it has verified, in the fixed order Claude Code,
+Codex, other engines by id (never Station's own engine); `chosen` when a
+person picks it. A
+`first-signed-in` record is written only while none exists, checked inside the
+serialized config write: a later one answers 409 with the default that stands
+in `data`, and nothing changes. `chosen` always replaces it. A malformed body
+answers 400. The Agent is not looked up, so a default whose Agent was later
+deleted stays recorded; the composer passes over an Agent that cannot start and
+keeps the record. `PUT /config/app` refuses `newChatDefault` with 400. Hosts
+that serve the route advertise the `newChatDefault` capability flag.
 
 ### Broker restore publication policy
 
@@ -5947,7 +6006,9 @@ inventory and source ownership aliases. Provider visibility and generation fence
 owned by the existing provider registry. Source status is `ready`, `stale`,
 `error`, `disabled` or `unknown`; it includes checked/last successful times and
 an explicit error when refresh fails. Cached data is discovery evidence;
-installation always revalidates the selected source.
+installation always revalidates the selected source. A cached row's `app`
+facts outside the contract's bounds are dropped when the file is read; they
+never make the file unreadable.
 
 A source added by a person has one row however many kinds it provides. Its
 `detection` has `state` (`detected`, `nothing-recognized`, `refused` past a
@@ -6043,6 +6104,16 @@ Skills after a successful removal.
 
 `GET /api/registry/plugins` is operator-only and returns
 `{success: true, data}` with catalog installation status.
+
+Each entry whose package is local carries `app`, derived from its
+`plugin.json` and the layout files it names when the catalog is listed:
+`{kind: 'none'}` for a plugin with no layout and no Workspace Pane, or
+`{kind: 'app', screens, panes, opensAs, worksWith, agents, promptActions,
+knowledge, toolServers, sandboxedToolView, inProcessScreen}`. A remote package is never fetched
+to list it, and a manifest or layout that is missing, malformed or over a
+bound leaves `app` absent for that entry only. Lists over their bound are
+refused, not cut short. See `RegistryAppFacts` in
+`@kontourai/station-contracts/catalog`.
 
 ### List Installed Plugins (Registry)
 
@@ -6951,7 +7022,10 @@ is read. User messages carry the stable id a search hit names
 (`<turn start event id>:user`). A station-control caller that is not a bound
 operator is further limited to its own conversation, its scope, or a
 conversation a person referenced in its conversation, and reads as the
-session's owner; a bound operator keeps the operator's reach. An id Station
+session's owner; a bound operator keeps the operator's reach. For the owner's
+own conversation outside that reach, `conversation_out_of_scope` (403) carries
+the scope rule's `reason` when it has one (for example `host`), and its
+explanation names that cause. An id Station
 has no record of answers `conversation_not_found`; see the
 [read route](../../src-server/routes/chat/conversation-reference-read.ts).
 
@@ -8342,7 +8416,7 @@ step-up described above for an operator session. The enrollment confirmation
 routes still accept only the operator credential; a paired device holding
 `access:manage` is refused (401 `authentication_required`, pinned by a test that lets the device reach the handler). Errors: `invalid_code` (404), `device_mismatch` (409), `device_gone` (409, the requesting device was revoked or unpaired after it asked; pending requests also show its current scope and `active`), `rate_limited`
 (429, with `retryAfterMs`), `passkey_not_found` (404), `enrollment_unavailable`
-(503, `STATION_TRUSTED_CONSENT_ORIGIN` unset), `store_unavailable` (503, the passkey store cannot be opened privately). Each error carries one fixed message per code, and an unexpected failure returns `internal_error` (500) with a generic message and no cause text. The browser half is served on the
+(503, no trusted HTTPS approval origin is available from the legacy startup setting or the enabled dynamic publication preview), `store_unavailable` (503, the passkey store cannot be opened privately). Each error carries one fixed message per code, and an unexpected failure returns `internal_error` (500) with a generic message and no cause text. The browser half is served on the
 consent origin under `/operator/passkeys/enroll`; see the
 [enrollment guide](../guides/operator-passkeys.md). Owner:
 [host routes](../../src-server/routes/operator-passkeys/operator-passkey-host-routes.ts),

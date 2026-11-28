@@ -1,10 +1,53 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
-import { cpus, platform, release } from 'node:os';
-import { join } from 'node:path';
+import { createHash } from 'node:crypto';
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
+import { cpus, freemem, platform, release, totalmem } from 'node:os';
+import { join, resolve } from 'node:path';
 import type { Page, TestInfo } from '@playwright/test';
+import { startJourneyHostObservation } from '../../scripts/lib/journey-host-observation.mjs';
 
 const enabled = Boolean(process.env.STATION_JOURNEY_PROFILE_DIR);
+
+async function readBuildProvenance(page: Page, sourceRevision: string) {
+  const buildMode = await page.evaluate(() =>
+    document.querySelector('script[src*="/@vite/client"]')
+      ? 'development'
+      : 'unknown',
+  );
+  const provenancePath = process.env.STATION_JOURNEY_BUILD_PROVENANCE;
+  if (!provenancePath) return { buildMode, buildProvenanceSha256: undefined };
+  const provenanceBytes = readFileSync(provenancePath);
+  const provenance = JSON.parse(provenanceBytes.toString('utf8'));
+  if (
+    provenance.version !== 1 ||
+    provenance.nodeEnv !== 'production' ||
+    provenance.mode !== 'production' ||
+    provenance.sourceRevision !== sourceRevision ||
+    provenance.outDir !== process.env.STATION_BUILD_UI_DIR ||
+    buildMode === 'development'
+  )
+    throw new Error('Invalid production build provenance');
+  const response = await page.request.get(new URL(page.url()).origin);
+  if (
+    !response.ok() ||
+    createHash('sha256')
+      .update(await response.body())
+      .digest('hex') !== provenance.indexSha256
+  )
+    throw new Error('Profiled UI does not match the production build');
+  return {
+    buildMode: 'production',
+    buildProvenanceSha256: createHash('sha256')
+      .update(provenanceBytes)
+      .digest('hex'),
+  };
+}
 
 /** Installed before React loads. Profiling is opt-in and changes no product code. */
 export async function installJourneyProfile(page: Page): Promise<void> {
@@ -18,7 +61,65 @@ export async function installJourneyProfile(page: Page): Promise<void> {
       storageWrites: 0,
       storageMs: 0,
       readsByKey: {} as Record<string, number>,
+      documentId: String(performance.timeOrigin),
+      longTasks: [] as { startTime: number; duration: number }[],
+      inputTimingSupported:
+        PerformanceObserver.supportedEntryTypes.includes('event'),
+      inputEvents: [] as {
+        name: string;
+        startTime: number;
+        duration: number;
+        processingStart: number;
+        processingEnd: number;
+        interactionId: number;
+      }[],
     };
+    if (!PerformanceObserver.supportedEntryTypes.includes('longtask'))
+      throw new Error('Journey profiling requires long-task observation');
+    const collectLongTasks = (entries: PerformanceEntry[]) => {
+      for (const entry of entries)
+        state.longTasks.push({
+          startTime: entry.startTime,
+          duration: entry.duration,
+        });
+    };
+    const observer = new PerformanceObserver((entries) =>
+      collectLongTasks(entries.getEntries()),
+    );
+    observer.observe({ type: 'longtask', buffered: true });
+    Object.defineProperty(state, 'flushLongTasks', {
+      value: () => collectLongTasks(observer.takeRecords()),
+    });
+    const collectInputEvents = (entries: PerformanceEntry[]) => {
+      for (const entry of entries) {
+        const event = entry as PerformanceEventTiming;
+        if (!(event.interactionId > 0)) continue;
+        state.inputEvents.push({
+          name: event.name,
+          startTime: event.startTime,
+          duration: event.duration,
+          processingStart: event.processingStart,
+          processingEnd: event.processingEnd,
+          interactionId: event.interactionId,
+        });
+      }
+    };
+    const inputObserver = state.inputTimingSupported
+      ? new PerformanceObserver((entries) =>
+          collectInputEvents(entries.getEntries()),
+        )
+      : undefined;
+    const inputOptions: PerformanceObserverInit & {
+      durationThreshold: number;
+    } = {
+      type: 'event',
+      buffered: true,
+      durationThreshold: 16,
+    };
+    inputObserver?.observe(inputOptions);
+    Object.defineProperty(state, 'flushInputEvents', {
+      value: () => collectInputEvents(inputObserver?.takeRecords() ?? []),
+    });
     (window as any).__stationJourneyProfile = state;
     const existing = (window as any).__REACT_DEVTOOLS_GLOBAL_HOOK__;
     if (existing)
@@ -85,10 +186,17 @@ export async function profileJourney(
   mkdirSync(directory, { recursive: true });
   const client = await page.context().newCDPSession(page);
   const counters = async () =>
-    page.evaluate(() => ({ ...(window as any).__stationJourneyProfile }));
-  const startCounters = await counters();
+    page.evaluate(() => {
+      const state = (window as any).__stationJourneyProfile;
+      state?.flushLongTasks();
+      state?.flushInputEvents();
+      return {
+        ...state,
+        snapshotTimeMs: performance.now(),
+        documentId: String(performance.timeOrigin),
+      };
+    });
   await client.send('Performance.enable');
-  const before = await client.send('Performance.getMetrics');
   await client.send('Profiler.enable');
   await client.send('Profiler.setSamplingInterval', { interval: 1000 });
   await client.send('HeapProfiler.startSampling', {
@@ -97,7 +205,10 @@ export async function profileJourney(
     includeObjectsCollectedByMinorGC: true,
   });
   await client.send('Profiler.start');
+  const startCounters = await counters();
+  const before = await client.send('Performance.getMetrics');
   const start = performance.now();
+  const hostObservation = startJourneyHostObservation();
   let passed = false;
   let observed = false;
   try {
@@ -112,10 +223,35 @@ export async function profileJourney(
   } finally {
     try {
       const elapsedMs = performance.now() - start;
+      const host = hostObservation.stop();
+      const endCounters = await counters();
+      const after = await client.send('Performance.getMetrics');
       const cpu = await client.send('Profiler.stop');
       const heap = await client.send('HeapProfiler.stopSampling');
-      const after = await client.send('Performance.getMetrics');
-      const endCounters = await counters();
+      const phaseStartMs =
+        endCounters.documentId === startCounters.documentId
+          ? startCounters.snapshotTimeMs
+          : 0;
+      const observations: { startTime: number; duration: number }[] =
+        endCounters.longTasks;
+      const longTasks = observations.filter(
+        (entry) =>
+          entry.startTime >= phaseStartMs &&
+          entry.startTime + entry.duration <= endCounters.snapshotTimeMs,
+      );
+      const inputEvents: {
+        name: string;
+        startTime: number;
+        duration: number;
+        processingStart: number;
+        processingEnd: number;
+        interactionId: number;
+      }[] = endCounters.inputEvents.filter(
+        (entry: { startTime: number; duration: number }) =>
+          entry.startTime >= phaseStartMs &&
+          entry.startTime + entry.duration <= endCounters.snapshotTimeMs,
+      );
+      const inputDurations = inputEvents.map((entry) => entry.duration);
       const metricBefore = Object.fromEntries(
         before.metrics.map((metric) => [metric.name, metric.value]),
       );
@@ -136,7 +272,10 @@ export async function profileJourney(
       );
       const deltas = Object.fromEntries(
         Object.entries(endCounters)
-          .filter(([, value]) => typeof value === 'number')
+          .filter(
+            ([key, value]) =>
+              key !== 'snapshotTimeMs' && typeof value === 'number',
+          )
           .map(([key, value]) => [
             key,
             Number(value) - Number(startCounters[key] ?? 0),
@@ -151,6 +290,10 @@ export async function profileJourney(
         Number.isFinite(deltas.commits) &&
         deltas.commits > 0 &&
         (cpu.profile.samples?.length ?? 0) > 0;
+      const { buildMode, buildProvenanceSha256 } = await readBuildProvenance(
+        page,
+        sourceRevision,
+      );
       const profile = {
         version: 1,
         id,
@@ -163,11 +306,8 @@ export async function profileJourney(
             windowsHide: true,
           }).trim(),
         ),
-        buildMode: await page.evaluate(() =>
-          document.querySelector('script[src*="/@vite/client"]')
-            ? 'development'
-            : 'production',
-        ),
+        buildMode,
+        buildProvenanceSha256,
         storageReadsByKey: Object.fromEntries(
           Object.entries(endCounters.readsByKey ?? {})
             .map(([key, value]) => [
@@ -179,9 +319,46 @@ export async function profileJourney(
         platform: platform(),
         osRelease: release(),
         cpu: cpus()[0]?.model,
+        logicalCpus: cpus().length,
+        memoryAtCapture: { freeBytes: freemem(), totalBytes: totalmem() },
+        hostObservation: host,
         browser: page.context().browser()?.version(),
+        viewport: page.viewportSize(),
+        device: await page.evaluate(() => ({
+          userAgent: navigator.userAgent,
+          devicePixelRatio: window.devicePixelRatio,
+          maxTouchPoints: navigator.maxTouchPoints,
+        })),
         workload,
         elapsedMs,
+        inputTiming: {
+          supported: endCounters.inputTimingSupported,
+          scope: 'final-document',
+          durationThresholdMs: 16,
+          observedEventCount: inputEvents.length,
+          observedInteractionCount: new Set(
+            inputEvents.map((entry) => entry.interactionId),
+          ).size,
+          worstObservedInteractionMs:
+            inputDurations.length > 0 ? Math.max(...inputDurations) : null,
+          events: inputEvents,
+        },
+        responsiveness: {
+          scope: 'final-document',
+          phaseStartMs,
+          phaseEndMs: endCounters.snapshotTimeMs,
+          documentChanged: endCounters.documentId !== startCounters.documentId,
+          longTaskCount: longTasks.length,
+          longestTaskMs: Math.max(
+            0,
+            ...longTasks.map((entry) => entry.duration),
+          ),
+          blockingOver50Ms: longTasks.reduce(
+            (sum, entry) => sum + Math.max(0, entry.duration - 50),
+            0,
+          ),
+          longTasks,
+        },
         metricsMs: metrics,
         counters: deltas,
         sampledAllocationBytes: heap.profile.samples.reduce(
@@ -216,13 +393,18 @@ export async function profileJourney(
         const name = `${new URL(url).pathname.split('/').at(-1)!}.map`;
         const path = join(mapsDirectory, name);
         if (!existsSync(path)) {
-          const response = await page.request.get(`${url}.map`);
-          if (
-            !response.ok() ||
-            !response.headers()['content-type']?.includes('json')
-          )
-            continue;
-          writeFileSync(path, await response.body());
+          const builtUi = process.env.STATION_BUILD_UI_DIR;
+          if (builtUi) {
+            copyFileSync(resolve(root, builtUi, 'assets', name), path);
+          } else {
+            const response = await page.request.get(`${url}.map`);
+            if (
+              !response.ok() ||
+              !response.headers()['content-type']?.includes('json')
+            )
+              continue;
+            writeFileSync(path, await response.body());
+          }
         }
         sourceMaps.push(`maps/${name}`);
       }

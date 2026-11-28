@@ -738,9 +738,37 @@ function StationCredentialBridge({ children }: { children: ReactNode }) {
       async (origin, brokerRoute, authenticated) => {
         const evidence = captureCredentialEvidence();
         if (profile.isTauri) {
-          if (!evidence || origin !== evidence.origin)
-            return { kind: 'reject' };
-          if (!evidence.nativeBrokerRoute) return null;
+          if (!evidence) return { kind: 'reject' };
+          if (!evidence.nativeBrokerRoute) {
+            if (brokerRoute) return { kind: 'reject' };
+            const binding =
+              nativeProfileRepository().captureNativeRequestBinding(
+                evidence.connectionId,
+                origin,
+              );
+            if (!binding) return { kind: 'reject' };
+            if (origin === evidence.origin) return null;
+            const isCurrent = () =>
+              isCredentialEvidenceCurrent(evidence) &&
+              nativeProfileRepository().captureNativeRequestBinding(
+                evidence.connectionId,
+                origin,
+              )?.bindingId === binding.bindingId;
+            return {
+              kind: 'native-direct',
+              isCurrent,
+              identityTransport: (
+                input: Parameters<typeof fetch>[0],
+                init?: RequestInit,
+              ) =>
+                nativeTransportForBinding(binding.bindingId)(input, {
+                  ...init,
+                  authorityGuard: () => {
+                    if (!isCurrent()) throw new StationRequestAuthorityError();
+                  },
+                } as RequestInit),
+            };
+          }
           if (brokerRoute || origin !== evidence.origin)
             return { kind: 'reject' };
           const binding = nativeProfileRepository().captureNativeRequestBinding(

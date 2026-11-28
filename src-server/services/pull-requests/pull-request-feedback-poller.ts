@@ -61,7 +61,18 @@ const CLOSED_INTERVAL_MS = 6 * 60 * MINUTE;
 export interface PullRequestFeedbackPollerPorts {
   enabled(): boolean;
   store(): PullRequestFeedbackStore | undefined;
-  providers(): IPullRequestProvider[];
+  providers(): readonly Pick<
+    IPullRequestProvider,
+    'id' | 'canServeHost' | 'getFeedbackObservation'
+  >[];
+  statusWatches?(): readonly {
+    prKey: string;
+    identity: PullRequestLinkIdentity;
+  }[];
+  observeStatus?(
+    prKey: string,
+    observation: PullRequestFeedbackObservation,
+  ): void;
   session(conversationId: string): FeedbackSessionState;
   /** When the owning conversation's newest turn started or ended. */
   lastTurnAt(conversationId: string): number | undefined;
@@ -98,10 +109,20 @@ export interface PullRequestFeedbackPollSummary {
   read: number;
 }
 
-/** What a read shows, minus when it was read: equal digests mean nothing changed. */
+/** Feedback inputs that can keep a claim active. Display-only changes do not. */
 function observationDigest(observation: PullRequestFeedbackObservation) {
-  const { observedAt: _observedAt, ...rest } = observation;
-  return createHash('sha256').update(JSON.stringify(rest)).digest('hex');
+  const { observedAt: _observedAt, snapshot, ...rest } = observation;
+  return createHash('sha256')
+    .update(
+      JSON.stringify({
+        ...rest,
+        queueRemovalId:
+          snapshot?.landing?.state === 'removed'
+            ? snapshot.landing.id
+            : undefined,
+      }),
+    )
+    .digest('hex');
 }
 
 export class PullRequestFeedbackPoller {
@@ -142,6 +163,8 @@ export class PullRequestFeedbackPoller {
     this.closing.abort(new Error('Pull request feedback is stopping'));
     await this.settled();
   }
+
+  private readonly statusDue = new Map<string, number>();
 
   private headReviewOn(): boolean {
     return this.ports.headReviewEnabled?.() ?? false;
@@ -241,6 +264,11 @@ export class PullRequestFeedbackPoller {
         break;
       }
     }
+    read += await this.pollStatusWatches(
+      input.now,
+      signal,
+      MAX_PER_TICK - read,
+    );
     for (const conversationId of touched) {
       await this.ports.delivery()?.deliver(conversationId);
       await this.ports.headReview?.()?.consider(conversationId);
@@ -298,24 +326,16 @@ export class PullRequestFeedbackPoller {
     }
   }
 
-  private async read(
-    store: PullRequestFeedbackStore,
-    claim: PullRequestFeedbackClaim,
-    now: number,
+  private async readObservation(
+    identity: PullRequestLinkIdentity,
     signal: AbortSignal,
-  ): Promise<'observed' | 'unavailable' | 'rate-limited'> {
-    const host = claim.identity.host.toLowerCase();
-    const prior = store.observation(claim.prKey);
-    const markDue = (at: number) => store.setNextDueAt(claim.prKey, at);
-    if ((this.hostBackoff.get(host) ?? 0) > now) {
-      markDue(this.hostBackoff.get(host)!);
-      return 'unavailable';
-    }
+  ): Promise<PullRequestFeedbackObservationResult> {
+    const host = identity.host.toLowerCase();
     const provider = this.ports
       .providers()
       .find(
         (candidate) =>
-          candidate.id === claim.identity.provider &&
+          candidate.id === identity.provider &&
           candidate.canServeHost(host) &&
           candidate.getFeedbackObservation,
       );
@@ -329,8 +349,8 @@ export class PullRequestFeedbackPoller {
     else
       try {
         result = await provider.getFeedbackObservation(
-          { host, repository: claim.identity.repository },
-          claim.identity.ref,
+          { host, repository: identity.repository },
+          identity.ref,
           signal,
         );
       } catch (error) {
@@ -340,6 +360,59 @@ export class PullRequestFeedbackPoller {
           reason: errorMessage(error),
         };
       }
+    return result;
+  }
+
+  private async pollStatusWatches(
+    now: number,
+    signal: AbortSignal,
+    capacity: number,
+  ): Promise<number> {
+    const watches = this.ports.statusWatches?.() ?? [];
+    const liveKeys = new Set(watches.map(({ prKey }) => prKey));
+    for (const prKey of this.statusDue.keys())
+      if (!liveKeys.has(prKey)) this.statusDue.delete(prKey);
+    let read = 0;
+    for (const { prKey, identity } of watches) {
+      if (signal.aborted || read >= capacity || now < this.backoffUntil) break;
+      if (this.refreshing.has(prKey) || now < (this.statusDue.get(prKey) ?? 0))
+        continue;
+      const host = identity.host.toLowerCase();
+      if (now < (this.hostBackoff.get(host) ?? 0)) continue;
+      this.refreshing.add(prKey);
+      try {
+        read += 1;
+        const result = await this.readObservation(identity, signal);
+        this.statusDue.set(prKey, now + ACTIVE_INTERVAL_MS);
+        if (result.state === 'unavailable') {
+          if (result.cause === 'credentials')
+            this.hostBackoff.set(host, now + BACKOFF_MS);
+          if (result.cause === 'rate-limited')
+            this.backoffUntil = now + BACKOFF_MS;
+        } else {
+          this.ports.observeStatus?.(prKey, result.observation);
+        }
+      } finally {
+        this.refreshing.delete(prKey);
+      }
+    }
+    return read;
+  }
+
+  private async read(
+    store: PullRequestFeedbackStore,
+    claim: PullRequestFeedbackClaim,
+    now: number,
+    signal: AbortSignal,
+  ): Promise<'observed' | 'unavailable' | 'rate-limited'> {
+    const host = claim.identity.host.toLowerCase();
+    const prior = store.observation(claim.prKey);
+    const markDue = (at: number) => store.setNextDueAt(claim.prKey, at);
+    if ((this.hostBackoff.get(host) ?? 0) > now) {
+      markDue(this.hostBackoff.get(host)!);
+      return 'unavailable';
+    }
+    const result = await this.readObservation(claim.identity, signal);
     if (result.state === 'unavailable') {
       if (result.cause === 'credentials')
         this.hostBackoff.set(host, now + BACKOFF_MS);
@@ -359,6 +432,10 @@ export class PullRequestFeedbackPoller {
     // A read that started earlier than one already stored says less.
     const latest = store.observation(claim.prKey);
     if (latest && Date.parse(latest.observedAt) > now) return 'observed';
+    if (this.ports.statusWatches) {
+      this.statusDue.set(claim.prKey, now + ACTIVE_INTERVAL_MS);
+      this.ports.observeStatus?.(claim.prKey, observation);
+    }
     if (
       claim.condition?.state === 'unavailable' ||
       (claim.condition?.state === 'closed' && observation.state === 'OPEN')

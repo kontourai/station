@@ -85,6 +85,7 @@ import {
 import {
   birthProvesReuse,
   lookupProcessBirthFingerprint,
+  resolveWindowsBirthHelper,
 } from '@kontourai/station-shared/process-identity';
 import {
   LITE_TELEMETRY_INVENTORY_REVISION,
@@ -115,6 +116,20 @@ import {
   UI_IMMUTABLE_ASSET_PATTERN,
   uiDocumentContentSecurityPolicy,
 } from '@kontourai/station-shared/ui-document-policy';
+import {
+  createWindowsCommandGuardResolver,
+  createWindowsOwnedWorkerLauncher,
+} from '@kontourai/station-shared/windows-command-guard';
+import {
+  assertWindowsPrivateDirectory,
+  openWindowsPrivateFile,
+} from '@kontourai/station-shared/windows-file-security';
+import {
+  buildWindowsPrivateFileReadCommand,
+  hardenWindowsPathsTrusted,
+  WINDOWS_TRUST_COMMAND_TIMEOUT_MS,
+  windowsSystemUtilityPath,
+} from '@kontourai/station-shared/windows-path-trust';
 import { WORKLOAD_HOST_BUNDLE_NAME } from '@kontourai/station-supervisor/protocol';
 import {
   publishActiveLocalStation,
@@ -199,6 +214,7 @@ import {
   assertWindowsPathsTrusted,
   runWindowsTrustCommand,
 } from './windows-path-trust.js';
+import { createWindowsReadinessReader } from './windows-readiness-reader.js';
 
 // Moved to lifecycle-code-root.ts (#2675 B1); re-exported for existing importers.
 export {
@@ -287,6 +303,7 @@ interface UiServerDeps {
 interface UiRequestHandlerDeps extends UiServerDeps {
   immutableAsset: RegExp;
   documentCsp: (scriptNonce?: string) => string;
+  readPrivateReadiness?: () => Promise<string | null>;
 }
 
 /**
@@ -315,14 +332,40 @@ interface UiRequestHandlerDeps extends UiServerDeps {
  * the unit test — no drift between the two.
  */
 export function uiRequestHandler(deps: UiServerDeps) {
-  return createUiRequestHandler(
+  const launchWindowsReadinessWorker = createWindowsOwnedWorkerLauncher({
+    spawn,
+    resolveGuard: createWindowsCommandGuardResolver({
+      sourceDirectory: deps.dir,
+      fallbackDirectory: import.meta.dirname,
+      stagedGuard: resolveWindowsBirthHelper(),
+    }),
+    timeoutMs: WINDOWS_TRUST_COMMAND_TIMEOUT_MS,
+  });
+  const reader =
+    process.platform === 'win32' && deps.readinessFile && deps.identity
+      ? createWindowsReadinessReader({
+          launch: (signal) =>
+            launchWindowsReadinessWorker(
+              windowsSystemUtilityPath('powershell'),
+              buildWindowsPrivateFileReadCommand(deps.readinessFile!),
+              signal,
+            ),
+          timeoutMs: WINDOWS_TRUST_COMMAND_TIMEOUT_MS,
+        })
+      : undefined;
+  const handler = createUiRequestHandler(
     {
       immutableAsset: UI_IMMUTABLE_ASSET_PATTERN,
       documentCsp: uiDocumentContentSecurityPolicy,
       ...deps,
+      readPrivateReadiness: reader?.read,
     },
     (method, path) => mediaUploadPolicy(method, path, MEDIA_UPLOAD_POLICIES),
   );
+  return Object.assign(handler, {
+    ready: reader?.read() ?? Promise.resolve(null),
+    close: () => reader?.close(),
+  });
 }
 
 function createUiRequestHandler(
@@ -1039,10 +1082,19 @@ function createUiRequestHandler(
     }
   };
 
-  const declaredReady = () => {
+  const declaredReady = async () => {
     if (!readinessFile || !identity) return true;
     let fd: number | undefined;
     try {
+      if (process.platform === 'win32') {
+        const content = await deps.readPrivateReadiness?.();
+        if (content === null || content === undefined) return false;
+        const state = JSON.parse(content);
+        return (
+          state?.health?.status === 'ready' &&
+          state?.health?.sha === identity.sha
+        );
+      }
       fd = fs.openSync(
         readinessFile,
         fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0),
@@ -1103,10 +1155,6 @@ function createUiRequestHandler(
         answerRequestFailure(res, error);
       }
     };
-    if (!declaredReady()) {
-      respond('unavailable');
-      return;
-    }
     if (!internalApiToken) {
       respond('unavailable');
       return;
@@ -1114,73 +1162,17 @@ function createUiRequestHandler(
     let settled = false;
     let connected = false;
     let deadline: ReturnType<typeof setTimeout> | undefined;
+    let request: import('node:http').ClientRequest | undefined;
     const finish = (state: 'ready' | 'degraded' | 'unavailable') => {
       if (settled) return;
       settled = true;
       if (deadline) clearTimeout(deadline);
       respond(state);
     };
-    const request = http.request(
-      {
-        host: '127.0.0.1',
-        port: upstreamPort,
-        path: '/api/system/identity',
-        method: 'GET',
-        // This connection is made only to the sibling loopback backend. Use
-        // the per-boot internal credential instead of treating loopback as
-        // authority: it recreates this UI process's own internal token and, in
-        // hosted mode, its already-resolved tenant attestation. Ordinary local
-        // mode still authenticates explicitly, and no browser caller headers
-        // are ever forwarded.
-        headers: {
-          [INTERNAL_TOKEN_HEADER]: internalApiToken,
-          [INTERNAL_CALLER_HEADER]: 'local',
-          ...(tenantId ? { [INTERNAL_TENANT_HEADER]: tenantId } : {}),
-        },
-      },
-      (response) => {
-        let raw = '';
-        response.setEncoding('utf8');
-        response.on('data', (chunk) => (raw += chunk));
-        // A backend that dies mid-answer is a failed connection, not a slow
-        // one: settle now rather than at the deadline as 'degraded'. `close`
-        // alone covers it — it follows every abort, errored or not — and a
-        // second `error` listener would only be redundant, untestable cover.
-        response.once('close', () => {
-          if (!response.complete) finish('unavailable');
-        });
-        response.on('end', () => {
-          try {
-            const upstreamIdentity = JSON.parse(raw);
-            // A supervised backend may hand off to a rebuilt bundle: its
-            // sha changes while the boot id this start minted does not.
-            finish(
-              response.statusCode === 200 &&
-                (identity?.supervised === true ||
-                  (upstreamIdentity?.sha ?? upstreamIdentity?.fullSha) ===
-                    identity?.sha) &&
-                upstreamIdentity?.bootId === identity?.bootId &&
-                upstreamIdentity?.instanceId === identity?.instanceId
-                ? 'ready'
-                : 'unavailable',
-            );
-          } catch {
-            finish('unavailable');
-          }
-        });
-      },
-    );
-    // A pooled keep-alive socket arrives already connected; a fresh one
-    // reports it through `connect`.
-    request.once('socket', (socket) => {
-      if (!socket.connecting) connected = true;
-      else socket.once('connect', () => (connected = true));
-    });
     deadline = setTimeout(() => {
       finish(connected ? 'degraded' : 'unavailable');
-      request.destroy();
+      request?.destroy();
     }, budgetMs);
-    request.once('error', () => finish('unavailable'));
     // The caller went away before an answer was written: nobody is waiting
     // for this check, so release the backend socket and the timer now rather
     // than holding both until the budget runs out. Same signal, for the same
@@ -1189,9 +1181,78 @@ function createUiRequestHandler(
       if (res.writableEnded || settled) return;
       settled = true;
       if (deadline) clearTimeout(deadline);
-      request.destroy();
+      request?.destroy();
     });
-    request.end();
+    void declaredReady()
+      .then((ready) => {
+        if (settled) return;
+        if (!ready) {
+          finish('unavailable');
+          return;
+        }
+        request = http.request(
+          {
+            host: '127.0.0.1',
+            port: upstreamPort,
+            path: '/api/system/identity',
+            method: 'GET',
+            // This connection is made only to the sibling loopback backend. Use
+            // the per-boot internal credential instead of treating loopback as
+            // authority: it recreates this UI process's own internal token and, in
+            // hosted mode, its already-resolved tenant attestation. Ordinary local
+            // mode still authenticates explicitly, and no browser caller headers
+            // are ever forwarded.
+            headers: {
+              [INTERNAL_TOKEN_HEADER]: internalApiToken,
+              [INTERNAL_CALLER_HEADER]: 'local',
+              ...(tenantId ? { [INTERNAL_TENANT_HEADER]: tenantId } : {}),
+            },
+          },
+          (response) => {
+            let raw = '';
+            response.setEncoding('utf8');
+            response.on('data', (chunk) => (raw += chunk));
+            // A backend that dies mid-answer is a failed connection, not a slow
+            // one: settle now rather than at the deadline as 'degraded'. `close`
+            // alone covers it — it follows every abort, errored or not — and a
+            // second `error` listener would only be redundant, untestable cover.
+            response.once('close', () => {
+              if (!response.complete) finish('unavailable');
+            });
+            response.on('end', () => {
+              try {
+                const upstreamIdentity = JSON.parse(raw);
+                // A supervised backend may hand off to a rebuilt bundle: its
+                // sha changes while the boot id this start minted does not.
+                finish(
+                  response.statusCode === 200 &&
+                    (identity?.supervised === true ||
+                      (upstreamIdentity?.sha ?? upstreamIdentity?.fullSha) ===
+                        identity?.sha) &&
+                    upstreamIdentity?.bootId === identity?.bootId &&
+                    upstreamIdentity?.instanceId === identity?.instanceId
+                    ? 'ready'
+                    : 'unavailable',
+                );
+              } catch {
+                finish('unavailable');
+              }
+            });
+          },
+        );
+        // A pooled keep-alive socket arrives already connected; a fresh one
+        // reports it through `connect`.
+        request.once('socket', (socket) => {
+          if (!socket.connecting) connected = true;
+          else socket.once('connect', () => (connected = true));
+        });
+        request.once('error', () => finish('unavailable'));
+        request.end();
+      })
+      .catch(() => {
+        finish('unavailable');
+        request?.destroy();
+      });
   };
   const unavailable = (
     res: import('node:http').ServerResponse,
@@ -1450,29 +1511,50 @@ export function buildUiServerScript(opts: {
   return `
     ${nameHelperShim}
     const http=require('http'),crypto=require('crypto'),fs=require('fs'),path=require('path');
-    const dir=${JSON.stringify(opts.uiDir)};
-    const mime=${JSON.stringify(UI_MIME_TYPES)};
-    const inject=${JSON.stringify(inject)};
-    const upstreamPort=${JSON.stringify(opts.upstreamPort)};
-    const backendPrefixes=${JSON.stringify(UI_PROXY_BACKEND_PREFIXES)};
-    const backendExcludedPrefixes=${JSON.stringify(UI_PROXY_EXCLUDED_PREFIXES)};
-    const backendNavigationPrefixes=${JSON.stringify(UI_PROXY_BACKEND_NAVIGATION_PREFIXES)};
-    const immutableAsset=new RegExp(${JSON.stringify(UI_IMMUTABLE_ASSET_PATTERN.source)});
+    const {dir,mime,inject,upstreamPort,backendPrefixes,backendExcludedPrefixes,backendNavigationPrefixes,immutableAssetPattern,readinessFile,identity,guardFallbackDirectory,stagedGuard,workerExecutable,workerArguments,workerTimeoutMs,hostedTenantAuthorities,mediaUploadPolicies,uiPort,host}=${JSON.stringify(
+      {
+        dir: opts.uiDir,
+        mime: UI_MIME_TYPES,
+        inject,
+        upstreamPort: opts.upstreamPort,
+        backendPrefixes: UI_PROXY_BACKEND_PREFIXES,
+        backendExcludedPrefixes: UI_PROXY_EXCLUDED_PREFIXES,
+        backendNavigationPrefixes: UI_PROXY_BACKEND_NAVIGATION_PREFIXES,
+        immutableAssetPattern: UI_IMMUTABLE_ASSET_PATTERN.source,
+        readinessFile: opts.readinessFile,
+        identity: opts.identity,
+        guardFallbackDirectory: import.meta.dirname,
+        stagedGuard:
+          process.platform === 'win32' ? resolveWindowsBirthHelper() : null,
+        workerExecutable: windowsSystemUtilityPath('powershell'),
+        workerArguments: opts.readinessFile
+          ? buildWindowsPrivateFileReadCommand(opts.readinessFile)
+          : [],
+        workerTimeoutMs: WINDOWS_TRUST_COMMAND_TIMEOUT_MS,
+        hostedTenantAuthorities: opts.hostedTenantAuthorities,
+        mediaUploadPolicies: MEDIA_UPLOAD_POLICIES,
+        uiPort: opts.uiPort,
+        host: opts.host ?? '0.0.0.0',
+      },
+    )};
+    const immutableAsset=new RegExp(immutableAssetPattern);
     const documentCsp=${uiDocumentContentSecurityPolicy.toString()};
-    const readinessFile=${JSON.stringify(opts.readinessFile)};
-    const identity=${JSON.stringify(opts.identity)};
+    const launchReadinessWorker=process.platform==='win32'?(${createWindowsOwnedWorkerLauncher.toString()})({spawn:require('child_process').spawn,resolveGuard:(${createWindowsCommandGuardResolver.toString()})({sourceDirectory:dir,fallbackDirectory:guardFallbackDirectory,stagedGuard}),timeoutMs:workerTimeoutMs}):undefined;
+    const readinessReader=process.platform==='win32'&&readinessFile&&identity?(${createWindowsReadinessReader.toString()})({launch:(signal)=>launchReadinessWorker(workerExecutable,workerArguments,signal),timeoutMs:workerTimeoutMs}):undefined;
+    const readPrivateReadiness=readinessReader?.read;
+    const readinessWarmup=readinessReader?.read();
     const internalApiToken=process.env.STATION_INTERNAL_API_TOKEN;
     const trustedTailscaleServeOrigin=process.env.STATION_TRUSTED_TAILSCALE_SERVE_ORIGIN;
-    const hostedTenantAuthorities=${JSON.stringify(opts.hostedTenantAuthorities)};
-    const mediaUploadPolicies=${JSON.stringify(MEDIA_UPLOAD_POLICIES)};
     const classifyMediaUpload=${mediaUploadPolicy.toString()};
     const uploadPolicy=(method,path)=>classifyMediaUpload(method,path,mediaUploadPolicies);
     const uiRequestHandler=(deps)=>(${createUiRequestHandler.toString()})(deps,uploadPolicy);
-    const server=http.createServer(uiRequestHandler({http,crypto,fs,path,dir,mime,inject,upstreamPort,backendPrefixes,backendExcludedPrefixes,backendNavigationPrefixes,readinessFile,identity,internalApiToken,trustedTailscaleServeOrigin,hostedTenantAuthorities,immutableAsset,documentCsp}));
+    const server=http.createServer(uiRequestHandler({http,crypto,fs,path,dir,mime,inject,upstreamPort,backendPrefixes,backendExcludedPrefixes,backendNavigationPrefixes,readinessFile,identity,internalApiToken,trustedTailscaleServeOrigin,hostedTenantAuthorities,immutableAsset,documentCsp,readPrivateReadiness}));
+    server.once('close',()=>readinessReader?.close());
+    process.once('exit',()=>readinessReader?.close());
     (${configureHttpReceive.toString()})(server,uploadPolicy,mediaUploadPolicies.walkthrough.totalMs);
     (${configureHttpKeepAlive.toString()})(server);
     (${configureTerminalUpgrade.toString()})(server,require('net'),upstreamPort);
-    server.listen(${opts.uiPort},${JSON.stringify(opts.host ?? '0.0.0.0')});
+    Promise.resolve(readinessWarmup).then(()=>server.listen(uiPort,host));
     ${opts.exitWithLauncher ? "if(process.connected)process.on('disconnect',()=>process.exit(0));else process.exit(0);" : ''}
   `;
 }
@@ -1795,6 +1877,7 @@ function removeStateRecord(
 
   const release = acquireFileMutationLock(`${record.statePath}.mutation`);
   let fd: number | undefined;
+  let nativeFile: ReturnType<typeof openWindowsPrivateFile> | undefined;
   let quarantine: string | undefined;
   try {
     const currentRecord = readInstanceStateFile(record.statePath);
@@ -1812,10 +1895,15 @@ function removeStateRecord(
     }
     quarantine = `${record.statePath}.quarantine-${process.pid}-${randomUUID()}`;
     renameSync(record.statePath, quarantine);
-    fd = openSync(
-      quarantine,
-      fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0),
-    );
+    if (process.platform === 'win32') {
+      nativeFile = openWindowsPrivateFile(quarantine, 'read', true);
+      fd = nativeFile.fileDescriptor();
+    } else {
+      fd = openSync(
+        quarantine,
+        fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0),
+      );
+    }
     const moved = fstatSync(fd);
     if (
       moved.dev !== record.stateIdentity.dev ||
@@ -1837,7 +1925,8 @@ function removeStateRecord(
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
     throw error;
   } finally {
-    if (fd !== undefined) closeSync(fd);
+    if (nativeFile) nativeFile.close();
+    else if (fd !== undefined) closeSync(fd);
     release();
   }
 }
@@ -1874,6 +1963,9 @@ function readPriorPidInstanceState(
 }
 
 function validateInstanceStateDirectory(directory: string): void {
+  if (process.platform === 'win32') {
+    assertWindowsPrivateDirectory(directory);
+  }
   const info = lstatSync(directory);
   // POSIX permission bits are meaningless on Windows: `mkdirSync({mode:0o700})`
   // does not set them and `lstat().mode` is synthetic, so this check would
@@ -1894,7 +1986,13 @@ function validateInstanceStateDirectory(directory: string): void {
 }
 
 function ensureInstanceStateDirectory(directory: string): void {
+  const existed = existsSync(directory);
   mkdirSync(directory, { mode: 0o700, recursive: true });
+  if (process.platform === 'win32' && !existed) {
+    hardenWindowsPathsTrusted(runWindowsTrustCommand, [
+      { kind: 'directory', path: directory },
+    ]);
+  }
   validateInstanceStateDirectory(directory);
 }
 
@@ -1913,8 +2011,14 @@ function syncInstanceStateDirectory(directory: string): void {
 function readInstanceStateFile(path: string): InstanceStateRecord {
   validateInstanceStateDirectory(dirname(path));
   let fd: number | undefined;
+  let nativeFile: ReturnType<typeof openWindowsPrivateFile> | undefined;
   try {
-    fd = openSync(path, fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0));
+    if (process.platform === 'win32') {
+      nativeFile = openWindowsPrivateFile(path, 'read', true);
+      fd = nativeFile.fileDescriptor();
+    } else {
+      fd = openSync(path, fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0));
+    }
     const info = fstatSync(fd);
     if (
       !info.isFile() ||
@@ -1927,7 +2031,9 @@ function readInstanceStateFile(path: string): InstanceStateRecord {
         `Unsafe Station instance-state file (expected owned mode 0600): ${path}`,
       );
     }
-    const stateContent = readFileSync(fd, 'utf-8');
+    const stateContent = nativeFile
+      ? nativeFile.read(2 ** 31 - 1).toString('utf8')
+      : readFileSync(fd, 'utf-8');
     const parsed = JSON.parse(stateContent) as Partial<InstanceStateRecord>;
     const instanceId = parsed.instanceId;
     if (!instanceId || typeof instanceId !== 'string') {
@@ -1964,7 +2070,8 @@ function readInstanceStateFile(path: string): InstanceStateRecord {
       stateContent,
     };
   } finally {
-    if (fd !== undefined) closeSync(fd);
+    if (nativeFile) nativeFile.close();
+    else if (fd !== undefined) closeSync(fd);
   }
 }
 
@@ -2611,6 +2718,8 @@ function writeInstanceState(record: InstanceStateRecord): void {
   const backup = `${record.statePath}.prior-${process.pid}-${randomUUID()}`;
   let fd: number | undefined;
   let publishedFd: number | undefined;
+  let nativeTemporary: ReturnType<typeof openWindowsPrivateFile> | undefined;
+  let nativePublished: ReturnType<typeof openWindowsPrivateFile> | undefined;
   let temporaryIdentity: { dev: number; ino: number } | undefined;
   let publishedTemporary = false;
   try {
@@ -2618,15 +2727,20 @@ function writeInstanceState(record: InstanceStateRecord): void {
       readInstanceStateFile(record.statePath);
       linkSync(record.statePath, backup);
     }
-    fd = openSync(
-      temporary,
-      fsConstants.O_WRONLY |
-        fsConstants.O_CREAT |
-        fsConstants.O_EXCL |
-        (fsConstants.O_NOFOLLOW ?? 0),
-      0o600,
-    );
-    fchmodSync(fd, 0o600);
+    if (process.platform === 'win32') {
+      nativeTemporary = openWindowsPrivateFile(temporary, 'create', true);
+      fd = nativeTemporary.fileDescriptor();
+    } else {
+      fd = openSync(
+        temporary,
+        fsConstants.O_WRONLY |
+          fsConstants.O_CREAT |
+          fsConstants.O_EXCL |
+          (fsConstants.O_NOFOLLOW ?? 0),
+        0o600,
+      );
+    }
+    if (process.platform !== 'win32') fchmodSync(fd, 0o600);
     writeFileSync(fd, serialized, 'utf8');
     fsyncSync(fd);
     const temporaryInfo = fstatSync(fd);
@@ -2634,10 +2748,15 @@ function writeInstanceState(record: InstanceStateRecord): void {
     renameSync(temporary, record.statePath);
     publishedTemporary = true;
     syncInstanceStateDirectory(instanceStateDir);
-    publishedFd = openSync(
-      record.statePath,
-      fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0),
-    );
+    if (process.platform === 'win32') {
+      nativePublished = openWindowsPrivateFile(record.statePath, 'read', true);
+      publishedFd = nativePublished.fileDescriptor();
+    } else {
+      publishedFd = openSync(
+        record.statePath,
+        fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0),
+      );
+    }
     const publishedInfo = fstatSync(publishedFd);
     if (
       !publishedInfo.isFile() ||
@@ -2654,9 +2773,13 @@ function writeInstanceState(record: InstanceStateRecord): void {
         `Failed to publish secure instance state: ${record.statePath}`,
       );
     }
-    closeSync(publishedFd);
+    if (nativePublished) nativePublished.close();
+    else closeSync(publishedFd);
+    nativePublished = undefined;
     publishedFd = undefined;
-    closeSync(fd);
+    if (nativeTemporary) nativeTemporary.close();
+    else closeSync(fd);
+    nativeTemporary = undefined;
     fd = undefined;
     rmSync(backup, { force: true });
     syncInstanceStateDirectory(instanceStateDir);
@@ -2679,10 +2802,11 @@ function writeInstanceState(record: InstanceStateRecord): void {
     syncInstanceStateDirectory(instanceStateDir);
     throw error;
   } finally {
-    if (publishedFd !== undefined) closeSync(publishedFd);
-    if (fd !== undefined) closeSync(fd);
+    if (nativePublished) nativePublished.close();
+    else if (publishedFd !== undefined) closeSync(publishedFd);
+    if (nativeTemporary) nativeTemporary.close();
+    else if (fd !== undefined) closeSync(fd);
     rmSync(temporary, { force: true });
-    rmSync(backup, { force: true });
     release();
   }
   // The record supersedes a prior-format pid file (source checkouts only).
@@ -2861,7 +2985,7 @@ function activeLocalApiBase(
   if (host === '::1' || host.startsWith('127.')) {
     return `http://${hostForUrl(host)}:${serverPort}`;
   }
-  return undefined;
+  return `http://127.0.0.1:${serverPort}`;
 }
 
 function getReservedPorts(
@@ -5057,6 +5181,7 @@ export async function start(opts: StartOptions = {}): Promise<void> {
 
   let serverStdio: any = 'ignore';
   let logDescriptor: number | null = null;
+  let nativeLog: ReturnType<typeof openWindowsPrivateFile> | undefined;
   const requestedLogDirectory = dirname(logFile);
   const homeRelation = relative(resolve(projectHome), requestedLogDirectory);
   const logDirectoryIsInsideHome =
@@ -5124,47 +5249,54 @@ export async function start(opts: StartOptions = {}): Promise<void> {
     );
   }
   if (!hasExplicitLogFile || !logDirectoryExisted) {
-    chmodSync(logDirectory, 0o700);
-  }
-  {
-    if (existsSync(logFile)) {
-      const info = lstatSync(logFile);
-      if (!info.isFile() || info.isSymbolicLink()) {
-        throw new Error(`Log path must be a regular file: ${logFile}`);
-      }
-      if (
-        typeof process.getuid === 'function' &&
-        info.uid !== process.getuid()
-      ) {
-        throw new Error(
-          `Log path must be owned by the current user: ${logFile}`,
-        );
-      }
+    if (process.platform === 'win32') {
+      hardenWindowsPathsTrusted(runWindowsTrustCommand, [
+        { kind: 'directory', path: logDirectory },
+      ]);
+    } else {
+      chmodSync(logDirectory, 0o700);
     }
-    logDescriptor = openSync(
-      logFile,
-      fsConstants.O_APPEND |
-        fsConstants.O_CREAT |
-        fsConstants.O_WRONLY |
-        (fsConstants.O_NOFOLLOW ?? 0),
-      0o600,
-    );
-    const openedInfo = fstatSync(logDescriptor);
-    if (!openedInfo.isFile()) {
-      closeSync(logDescriptor);
-      logDescriptor = null;
+  }
+  if (existsSync(logFile)) {
+    const info = lstatSync(logFile);
+    if (!info.isFile() || info.isSymbolicLink()) {
       throw new Error(`Log path must be a regular file: ${logFile}`);
     }
+    if (typeof process.getuid === 'function' && info.uid !== process.getuid()) {
+      throw new Error(`Log path must be owned by the current user: ${logFile}`);
+    }
+  }
+  try {
+    if (process.platform === 'win32') {
+      nativeLog = openWindowsPrivateFile(logFile, 'log', true);
+      logDescriptor = nativeLog.fileDescriptor();
+    } else {
+      logDescriptor = openSync(
+        logFile,
+        fsConstants.O_APPEND |
+          fsConstants.O_CREAT |
+          fsConstants.O_WRONLY |
+          (fsConstants.O_NOFOLLOW ?? 0),
+        0o600,
+      );
+    }
+    const openedInfo = fstatSync(logDescriptor);
+    if (!openedInfo.isFile())
+      throw new Error(`Log path must be a regular file: ${logFile}`);
     if (
       typeof process.getuid === 'function' &&
       openedInfo.uid !== process.getuid()
     ) {
-      closeSync(logDescriptor);
-      logDescriptor = null;
       throw new Error(`Log path must be owned by the current user: ${logFile}`);
     }
-    fchmodSync(logDescriptor, 0o600);
+    if (process.platform !== 'win32') fchmodSync(logDescriptor, 0o600);
     serverStdio = ['ignore', logDescriptor, logDescriptor];
+  } catch (error) {
+    if (nativeLog) nativeLog.close();
+    else if (logDescriptor !== null) closeSync(logDescriptor);
+    nativeLog = undefined;
+    logDescriptor = null;
+    throw error;
   }
 
   const serverEnv: Record<string, string> = {
@@ -5365,7 +5497,8 @@ export async function start(opts: StartOptions = {}): Promise<void> {
       );
     }
   } finally {
-    if (logDescriptor !== null) closeSync(logDescriptor);
+    if (nativeLog) nativeLog.close();
+    else if (logDescriptor !== null) closeSync(logDescriptor);
   }
   let uiProc: ReturnType<typeof spawn> | undefined;
   let generation: InstanceStateRecord;
@@ -5546,7 +5679,9 @@ export async function start(opts: StartOptions = {}): Promise<void> {
         waitForIdentity(
           hostedProbeAuthority
             ? `http://${healthHost}:${uiPort}/api/system/identity`
-            : `http://${healthHost}:${serverPort}/api/system/identity`,
+            : host === '0.0.0.0'
+              ? `http://${healthHost}:${serverPort}/api/system/identity`
+              : `${activeLocalApiBase(host, serverPort)}/api/system/identity`,
           { instanceId, sha: serverEnv.STATION_BUILD_SHA, bootId },
           STARTUP_READINESS_TIMEOUT_MS,
           readinessHeaders,
@@ -5637,7 +5772,7 @@ export async function start(opts: StartOptions = {}): Promise<void> {
     const consentState = hostedProbeAuthority
       ? null
       : await fetchConsentAvailability(
-          `http://${healthHost}:${serverPort}/api/system/instance`,
+          `${activeLocalApiBase(host, serverPort)}/api/system/instance`,
           readinessHeaders,
         );
     if (consentState?.status === 'listening') {

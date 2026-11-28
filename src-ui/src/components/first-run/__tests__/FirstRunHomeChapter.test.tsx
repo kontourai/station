@@ -88,25 +88,6 @@ vi.mock('@kontourai/station-sdk', () => ({
   }),
   useDevicePresentation: () => undefined,
 }));
-// Existing setup is capability-gated. This chapter suite is about the
-// durable onboarding gate, so model the ordinary unavailable capability.
-vi.mock('@kontourai/station-sdk/setup-imports-query', () => ({
-  useSetupImportSourcesQuery: () => ({
-    data: [{ id: 'codex-prompts', available: false }],
-    isLoading: false,
-    isError: false,
-  }),
-  useCreateSetupImportPreviewMutation: () => ({}),
-  useApplySetupImportMutation: () => ({}),
-  useReviewSetupImportTargetsMutation: () => ({
-    data: undefined,
-    isPending: false,
-    isError: false,
-    mutate: vi.fn(),
-    reset: vi.fn(),
-  }),
-  useRollbackSetupImportMutation: () => ({}),
-}));
 vi.mock('../../../contexts/onboarding-setup-store', () => ({
   useOnboardingSetupState: () => setupState,
   firstRunChapterPresence: { set: (open: boolean) => presence.push(open) },
@@ -283,12 +264,6 @@ describe('AC1 — the gate is a durable fact about the home', () => {
     render(<FirstRunHomeChapter />);
     expect(screen.getByTestId('first-run-engines')).toBeTruthy();
     expect(screen.getByTestId('first-run-home-card')).toBeTruthy();
-  });
-
-  test('the agents step contains no unrelated empty import panel', () => {
-    render(<FirstRunHomeChapter />);
-    expect(screen.getByTestId('first-run-engines')).toBeTruthy();
-    expect(screen.queryByTestId('existing-setup-import-stepper')).toBeNull();
   });
 
   test('a completed home is offered nothing at all', () => {

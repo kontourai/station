@@ -23,6 +23,9 @@ Home becomes the only first-run screen, with no wizard, and connecting a phone t
 - Home shows the composer plus a short list of what Station found on the computer. Each row offers one step the person takes, such as Add or Sign in. Nothing found is configured until the person adds it.
 - Customize › Overview, and the "what can run now" table at the top of Customize › Engines, is where setup lives afterwards.
 - Station saves a Default for new chats: the first signed-in engine, in fixed order (Claude Code, Codex, then the others), using that engine's current model. It never changes because another engine becomes ready.
+- The default is one per Station and names an agent, not a model. A new chat reads it after the person's own last choice, the project's default agent and the view's default agent.
+- Station saves only an engine whose sign-in it has verified: the engine's own sign-in check (Claude Code, Codex, Muse Code, and any engine with a documented status command) says it is signed in. Station's own engine is never saved (nothing signs it in), and neither is an engine whose sign-in Station cannot check or could not tell; both only start a new chat while nothing is saved. An agent someone wrote for an engine does not take that engine out of the order.
+- The fixed order is Claude Code, Codex, the other engines by engine name, then Station's own engine. When the saved default's agent is signed out, removed or not offered here, a new chat passes over it as if nothing were saved, starting on the first agent in that order that can run, and the saved default is kept.
 - Every detected and ready engine appears in the picker. Its Agent is created the first time the engine is used, not as a ticked batch.
 - Station's own agent runs on the same engine as the default for new chats until the person changes it in Settings.
 - When engines are installed but none is signed in, the Start button becomes "Sign in and start", and the message is kept.
@@ -105,12 +108,12 @@ On a phone: Avatars are hidden and the approval buttons are 44px and full width.
 
 ### `first-run-08` Import Codex prompts as skills
 
-On a phone: A bottom sheet. Row status wraps under the row.
+On a phone: The product's shared dialog, which every Station dialog uses on a phone, not a separate bottom sheet. Row status wraps under the row.
 
 1. **Titled "Import your Codex prompts as skills".** That is all the importer does. There is no Claude Code import, and drawing one would be invented. _(copy; slice 1.11)_
 2. **Nothing is pre-selected (two are shown picked), and a name conflict is solved inline.** _(new screen state; slice 1.11)_
-3. **The copy promises "undo the whole import".** The rollback exists in the product. _(copy; slice 1.11)_
-4. **The entry point is Customize › Skills › New skill › Import from Codex…, and it is offered once on a fresh Home.** It is a menu item on the Skills page's single button, not a second button. We need to check the cost of looking for sources when Home first paints. _(layout, backend check first; slice 1.11)_
+3. **The copy promises "undo the whole import".** The rollback exists in the product. Undo is offered in the dialog until it closes, because nothing lists past imports to undo later. _(copy; slice 1.11)_
+4. **The entry point is the Skills page, under its other ways to import a skill, and it is offered once on a fresh Home.** When the Skills page gains its New skill menu, the entry becomes that menu's Import from Codex… item, so the page keeps one button. It is offered only where a preview can read the folder. Looking for sources is a bounded check of the Codex home and its prompts folder on the host (that neither is a symbolic link), with no listing of their contents, so it is cheap when Home first paints. It needs the operator's setup-import permission, so the offer stays hidden for anyone else. _(layout, backend check first; slice 1.11)_
 
 ### `first-run-09` Unpaired device, connect screen
 

@@ -109,7 +109,8 @@ node packages/cli/dist/station.mjs --help
 The bundle inlines the Station workspace packages, so it needs neither `tsx`
 nor a checkout at runtime. The package declares `@napi-rs/keyring`, `koffi` and
 `qrcode` dependencies; `koffi` reads the Windows registry and access lists for
-`station policy show` and is loaded only on Windows. `esbuild` is an optional peer loaded for plugin-authoring builds;
+`station policy show`, and enforces native Windows lifecycle state and log
+privacy. It is loaded only on Windows. `esbuild` is an optional peer loaded for plugin-authoring builds;
 client-only use does not require it. See the [package manifest](../../packages/cli/package.json)
 and [bundle externals](../../packages/cli/bundle-externals.mjs).
 
@@ -895,7 +896,7 @@ station config set <key> <value> [--offline]
 |----------|-------------|
 | `<key>` | A top-level configuration field, e.g. `registryUrl`. |
 | `<value>` | `true`/`false` become booleans, all-digit values become numbers, and other values stay strings. `null` is retained for registry-nullable fields and clears other accepted fields. |
-| `--offline` | Skip the live Station route and write `config/app.json` directly. A setting the installed [managed policy](../guides/managed-policy.md#settings) locks is refused, as it is by the live route. |
+| `--offline` | Skip the live Station route and write `config/app.json` directly. A setting the installed [managed policy](../guides/managed-policy.md#settings) locks is refused, as it is by the live route, and so are `firstRun` and `newChatDefault`, which only their own routes write. |
 
 `config get <key>` prints `(not set)` for an absent key.
 
@@ -1076,7 +1077,7 @@ engine's `setupPath`, next action, recorded handshake time and advertised HTTP
 tool channel. It runs no engine, installation or sign-in. The Station Control
 counterpart is `list_engine_setup`; `open_engine_setup` navigates the person's
 client to that same destination. An older host can answer 404 without supporting
-this journey; use Connections → Engines or update the host. Preserve any
+this journey; use Customize → Engines or update the host. Preserve any
 preview or authority refusal rather than editing configuration. See the
 [ACP guide](../guides/acp.md#set-up-an-engine-from-chat).
 
@@ -3128,7 +3129,7 @@ station start [--port=<n>] [--ui-port=<n>] [--host=<address>] [--clean] [--force
 |------|---------|-------------|
 | `--port=<n>` | worktree-derived development port (or explicit release channel port) | API server port |
 | `--ui-port=<n>` | worktree-derived development port (or explicit release channel port) | UI static file server port |
-| `--host=<address>` | existing lifecycle default (`127.0.0.1` under a managed policy without `remote` clients) | Explicit bind address for all four Station listeners: API, terminal, voice, and UI. Dogfood uses `127.0.0.1`. Under a [managed policy](../guides/managed-policy.md#network-exposure) without `remote` clients, a non-loopback address is refused, and so is a non-loopback `STATION_HOST` in the environment. |
+| `--host=<address>` | existing lifecycle default (`127.0.0.1` under a managed policy without `remote` clients) | Bind address for API, voice, UI, and consent. Terminal upgrades use the API listener. A concrete API bind also exposes the same API on `127.0.0.1` at the same port for local control and the UI proxy, without accepting local-only credentials from LAN peers. Dogfood uses `127.0.0.1`. Under a [managed policy](../guides/managed-policy.md#network-exposure) without `remote` clients, a non-loopback address is refused, and so is a non-loopback `STATION_HOST` in the environment. |
 | `--clean` | — | Clean the selected Station home before starting |
 | `--force` | — | Skip the confirmation prompt for destructive cleanup |
 | `--allow-default-home-clean` | — | Required together with `--force` to delete the selected default runtime home |
@@ -3145,7 +3146,8 @@ Detached processes are tracked per instance in `.station/instances/<instance-id>
 **The server runs under the [process supervisor](../design/process-supervisor.md).**
 `start` launches `station-supervisor.js` from the instance's build directory,
 and the supervisor runs the core server as a supervised generation and holds
-its three listeners. The instance record, the home registry entry, and the
+its API, voice and consent listeners, plus the loopback API socket when needed.
+The instance record, the home registry entry, and the
 active-local-station record name the supervisor's pid (`"supervised": true`
 in the record): the supervisor owns the instance while core server generations
 come and go beneath it. `station restart` hands off to a new generation in
@@ -4375,7 +4377,7 @@ station shortcut
 
 ### `registry`
 
-Unified catalog and plugin registry behavior for the Registry surface:
+Unified catalog and plugin registry behavior behind Apps › Discover and the catalogue pages:
 
 ```bash
 station registry
@@ -4436,7 +4438,7 @@ station registry install demo-layout
 The install command currently submits the ID without a preview decision.
 Executable or lifecycle-bearing entries are refused by the canonical installer;
 [#2809](https://github.com/kontourai/station/issues/2809) tracks the missing CLI
-consent flow. Use the Registry UI or `station plugin install <source>` to review
+consent flow. Use Apps › Discover or `station plugin install <source>` to review
 and submit consent. A successful catalog read does not prove installation.
 
 `examples/registry/manifest.json` is the reproducible local fixture used by
@@ -4488,7 +4490,7 @@ When Station saves the plugin but its runtime activation does not finish (a
 but … so it is not active.` (or `Updated …`) and **exit 2**, so a script does
 not continue as if the plugin were active. Station does not retry the
 activation: recover it with `station plugin recover <name>` or **Recover
-plugin** in Plugins; do not install it again. `station plugin install` refuses
+plugin** in Apps › Library; do not install it again. `station plugin install` refuses
 a plugin that already reads Needs recovery, installing nothing, unless you pass
 `--reinstall` to install another copy on purpose. A plugin the server is still
 activating (its row carries `activationInFlight`) is not stopped: `station
@@ -4503,7 +4505,7 @@ older Station without `recovery` exits 2 and says to check the plugin's row. A
 ### `plugin recover <name>`
 
 Recover an installed plugin that reads **Needs recovery**, as **Recover
-plugin** does in Plugins, for example on a headless home server.
+plugin** does in Apps › Library, for example on a headless home server.
 
 ```
 station plugin recover <name> [--yes]
@@ -4516,7 +4518,7 @@ non-interactive run is refused unless `--yes` approves what was printed.
 It sends exactly the reviewed revisions. Recovery uses the retained code and
 data and downloads nothing. When it activates the plugin, any trusted
 permissions it still needs are listed for the separate host approval in
-Plugins. When the activation does not finish within the activation limit, it
+Apps › Library. When the activation does not finish within the activation limit, it
 says so and exits 2: a retry may work, or remove the plugin.
 
 ### `plugin preview <source>`
@@ -4630,7 +4632,7 @@ station plugin create [name] [--template=<pane|full|provider>]
 
 Every template writes an Agent Plugins 1.0 `plugin.json` whose Station
 settings live under `extensions["io.kontourai.station"]`. The same templates
-back the in-app **Plugins → New plugin** action
+back the in-app **Apps › Library → New plugin** action
 (`packages/shared/src/plugin-scaffold.ts`). The name must match the Agent
 Plugins name grammar: lowercase letters, digits, hyphens or periods.
 
@@ -4745,12 +4747,20 @@ During rollout, Station still recognizes the prior `<cwd>/.station.pids` file wh
 
 A prebuilt server archive keeps this state outside itself, in `<root>/state/<channel>/instances/` of the Station root the instance's home belongs to. The root follows from the path of the home the command resolved, however it was given (`--home`, `--base`, `STATION_HOME` or the default), and from nothing else: a home at `<root>/instances/...` belongs to `<root>`, which makes the default `~/.station` (`%USERPROFILE%\.station` on Windows); any other home, including a `--temp-home`, is its own root and holds its state, which goes when the home is removed. `STATION_ROOT` does not move it. So `STATION_HOME=/srv/st station start` and `station stop --home=/srv/st` read the same records, and a start from a non-default home prints its stop command with `--home`. A bare `station stop` searches the root of the home a bare command targets (`STATION_HOME` or the default). An archive's port-conflict and shared-home checks likewise see only instances recorded in the same root; a port another root's instance holds still fails the bind. The archive can therefore be read-only, and every extracted version of one channel shares the records: the next version's `station stop` finds what the previous one started. For the same reason an archive's implicit instance id (no `--instance`, non-default home or ports) hashes the channel, home and ports rather than the archive's directory. Source checkouts are unchanged.
 
-The CLI requires the instance-state directory (`.station/instances` in a checkout, `<root>/state/<channel>/instances` for an archive) to be an owned, non-symlinked directory with mode `0700`; if it isn't (e.g. a checkout that predates this check, or a directory created with a looser umask), `station start`/`station build` fails with `Unsafe Station instance-state directory (expected owned mode 0700): <path>`. Fix it with `chmod 700` on the path the error names, for example:
+On POSIX, the CLI requires the instance-state directory (`.station/instances` in a checkout, `<root>/state/<channel>/instances` for an archive) to be an owned, non-symlinked directory with mode `0700`; if it isn't (e.g. a checkout that predates this check, or a directory created with a looser umask), `station start`/`station build` fails with `Unsafe Station instance-state directory (expected owned mode 0700): <path>`. Fix it with `chmod 700` on the path the error names, for example:
 
 ```bash
 chmod 700 .station/instances                    # checkout
 chmod 700 ~/.station/state/stable/instances     # stable archive, default home
 ```
+
+Windows checks actual current-user-only directory and record DACLs through
+retained native handles, refusing reparse paths and unrelated access. An
+inherited owner-only DACL is protected before use; a broader ACL is not
+silently repaired. `chmod` does not repair Windows ACLs. Publication verifies
+the final file identity and bytes, and removal quarantines only the record
+that was securely read. See [development](../guides/development.md) for log
+privacy and the separate execution-safe policy for existing explicit log parents.
 
 **Not the same thing as `<STATION_HOME>/instances.json`.** That is a
 separate, home-scoped (not CWD-scoped) cross-process instance registry

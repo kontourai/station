@@ -269,7 +269,7 @@ async function main() {
     });
     const driver = fixture.driver;
 
-    await driver.navigate('tauri://localhost/?surface=device');
+    await driver.navigateApp('/?surface=device');
     await driver.waitUntil(
       async () =>
         Boolean(await driver.findElement('.chat-dock[aria-label="Device"]')),

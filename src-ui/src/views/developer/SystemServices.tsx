@@ -39,8 +39,8 @@ export function SystemServices({ apiBase }: { apiBase: string }) {
           <section className="system-tab__card">
             <div className="developer-tab__header-row">
               <h2>Engines</h2>
-              <Button size="sm" onClick={() => navigate('/connections')}>
-                Configure connections
+              <Button size="sm" onClick={() => navigate('/customize/engines')}>
+                Configure engines
               </Button>
             </div>
             {status.externalEngines?.length ? (

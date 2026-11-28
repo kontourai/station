@@ -77,6 +77,7 @@ import {
   type ToolRequestServerGrant,
   type ToolRequestSessionGrant,
   toolRequestIsPlainCall,
+  toolRequestNeedsPerson,
   toolRequestRuleGrant,
   toolRequestServerGrant,
   toolRequestSessionGrant,
@@ -329,6 +330,7 @@ type PendingRequest = {
    * whether the approval surfaces offer it.
    */
   sessionGrant: ToolRequestSessionGrant;
+  allOffered: boolean;
   /**
    * The request is an escalation (`toolRequestStrictSessionGrant` gives no
    * tool grant): a session answer to it also covers the tool's later
@@ -915,6 +917,7 @@ type ClaudeSessionRecord = {
    * `setMode`). `undefined` until one of those (station#1950:
    * omit-the-knob inherits Claude settings). Turn metadata reports it. */
   currentPermissionMode?: PermissionMode;
+  allGranted?: boolean;
   /**
    * #2915/#2916: the mode Station last REQUESTED (at spawn or through
    * `setPermissionMode`), kept apart from `currentPermissionMode`, which
@@ -1850,7 +1853,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     // #2540: with `earlyParkRefusal`, see there for what this rests on.
     openEngineWork: 'complete' as const,
     // `respondToRequest` forwards only the offered Bash prefix rules.
-    sessionGrantScopes: ['rule'] as const,
+    sessionGrantScopes: ['rule', 'all'] as const,
     recovery: {
       sameSession: true,
       maxAttempts: 1,
@@ -3616,6 +3619,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         if (targetPermissionMode !== record.currentPermissionMode) {
           await record.query.setPermissionMode(targetPermissionMode);
           record.currentPermissionMode = targetPermissionMode;
+          record.allGranted = false;
         }
         record.requestedPermissionMode = targetPermissionMode;
       }
@@ -4085,6 +4089,13 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     record.pendingRequests.delete(requestId);
     const grant = pending.sessionGrant;
     const scope = context?.sessionGrantScope;
+    if (
+      decision === 'acceptForSession' &&
+      scope === 'all' &&
+      pending.allOffered
+    ) {
+      record.allGranted = true;
+    }
     // #2916 / #2915: where no session grant is offered (a plan exit, or an
     // escalation with no directory to forward), the answer is for this one
     // call: nothing is minted and no suggestion is forwarded. So is a
@@ -4092,7 +4103,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     // falls back to a wider grant.
     const effectiveDecision =
       decision === 'acceptForSession' &&
-      (grant === 'none' || (scope === 'rule' && !pending.ruleGrant))
+      (scope === 'all' ||
+        grant === 'none' ||
+        (scope === 'rule' && !pending.ruleGrant))
         ? 'accept'
         : decision;
     // #2915: only a tool grant mints a Station tool grant. An edit-mode grant
@@ -4130,7 +4143,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     const result = mapClaudeDecisionToPermissionResult(
       effectiveDecision,
       pending.toolInput,
-      scope === 'server'
+      scope === 'server' || scope === 'all'
         ? undefined
         : scope === 'rule'
           ? ruleGrantPermissionUpdates(pending.suggestions)
@@ -5442,6 +5455,13 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           const { denial } = delegatedApprovalDenial(toolName, 'external');
           return { behavior: 'deny', message: denial.reason };
         }
+        const allOffered =
+          !inputRequest &&
+          !toolRequestNeedsPerson(toolName) &&
+          sessionGrant !== 'none';
+        if (allOffered && !explicitAsk && record.allGranted) {
+          return { behavior: 'allow', updatedInput: toolInput };
+        }
         const requestId = crypto.randomUUID();
         const eventId = crypto.randomUUID();
         this.publish({
@@ -5469,6 +5489,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           ...(guardianReason ? { guardianReason } : {}),
           payload: {
             ...(inputRequest ? { inputRequest } : {}),
+            ...(allOffered ? { sessionGrantAll: true } : {}),
             toolName,
             // #2316: the SDK's id for this exact tool_use block — the same id
             // `tool.started` carries as `toolCallId` — so the transcript binds
@@ -5512,6 +5533,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
             toolName,
             ...(options.agentID ? { agentId: options.agentID } : {}),
             sessionGrant,
+            allOffered,
             escalation,
             serverGrant,
             ...(ruleGrant ? { ruleGrant } : {}),

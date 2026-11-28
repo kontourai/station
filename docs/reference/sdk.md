@@ -838,6 +838,26 @@ must mount the dedicated relationship factory with current authority adapters
 before these APIs are available.
 
 
+### Resuming an ended Task
+
+`@kontourai/station-sdk/task-resume` exports `taskResumeHostSupport(apiBase)`,
+`readTaskResumeView(taskId, options)` and `resumeTask(taskId, request,
+options)` for `GET` and `POST /api/tasks/:taskId/resume` (#4554). Both calls ask
+the host's handshake first: a host without the `taskResume` flag (older, or a
+hosted deployment) throws `TaskResumeError` with `code: 'unsupported'` and a
+message that names updating Station as one remedy, and no resume request is
+sent. A host refusal throws `TaskResumeError` with its `task_resume_*` code.
+Only the Station operator in person can resume; the host decides who is asking.
+If the capability handshake cannot be read, the client refuses with
+`task_resume_unavailable` before sending a resume request.
+Retry an uncertain resume with the same `resumeId` and inputs: the host answers
+the stored record with `replayed: true` and the Task as it is now. Resuming
+starts nothing; dispatch the Task separately.
+The root `dispatchTask({ taskId, dispatch?, apiBase?, requestScope? })` and
+`useDispatchTaskMutation` accept the captured request scope. A dispatch following
+resume confirmation passes the same scope as resume: a changed account or
+connection refuses dispatch rather than adopting the new ambient credential.
+
 ## Shared Project room
 
 `@kontourai/station-sdk/project-rooms` provides `useProjectRoom` and the
@@ -1508,7 +1528,7 @@ See [operator passkeys](../guides/operator-passkeys.md#change-device-access-from
 
 #### `useConnectionsQuery()`
 
-Returns the merged Connections list used by the Connections hub. The result includes both model and runtime rows from `GET /api/connections`.
+Returns the merged connections list that Customize's connection items read. The result includes both model and runtime rows from `GET /api/connections`.
 
 #### `useModelConnectionsQuery()`
 
@@ -1531,7 +1551,7 @@ Rows can expose model-catalog metadata on `runtimeCatalog`, including:
 - `builtInModels` — Station's bounded built-in entries when live enumeration is unavailable
 - `reason`, `fetchedAt`, and `truncated` — catalog status and completeness metadata
 
-Current callers include `ConnectionsHub`, `AgentConnectionView`, `EnginePicker`
+Current callers include `AgentConnectionView`, `EnginePicker`
 and `AgentEditorForm`. Built-in candidates are not proof that an engine currently
 offers a model; preserve the catalog source and availability when presenting them.
 
@@ -1982,6 +2002,21 @@ production support. See the [hook](../../packages/sdk/src/hooks/operations.ts),
 
 ## Query Hooks
 
+
+### Third-party history
+
+The `@kontourai/station-sdk/external-session-history-query` subpath exports
+`useExternalSessionHistoryQuery(scope, offset, search, provider?)` and
+`useExternalSessionTranscriptQuery(scope, id, cursor, fromStart)`. Both use the
+selected Station's request authority and stop when their last observer closes.
+The catalog and transcript load on demand.
+
+`useImportExternalSessionHistory(scope)` accepts a catalog ID and an
+`AbortSignal` and a client operation ID. It saves bounded batches and returns the saved thread ID.
+Canceling leaves any committed messages available and a later request can
+resume from the saved cursor. Use the Station's **Third-party history** preview
+availability before mounting these queries.
+
 ### Unified search (backend and SDK slice)
 
 `searchStation(apiBase, request, { requestScope, signal? })` queries `POST /api/search` with the
@@ -2178,6 +2213,15 @@ shape and rules). An error answer rejects rather than resolving as no branding.
 ### `useConfigQuery(config?)`
 
 Fetches app configuration.
+
+### `useNewChatDefaultCapability()` and `useRecordNewChatDefaultMutation()`
+
+`useNewChatDefaultCapability()` reads whether the host advertises
+`newChatDefault`; `null` means its handshake could not be read.
+`useRecordNewChatDefaultMutation()` posts `{ agent, reason }` to
+[`POST /config/new-chat-default`](api.md#default-for-new-chats) and refreshes
+the config read. It resolves `{ recorded, newChatDefault }`: `recorded: false`
+is the host keeping the default that already stood (its 409), not a failure.
 
 ### `useStatsQuery(agentSlug, conversationId, config?)`
 
@@ -3906,7 +3950,7 @@ Durably withdraws plugin permissions and returns the effective `granted` set
 plus runtime `reconciliation` truth. `completed` means the affected runtime
 generation retired; `winding-down` names an owned continuation; `superseded`
 means a newer grant/install generation won; and `incomplete` names stages that
-need another idempotent revoke attempt. Station's Plugins surface uses that
+need another idempotent revoke attempt. Station's Apps › Library uses that
 same mutation for its **Check cleanup** and **Retry cleanup** actions; retrying
 preserves the complete pending lifecycle-permission vector.
 
@@ -5076,8 +5120,9 @@ content, while retaining the observed HTTP status (usually 200).
   and keeps the last answer when a refresh fails. A host that answers a plain
   404 (one older than this read) resolves to `null`, and the board then
   claims nothing about pull requests; a 404 with `request_principal_changed`
-  (lost standing) is an error. Only the board enables it; the list view
-  claims nothing about pull requests. `useMergePullRequestMutation`
+  (lost standing) is an error. The board enables the Project-wide read. A
+  Task header passes `{ taskId }` to the hook to read just that Task. The
+  list view does not read pull request facts. `useMergePullRequestMutation`
   invalidates every Project's facts query, so a merge through Station moves
   its card on the next read.
 - `createTask` and `createTaskReference` accept an optional `requestScope`
@@ -5751,6 +5796,17 @@ absent carriers remain unknown, including legacy metadata without a declaration.
 Display notes have a separate 50-note capacity
 and seven-day retention, pruned on submission. See [inbox kinds and crash outcomes](session-api.md#submit-steer-follow-up-or-display-input).
 
+The queue uses `updateConversationQueue(apiBase,
+conversationId, action)` to edit or move queued follow-ups from the same
+sender or steer an attachment-free queued follow-up. The inbox read reports
+this capability to `listConversationInbox` callers through `onQueueControls`.
+An edit names the original
+message and replacement text and keeps the queue position. A move names the observed
+neighbor and direction. A steer names the source, a fresh UUID, the original
+message and the running turn token from `onQueueControls`. Station cancels the source and accepts the
+steer in one transaction. If the queue or conversation has changed, refresh
+before acting again.
+
 `ProjectTaskRoomProtocolError` remains a plain `Error` subclass. Its
 HTTP/envelope failure form carries `status`, `code`, `details` and
 `retryAfterMs`; its payload-validation form carries only the protocol message.
@@ -6085,7 +6141,7 @@ own these stages.
 A row also carries `activationInFlight: true` while this server is still
 activating the plugin: it settles on its own, so offer no recovery and read the
 list again until the flag is gone, for no longer than the activation deadline
-plus a margin (the Plugins view stops at 15 seconds). Absence preserves compatibility
+plus a margin (Apps › Library stops at 15 seconds). Absence preserves compatibility
 with older servers; it is not a new readiness proof. Keep pending rows visible,
 but do not load their bundles or enable their actions. The server sets
 `hasBundle: false` until readiness is established. Project Pane availability
@@ -6486,6 +6542,20 @@ and compares these owners case-insensitively when both are present. If either
 owner is absent, it matches on branch alone; the upstream branch name is never
 a substitute for the local branch.
 
+Set `config.list` to `OPEN`, `MERGED`, `CLOSED` or `ALL` to request the
+checkout and its first pull request page together. On supporting hosts the
+available context includes a `pullRequests` result, which can report that the
+forge read failed while the checkout context remains available. Older hosts
+omit this field. The SDK caches each requested state separately and seeds the
+checkout-only cache from a fresh bundled response. After the app restores a
+saved list, the query's `isLastKnown` flag stays set until the server returns
+a new answer. Background refreshes of a live result keep that flag clear.
+GitHub returns a `nextCursor` when more rows are available. Pass those opaque
+cursors to `useCheckoutPullRequestPages` with the same checkout and state.
+Subsequent pages have independent memory-only query keys. Pass a stable
+checkout identity as the optional fourth argument to segregate pages when
+the same working directory resolves to a different repository.
+
 ## Conversation pull-request links
 
 `@kontourai/station-sdk/conversation-pull-request-links` reads, links, and
@@ -6758,6 +6828,9 @@ view lists `social` only for a browser on that computer and otherwise carries
 `socialSignIn: 'needs-browser-on-host'`. Responses are parsed
 strictly against `@kontourai/station-contracts/engine-sign-in`, and every
 caller supplies a captured `ApiRequestScope`.
+When an attempt turns `succeeded`, a Station-run sign-in turns `completed`, or
+a check answers `authenticated`, these hooks re-read engine readiness (Agents,
+the picker catalog and the connection reads), as the engine status event does.
 
 ## Guided engine setup queries
 

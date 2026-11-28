@@ -129,13 +129,11 @@ test.describe('core journey accessibility gate', () => {
       ready: (page: Page) => page.getByPlaceholder('Search agents…'),
     },
     {
-      name: 'connections',
-      path: '/connections',
-      // `ConnectionsHub` resolves this entry route to a section. The shared
-      // rail is the stable surface that proves that resolution completed,
-      // rather than auditing the otherwise-empty resolver frame.
-      ready: (page: Page) =>
-        page.getByRole('tablist', { name: 'Connection sections' }),
+      name: 'customize',
+      path: '/customize',
+      // The landing's own item list, which renders once the route's chunk has
+      // resolved, rather than the shell chrome that is there either way.
+      ready: (page: Page) => page.locator('.customize-landing'),
     },
     {
       name: 'guidance',

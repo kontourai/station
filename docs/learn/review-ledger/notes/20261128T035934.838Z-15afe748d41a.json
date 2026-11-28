@@ -1,0 +1,11 @@
+{
+  "revision": "eefadf875a2a1c5023bde9019eefb38cd61845fa",
+
+  "notes": [
+    {"path":"docs/design/terminal.md","note":"Reviewed type-only eefadf875a correction after hosted TS2322: TaskkillFailure preserves Error plus optional code/signal/killed without requiring execFile-only cmd on synchronous resolver refusal. Terminal/development/concepts claims remain unchanged: System32 utility/PID/event/output receipt, bounded errors, helper5s/session6s, cached termination and native fallback retain identical runtime behavior. No fabricated command, new guard, timeout change or original5627 causal clearance. Exact repair independent source review approves; Linux server typecheck exit0; remaining receipts tracked separately.","inputs":["src-server/adapters/node-pty-adapter.ts"]},
+
+    {"path":"docs/guides/development.md","note":"Reviewed type-only eefadf875a correction after hosted TS2322: TaskkillFailure preserves Error plus optional code/signal/killed without requiring execFile-only cmd on synchronous resolver refusal. Terminal/development/concepts claims remain unchanged: System32 utility/PID/event/output receipt, bounded errors, helper5s/session6s, cached termination and native fallback retain identical runtime behavior. No fabricated command, new guard, timeout change or original5627 causal clearance. Exact repair independent source review approves; Linux server typecheck exit0; remaining receipts tracked separately.","inputs":["src-server/adapters/node-pty-adapter.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Reviewed type-only eefadf875a correction after hosted TS2322: TaskkillFailure preserves Error plus optional code/signal/killed without requiring execFile-only cmd on synchronous resolver refusal. Terminal/development/concepts claims remain unchanged: System32 utility/PID/event/output receipt, bounded errors, helper5s/session6s, cached termination and native fallback retain identical runtime behavior. No fabricated command, new guard, timeout change or original5627 causal clearance. Exact repair independent source review approves; Linux server typecheck exit0; remaining receipts tracked separately.","inputs":["src-server/adapters/node-pty-adapter.ts"]}
+  ]
+}

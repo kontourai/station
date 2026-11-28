@@ -26,12 +26,31 @@ filesystem access. See [connected accounts](../guides/connections.md#connect-an-
 ## Nearby discovery and interrupted exchange
 
 Opt-in DNS-SD publication exposes a service name, actual bound API port and
-private IPv4 address with TXT `v=1`, `transport=http`. Its local-operator setting
-does not widen the listener or firewall. DNS-SD names and address records are
+private IPv4 address with TXT `v=1`, `transport=http`, plus an optional canonical
+HTTPS DNS `appOrigin` under the default-off dynamic publication preview.
+Its local-operator setting does not widen the listener or firewall.
+DNS-SD names, address records and HTTPS app-origin hints are
 untrusted hints; a malicious LAN advertiser can supply a plausible name.
-Selection enters exact-origin HTTP consent and host approval before access or a
-saved connection. Browsers do not scan subnets. Native iOS and Android 14+ use the
+Selection enters host approval and identity verification before access or a
+saved connection, with exact-origin unencrypted consent for HTTP. Browsers do
+not scan subnets. Native iOS and Android 14+ use the
 system service browser, with bounded foreground scans and cancellation.
+Windows uses the native DNS-SD provider only after the selected, already-authorized
+Station admits preparation and browsing under the separate, default-off
+`desktop-nearby` Feature Preview. Admission checks that controller's exact origin;
+an advertisement never supplies credential authority. Disabling or unavailable
+admission starts no scan, while QR and address entry remain available. The
+foreground browse and shutdown are bounded; unconfirmed shutdown blocks another
+scan until restart. This does not discover multicast peers across a tailnet or
+change the existing explicit pairing and selected-controller boundaries.
+
+For temporary [native alternate-route admission](../design/station-routes.md#native-host-authorized-alternate-origins),
+the authenticated canonical anchor's owned HTTPS app-origin advertisement is
+authority, not Nearby TXT. A matching fresh public proof is relayable and is
+not standalone authentication. Candidates receive no saved bearer before
+admission; admitted origins remain scoped to the active binding epoch, profile
+revision and ten-minute memory lifetime. The anchor must use HTTPS or numeric
+loopback HTTP; a development exception for remote HTTP must not mint alternates.
 
 Secret-bearing QR invitations retain the strict HTTPS/loopback decoder contract;
 the host UI requires reachable HTTPS/nonloopback for phone invitations. Its
@@ -94,19 +113,28 @@ repository-owned private-tailnet deployment described in the
 [deployment guide](../guides/deployment.md) private, and do not expose it to an
 untrusted network.
 
-Consent decisions are served by a separate listener on its own origin. By
-default review URLs are `http://<request host>:<consent port>`. If
-`STATION_TRUSTED_CONSENT_ORIGIN` names an exact HTTPS origin (for example a
-second Tailscale Serve mapping to the consent port), Station issues review URLs
-at that origin and accepts a decision from it when the request `Host` is that
+Consent decisions are served by a separate listener on its own origin. The
+`dynamic-route-publications` preview is off by default; while off, legacy
+`STATION_TRUSTED_CONSENT_ORIGIN` or port-pinned HTTP behavior remains. When
+enabled, requests resolve the current approval publication: a persisted operator
+HTTPS origin, the legacy environment fallback when no persisted value exists,
+or discovery of a distinct existing Serve approval mapping. An empty persisted
+value selects discovery. Changes take effect without restart; this never
+provisions Serve from the browser. Station issues review URLs at the selected
+HTTPS origin and accepts a decision from it when the request `Host` is that
 name and the `Origin` header equals it exactly, in addition to the existing
 nonce, Fetch Metadata and session checks. The port-pinned
-`http://<host>:<consent port>` path still works alongside it. The HTTPS name
+`http://<host>:<consent port>` path remains a legacy path with the preview off,
+not a fallback when an enabled approval publication is unavailable. The HTTPS name
 must be the same hostname as the app's, because the host-only consent cookie is
 not sent across hostnames and a mismatch fails closed as `unauthenticated`. The setting adds no authority: a different
-HTTPS origin is refused, the origin is not an `ALLOWED_ORIGINS` entry, and a
-malformed value (http, path, userinfo, wildcard, IP literal, port 0, trailing-dot host) stops
-startup. Follow-up, out of scope here: the consent cookie is not `Secure`;
+HTTPS origin is refused and the origin is not an `ALLOWED_ORIGINS` entry.
+Malformed legacy environment configuration still fails startup; malformed
+persisted-origin changes are rejected by the configuration mutation API rather
+than requiring a restart. With the preview enabled, existing review transactions
+stay pinned to their selected origin and cannot move to a new publication;
+unavailable or mismatched publication refuses review. Follow-up, out of scope
+here: the consent cookie is not `Secure`;
 marking it so would break the plain-http consent path. See
 the [deployment guide](../guides/deployment.md#reaching-the-consent-origin-over-https).
 
@@ -118,9 +146,13 @@ review and decision, and a holder of the exact transaction cookie can decide
 that transaction. Browser Origin and Fetch Metadata do not authenticate raw
 HTTP callers. The S4 passkey ceremony below is a stronger, separate authority.
 
-Operator passkey enrollment (#3257, slice S2b) runs on this origin and only when
-`STATION_TRUSTED_CONSENT_ORIGIN` is set; without it enrollment is unavailable
-(an IP-only Station has no remote operator sign-in). A paired browser opens an
+Operator passkey enrollment (#3257, slice S2b) requires the currently selected
+HTTPS approval origin on a DNS name. With the preview enabled this comes from
+the live publication; with it off, the legacy environment setting remains the
+source. Without a suitable origin enrollment is unavailable (an IP-only Station
+has no remote operator sign-in). Pending enrollment requests and ceremonies stay
+bound to their original origin and are refused after the selected origin changes,
+not silently moved. A paired browser opens an
 enrollment request and sees a six-digit code; the host operator types that code
 into `station environment operator passkeys approve <code>`, and only then may
 the WebAuthn registration ceremony run. The host listing never prints the code,
@@ -135,7 +167,7 @@ in `operator-passkey-enrollment.test.ts`:
 - Each registration challenge is single-use (taken before verification, so a
   failed attempt burns it), expires within two minutes, and belongs to one
   confirmed request. One confirmation enrolls one passkey.
-- The expected origin and RP ID come from the configured origin, never from the
+- The expected origin and RP ID come from the selected approval origin, never from the
   request. User verification is required, attestation is `none`, and a
   cross-origin (framed) ceremony is refused. Every state-changing route also
   needs the exact `Origin`, `Sec-Fetch-Site: same-origin`, a JSON content type
@@ -2405,8 +2437,12 @@ machine", and the difference is the residue, stated without softening:
   secret and operator credential files. API redaction defends paired
   principals **without** terminal/agent authority (a phone using Developer →
   Logs or a scoped grant that cannot spawn a shell). Agent `read_logs` calls
-  are denied unless an operator grants their verified bound session; the grant
-  is not available to caller-less or weaker-assurance channels.
+  require a verified bound session and operator authorization. The operator
+  can grant access through the existing API. When the personal Station preview
+  is on, the owner can approve one query or grant subsequent reads in the same
+  session from the active chat. Chat-approved reads always use redacted output.
+  Station clears the in-memory grant when the session ends or resets.
+  Caller-less and weaker-assurance channels cannot use either path.
   Scrubbing the token from PTY/engine env closes the cheaper path that used
   to turn `printenv` into an ephemeral `home-possession` principal.
 

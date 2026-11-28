@@ -78,6 +78,7 @@ export const NOTIFICATION_SOUND_VALUES = [
 export const INBOX_SCOPE_CURRENT_PROJECT = 'current-project';
 
 export const INBOX_SECTION_IDS = [
+  'pinned',
   'needsYou',
   'running',
   'open',
@@ -91,6 +92,7 @@ export type InboxSectionId = (typeof INBOX_SECTION_IDS)[number];
 
 export interface InboxSectionsState {
   order?: InboxSectionId[];
+  pinned?: boolean;
   snoozed: boolean;
   earlier: boolean;
   needsYou?: boolean;
@@ -454,6 +456,7 @@ export interface DeviceSettings {
   /** Station routes (docs/design/station-routes.md): learn and show every route to a saved Station. */
   experimentalStationRoutesEnabled?: boolean;
   experimentalSheetGesturesEnabled?: boolean;
+  experimentalInboxRowActionsEnabled?: boolean;
   /**
    * archive#4525: the chat dock's own remembered project binding. Owned by
    * the persistent `DockShell`/`useDockShellChrome` (archive#4484), not by
@@ -1235,6 +1238,16 @@ export const DEVICE_SETTINGS_REGISTRY = [
     defaultValue: false,
   }),
   defineDeviceSetting({
+    key: 'experimentalInboxRowActionsEnabled',
+    scope: 'device',
+    descriptor: { kind: 'boolean' },
+    label: 'Inbox row actions preview',
+    help: 'Try pinning rows, copying IDs and opening details from the Inbox.',
+    description:
+      'Pin rows and open their actions with a right-click or touch hold.',
+    defaultValue: false,
+  }),
+  defineDeviceSetting({
     key: 'chatDockProjectSlug',
     scope: 'device',
     descriptor: { kind: 'string' },
@@ -1391,6 +1404,7 @@ export const PREFERENCE_DEVICE_KEYS = [
   'experimentalTrustEnabled',
   'experimentalStationRoutesEnabled',
   'experimentalSheetGesturesEnabled',
+  'experimentalInboxRowActionsEnabled',
   'confirmConversationDelete',
 ] as const satisfies readonly (keyof DeviceSettings)[];
 

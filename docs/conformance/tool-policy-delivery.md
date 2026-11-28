@@ -15,6 +15,12 @@ inspected or executed. They are not new provider results for SDK 0.3.322.
 pre-tool blocking or grant decision on the actual tool-call path. It does not
 claim that post-hoc configuration, quality, or uniform-stop gates are absent.
 
+Station owns the chat approval for diagnostics log reads. The owner must answer
+the current request in its active turn. A session answer authorizes later
+`read_logs` calls in that same session while the preview is enabled. Both
+approval choices force redaction. Session teardown, reset, and server restart
+clear the in-memory chat grant. Form elicitation has no session grant.
+
 The managed Station engine delivers its full pre-tool chain through
 `beforeToolCall`. Claude Code is partial. For a session with a resolved Agent
 and its evaluator, `PreToolUse` runs Station's staged evaluator before the call.
@@ -465,10 +471,9 @@ its request sheet's overflow item, #3331) and inbox card label it:
   session and no authored server using the id. It is offered beside the
   per-tool grant, never instead of it, and changes nothing in the #90 N2
   auto-approval rule.
-- A request an adapter marks `sessionGrantAll: true` (OpenCode, native or
-  over ACP, and ACP; never a request addressed to a person, nor an ACP
-  request without an allow-once option) also offers the
-  widest choice, "Allow everything for this session", read by
+- Claude, Codex, ACP, and native OpenCode mark eligible approvals with
+  `sessionGrantAll: true`. The marker offers "Allow everything for this
+  session", read by
   `toolRequestAllGrantFromPayload` and answered with `acceptForSession` plus
   the typed `sessionGrantScope: 'all'`. The adapter keeps one session-wide
   grant and nothing else (the answered request is sent allow-once and mints
@@ -477,7 +482,8 @@ its request sheet's overflow item, #3331) and inbox card label it:
   answer leaves it open), after Station's
   rejections and staged policy, never for a request addressed to a person,
   an OpenCode configuration edit Station gives a person, or a delegated
-  child that may not grant approvals; a change of approval mode drops it.
+  child that may not grant approvals. A change of approval mode or the end
+  of the session drops the grant.
   An adapter that does not declare the scope receives the plain per-tool
   answer.
 - A plain Claude file edit (Edit, Write, MultiEdit, NotebookEdit), outside plan

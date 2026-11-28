@@ -168,6 +168,15 @@
       "configKey": "experimentalSheetGesturesEnabled"
     },
     {
+      "id": "experimental-inbox-row-actions",
+      "label": "Inbox row actions preview",
+      "help": "Try pinning rows, copying IDs and opening details from the Inbox.",
+      "scope": "device",
+      "section": "developer-tools",
+      "route": "/settings?view=developer-tools&highlight=experimental-inbox-row-actions",
+      "configKey": "experimentalInboxRowActionsEnabled"
+    },
+    {
       "id": "shared-answers",
       "label": "Shared answers",
       "scope": "station",
@@ -316,7 +325,7 @@
     {
       "id": "registry-url",
       "label": "Registry URL",
-      "help": "After a restart, the Registry page loads its catalog of agents, skills, and plugins from here.",
+      "help": "After a restart, Apps › Discover and the agent and skill catalogues load from here.",
       "scope": "station",
       "section": "sources",
       "route": "/settings?view=sources&highlight=registry-url",
@@ -841,9 +850,11 @@
     {
       "id": "station-routes",
       "label": "Routes",
-      "scope": "device",
+      "help": "Leave empty for automatic discovery or enter an exact HTTPS DNS origin.",
+      "scope": "station",
       "section": "station-routes",
-      "route": "/settings?view=station-routes&highlight=station-routes"
+      "route": "/settings?view=station-routes&highlight=station-routes",
+      "configKey": "trustedConsentOrigin"
     },
     {
       "id": "personal-knowledge-store",

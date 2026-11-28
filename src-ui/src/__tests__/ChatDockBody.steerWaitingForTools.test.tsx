@@ -9,7 +9,14 @@
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, cleanup, render, screen } from '@testing-library/react';
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const STABLE_AGENTS = [{ slug: 'agent-one', name: 'Agent One' }];
@@ -299,16 +306,22 @@ describe('ChatDockBody steer status follows the tool rows', () => {
 
   test('the pending list stays mounted when a new chat gains its conversation id', async () => {
     mountDock();
-    const row = await screen.findByText('use the other port');
-    const list = row.closest('.queued-messages');
-    expect(list).not.toBeNull();
+    const queue = await screen.findByRole('region', {
+      name: 'Pending messages',
+    });
+    fireEvent.click(
+      within(queue).getByRole('button', {
+        name: '1 queued. use the other port',
+      }),
+    );
+    const message = within(queue).getByText('use the other port');
     act(() => {
       activeChatsStore.assignConversationId(SESSION, 'conv-new');
     });
     await act(async () => undefined);
-    // The same element: not unmounted and mounted again.
-    expect(
-      screen.getByText('use the other port').closest('.queued-messages'),
-    ).toBe(list);
+    expect(screen.getByRole('region', { name: 'Pending messages' })).toBe(
+      queue,
+    );
+    expect(within(queue).getByText('use the other port')).toBe(message);
   });
 });

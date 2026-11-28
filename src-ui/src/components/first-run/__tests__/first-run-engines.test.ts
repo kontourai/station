@@ -205,7 +205,7 @@ describe('buildFirstRunEngineOptions — what the checklist may offer', () => {
   });
 
   test.each([
-    ['disabled' as const, 'Codex is turned off in Connections.'],
+    ['disabled' as const, 'Codex is turned off in Customize.'],
     ['cannot_verify' as const, 'Station could not verify Codex is ready.'],
     ['missing_prerequisites' as const, 'Codex needs its setup finished first.'],
     [undefined, 'Codex is not ready yet.'],

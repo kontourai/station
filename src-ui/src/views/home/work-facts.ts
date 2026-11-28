@@ -1,3 +1,4 @@
+import type { ConversationListItem } from '@kontourai/station-contracts/orchestration';
 import { ownedWorkUnknownReasons } from '@kontourai/station-contracts/session-attention';
 import { taskAwaitsAnswer } from '@kontourai/station-contracts/task-memory';
 import type {
@@ -78,6 +79,9 @@ export interface WorkActivity {
 }
 
 export interface WorkFacts {
+  taskOpenQuestionCount?: number;
+  pullRequests?: ConversationListItem['pullRequests'];
+  observedWorkspace?: ConversationListItem['observedWorkspace'];
   chatBinding?: ChatStationBindingV1;
   /** Host-only detail reads and controls must not borrow a bound receiver ID. */
   hostDetails?: boolean;
@@ -203,6 +207,7 @@ function chatAttentionKind(chat: ChatUIState): WorkAttentionKind | undefined {
 
 interface WorkFactSources {
   items: readonly HomeWorkItem[];
+  inventoryById?: ReadonlyMap<string, ConversationListItem>;
   chats?: Readonly<Record<string, ChatUIState>>;
   sessions?: readonly OrchestrationSessionSummary[];
   tasks?: readonly TaskListRecord[];
@@ -222,6 +227,7 @@ interface WorkFactSources {
  */
 export function buildWorkFacts({
   items,
+  inventoryById,
   chats = {},
   sessions = [],
   tasks = [],
@@ -242,8 +248,10 @@ export function buildWorkFacts({
     tasks.filter((task) => task.status === 'blocked').map((task) => task.id),
   );
   // #4003: a Task with an open Task-memory question owes a person an answer.
-  const answerTaskIds = new Set(
-    tasks.filter(taskAwaitsAnswer).map((task) => task.id),
+  const openTaskQuestions = new Map(
+    tasks
+      .filter(taskAwaitsAnswer)
+      .map((task) => [task.id, task.openQuestionCount]),
   );
   // #5398: every chat on this device that holds an unconfirmed message, by
   // the row identity `buildActiveChatTaskItems` gives it. Two chats can hold
@@ -324,7 +332,7 @@ export function buildWorkFacts({
         : session.latestTurnTrigger === 'provider')
     )
       entry.engineOpenedTurn = true;
-    if (item.kind !== 'remote-session') {
+    if (unconfirmedByRow.size > 0 && item.kind !== 'remote-session') {
       const unconfirmed = [
         ...new Map(
           [
@@ -356,7 +364,7 @@ export function buildWorkFacts({
         ),
         moreUrgentAttention(
           moreUrgentAttention(
-            item.kind === 'task' && answerTaskIds.has(item.id)
+            item.kind === 'task' && openTaskQuestions.has(item.id)
               ? 'answer'
               : undefined,
             item.kind === 'task' && blockedTaskIds.has(item.id)
@@ -372,6 +380,10 @@ export function buildWorkFacts({
         ),
       );
       if (attention) entry.attention = attention;
+      const questionCount =
+        item.kind === 'task' ? openTaskQuestions.get(item.id) : undefined;
+      if (questionCount !== undefined)
+        entry.taskOpenQuestionCount = questionCount;
     }
     if (item.lifecycleLabel === 'Running') {
       if (session?.ownedWork) {
@@ -399,28 +411,38 @@ export function buildWorkFacts({
           : undefined);
       if (activity) entry.activity = activity;
     }
-    if (Object.keys(entry).length > 0) facts.set(item.id, entry);
+    if (entry.hostDetails !== false && !item.environmentId) {
+      const conversation = inventoryById?.get(item.id);
+      if (conversation?.pullRequests?.length)
+        entry.pullRequests = conversation.pullRequests;
+      if (conversation?.observedWorkspace)
+        entry.observedWorkspace = conversation.observedWorkspace;
+    }
+    facts.set(item.id, entry);
   }
-  const itemByThread = new Map<string, HomeWorkItem>();
-  for (const item of items) {
-    if (item.kind === 'remote-session') continue;
-    for (const threadId of item.orchestrationThreadIds ??
-      (item.orchestrationThreadId ? [item.orchestrationThreadId] : [])) {
-      itemByThread.set(threadId, item);
+  if (sessions.some((session) => session.delegation?.parentTaskId)) {
+    const itemByThread = new Map<string, HomeWorkItem>();
+    for (const item of items) {
+      if (item.kind === 'remote-session') continue;
+      for (const threadId of item.orchestrationThreadIds ??
+        (item.orchestrationThreadId ? [item.orchestrationThreadId] : [])) {
+        itemByThread.set(threadId, item);
+      }
+    }
+    for (const presentation of groupDelegatedSessionRuns(sessions)) {
+      if (presentation.kind !== 'run') continue;
+      const root = itemByThread.get(presentation.run.parent.threadId);
+      if (!root) continue;
+      for (const member of presentation.run.members.slice(1)) {
+        const child = itemByThread.get(member.threadId);
+        if (!child || child.id === root.id) continue;
+        facts.set(child.id, { ...facts.get(child.id), runRootId: root.id });
+      }
     }
   }
-  for (const presentation of groupDelegatedSessionRuns(sessions)) {
-    if (presentation.kind !== 'run') continue;
-    const root = itemByThread.get(presentation.run.parent.threadId);
-    if (!root) continue;
-    for (const member of presentation.run.members.slice(1)) {
-      const child = itemByThread.get(member.threadId);
-      if (!child || child.id === root.id) continue;
-      facts.set(child.id, { ...facts.get(child.id), runRootId: root.id });
-    }
-  }
-  const taskById = new Map(tasks.map((task) => [task.id, task]));
   const taskItems = items.filter((item) => item.kind === 'task');
+  if (taskItems.length === 0) return facts;
+  const taskById = new Map(tasks.map((task) => [task.id, task]));
   for (const item of items) {
     if (item.kind === 'task' || item.kind === 'remote-session') continue;
     const identities = new Set([
