@@ -1208,8 +1208,10 @@ one byte). Content is transferred in bounded chunks, not command-line arguments.
 Rotation copies and flushes the
 current generation before atomically replacing the previous generation; its
 parent must also pass Station's execution-safe Windows directory policy. This
-check uses the existing synchronous PowerShell trust runner with its 120-second
-timeout; it is not an all-native or constant-latency rotation path. This
+check first verifies a protected current-user-only DACL on the retained parent
+handle. Other ACL shapes use the existing synchronous PowerShell trust runner
+with its 120-second timeout; rotation is not universally all-native or
+constant-latency. This
 does not harden arbitrary existing parent directories or defend against the
 same user or an administrator. POSIX ownership/mode checks remain unchanged.
 These journal guarantees do not establish privacy of the separate runtime log,

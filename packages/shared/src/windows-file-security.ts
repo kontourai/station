@@ -253,7 +253,7 @@ function retainAncestors(file: string): number[] {
     for (const path of paths) {
       const handle = functions.CreateFileW(
         path,
-        0x80,
+        path === dirname(resolve(file)) ? 0x20080 : 0x80,
         1,
         null,
         3,
@@ -534,13 +534,17 @@ class WindowsPrivateFile {
     )
       throw new Error('Windows private file rename must retain its directory');
     this.verify();
-    assertWindowsPathsTrusted(runWindowsTrustCommand, [
-      {
-        path: dirname(resolve(target)),
-        kind: 'directory',
-        policy: 'execution-safe',
-      },
-    ]);
+    try {
+      assertPrivateHandle(this.ancestors[this.ancestors.length - 1]);
+    } catch {
+      assertWindowsPathsTrusted(runWindowsTrustCommand, [
+        {
+          path: dirname(resolve(target)),
+          kind: 'directory',
+          policy: 'execution-safe',
+        },
+      ]);
+    }
     const replace = existsSync(target);
     if (replace) withPrivateFile(target, 'read', () => undefined);
     renamePrivateFile(this.handle, target, replace);
