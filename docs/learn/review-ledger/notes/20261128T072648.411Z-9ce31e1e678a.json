@@ -1,0 +1,7 @@
+{
+  "revision": "bd8b067c5172b111f781c7f727ab4b49eb28ec12",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Updated sessionGrantAll / Allow everything for this session documentation to include Claude and Codex alongside OpenCode and ACP; verified against claude-adapter, codex-adapter, codex-adapter-transport, and orchestration-service.","inputs":["docs/conformance/tool-policy-delivery.md","src-server/providers/__tests__/claude-adapter.test.ts","src-server/providers/adapters/claude-adapter-events.ts","src-server/providers/adapters/claude-adapter.ts","src-server/providers/adapters/codex-adapter.ts"]}
+  ]
+}

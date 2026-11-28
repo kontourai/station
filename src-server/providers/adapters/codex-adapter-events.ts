@@ -737,6 +737,19 @@ export function resolveSessionGrantAutoApproval(
   return outcome.result;
 }
 
+/**
+ * An empty MCP tool-call gate can be accepted once without user content.
+ * Other elicitations use the same RPC method and belong to a person.
+ */
+export function codexApprovalOffersSessionWideGrant(
+  method: string,
+  payload: Record<string, unknown>,
+): boolean {
+  if (method !== 'mcpServer/elicitation/request') return true;
+  const meta = payload._meta;
+  return isRecord(meta) && meta.codex_approval_kind === 'mcp_tool_call';
+}
+
 export function deriveToolName(item: Record<string, unknown>): string | null {
   switch (item.type) {
     case 'commandExecution':

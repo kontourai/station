@@ -3159,7 +3159,7 @@ describe('ClaudeAdapter', () => {
         });
         const answer = async (
           decision: 'accept' | 'acceptForSession' | 'decline',
-          context?: { sessionGrantScope?: 'server' | 'rule' },
+          context?: { sessionGrantScope?: 'server' | 'rule' | 'all' },
         ) => {
           await adapter.respondToRequest(
             threadId,
@@ -5869,6 +5869,54 @@ describe('ClaudeAdapter', () => {
         );
         await adapter.stopSession('thread-frame-exit');
       });
+    });
+
+    test('an all-scoped file edit answer allows later tools once until the mode changes', async () => {
+      const threadId = 'thread-all-grant';
+      const { adapter, ask, waitFor } = await grantHarness(threadId, {
+        modelOptions: { approvalMode: 'ask' },
+      });
+      const edit = await ask(
+        'Edit',
+        { file_path: '/workspace/project/a.ts' },
+        {
+          suggestions: [
+            { type: 'setMode', mode: 'acceptEdits', destination: 'session' },
+          ],
+        },
+      );
+      if (edit.kind !== 'prompted') throw new Error('expected an edit prompt');
+      expect(edit.event.payload).toHaveProperty('sessionGrantAll', true);
+      await expect(
+        edit.answer('acceptForSession', { sessionGrantScope: 'all' }),
+      ).resolves.toEqual({
+        behavior: 'allow',
+        updatedInput: { file_path: '/workspace/project/a.ts' },
+        updatedPermissions: undefined,
+      });
+
+      const bash = await ask('Bash', { command: 'pwd' });
+      expect(bash).toMatchObject({
+        kind: 'allowed',
+        result: { behavior: 'allow', updatedInput: { command: 'pwd' } },
+      });
+
+      const exit = await ask('ExitPlanMode', { plan: 'Step 1' });
+      if (exit.kind !== 'prompted')
+        throw new Error('expected a plan exit prompt');
+      expect(exit.event.payload).not.toHaveProperty('sessionGrantAll');
+      await exit.answer('decline');
+      await adapter.sendTurn({
+        threadId,
+        input: 'Continue',
+        modelOptions: { approvalMode: 'auto' },
+      });
+      await waitFor((event) => event.method === 'turn.started');
+      const afterModeChange = await ask('Bash', { command: 'pwd' });
+      if (afterModeChange.kind !== 'prompted')
+        throw new Error('expected a prompt after changing mode');
+      await afterModeChange.answer('decline');
+      await adapter.stopSession(threadId);
     });
 
     test('a session answer on ExitPlanMode mints nothing, and the next plan exit prompts', async () => {

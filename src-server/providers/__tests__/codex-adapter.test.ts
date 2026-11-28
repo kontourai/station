@@ -3981,92 +3981,165 @@ describe('CodexAdapter', () => {
     });
   });
 
-  test('acceptForSession grants the whole tool: a later different command auto-approves', async () => {
-    processHandle = new FakeCodexProcess();
-    const adapter = new CodexAdapter({
-      processFactory: () => processHandle!,
-    });
-    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
-    const sessionPromise = adapter.startSession({
-      provider: 'codex',
-      threadId: 'thread-session-grant',
-      cwd: '/tmp/project',
-    });
-    await flushIo();
-    writeServerMessage(adapter, 'thread-session-grant', {
-      id: '1',
-      result: { userAgent: 'test' },
-    });
-    await flushIo();
-    writeServerMessage(adapter, 'thread-session-grant', {
-      id: '2',
-      result: { thread: { id: 'codex-session-grant' } },
-    });
-    await withTimeout(sessionPromise, 'startSession session grant');
-    await nextEvent(iterator, 'session.started');
-    await nextEvent(iterator, 'session.configured');
-
-    writeServerMessage(adapter, 'thread-session-grant', {
-      id: 'approval-1',
-      method: 'item/commandExecution/requestApproval',
-      params: {
-        threadId: 'codex-session-grant',
-        turnId: 'turn-1',
-        itemId: 'cmd-1',
-        command: 'git grep -n foo',
-        reason: 'Search the tree',
-      },
-    });
-    await flushIo();
-    const opened = await nextEvent(iterator, 'request.opened');
-    await adapter.respondToRequest(
-      'thread-session-grant',
-      opened.requestId,
-      'acceptForSession',
-    );
-    await flushIo();
-    expect(await nextEvent(iterator, 'request.resolved')).toMatchObject({
-      requestId: opened.requestId,
-      status: 'approved',
-    });
-
-    // A different command must NOT publish another request.opened — the
-    // grant covers `shell_exec`, and the wire answer goes out as a plain
-    // one-call accept.
-    const linesBefore = processHandle.stdin.lines.length;
-    writeServerMessage(adapter, 'thread-session-grant', {
-      id: 'approval-2',
-      method: 'item/commandExecution/requestApproval',
-      params: {
-        threadId: 'codex-session-grant',
-        turnId: 'turn-1',
-        itemId: 'cmd-2',
-        command: 'git log --oneline -5',
-        reason: 'Recent history',
-      },
-    });
-    let autoResponse: any;
-    for (let i = 0; i < 50 && autoResponse === undefined; i++) {
+  test.each(['tool', 'all', 'delegated'] as const)(
+    'session grant delivery for %s approvals',
+    async (scope) => {
+      processHandle = new FakeCodexProcess();
+      const adapter = new CodexAdapter({
+        processFactory: () => processHandle!,
+      });
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+      const sessionPromise = adapter.startSession({
+        provider: 'codex',
+        threadId: 'thread-session-grant',
+        cwd: '/tmp/project',
+        ...(scope === 'delegated'
+          ? { metadata: { delegation: { denyApprovals: true } } }
+          : {}),
+      });
       await flushIo();
-      const fresh = processHandle.stdin.lines
-        .slice(linesBefore)
-        .map(parseLine)
-        .find((line) => line.id === 'approval-2');
-      if (fresh) autoResponse = fresh;
-    }
-    expect(autoResponse).toMatchObject({
-      id: 'approval-2',
-      result: { decision: 'accept' },
-    });
-    const noPrompt = await Promise.race([
-      iterator.next().then((result) => result.value),
-      new Promise<'TIMED_OUT'>((resolve) =>
-        setTimeout(() => resolve('TIMED_OUT'), 150),
-      ),
-    ]);
-    expect(noPrompt).toBe('TIMED_OUT');
-    await adapter.stopAll();
-  });
+      writeServerMessage(adapter, 'thread-session-grant', {
+        id: '1',
+        result: { userAgent: 'test' },
+      });
+      await flushIo();
+      writeServerMessage(adapter, 'thread-session-grant', {
+        id: '2',
+        result: { thread: { id: 'codex-session-grant' } },
+      });
+      await withTimeout(sessionPromise, 'startSession session grant');
+      await nextEvent(iterator, 'session.started');
+      await nextEvent(iterator, 'session.configured');
+
+      writeServerMessage(adapter, 'thread-session-grant', {
+        id: 'approval-1',
+        method: 'item/commandExecution/requestApproval',
+        params: {
+          threadId: 'codex-session-grant',
+          turnId: 'turn-1',
+          itemId: 'cmd-1',
+          command: 'git grep -n foo',
+          reason: 'Search the tree',
+        },
+      });
+      await flushIo();
+      const opened = await nextEvent(iterator, 'request.opened');
+      if (scope === 'delegated') {
+        expect(opened.payload).not.toHaveProperty('sessionGrantAll');
+        await adapter.stopAll();
+        return;
+      }
+      expect(opened.payload).toHaveProperty('sessionGrantAll', true);
+      await adapter.respondToRequest(
+        'thread-session-grant',
+        opened.requestId,
+        'acceptForSession',
+        scope === 'all' ? { sessionGrantScope: 'all' } : undefined,
+      );
+      await flushIo();
+      expect(await nextEvent(iterator, 'request.resolved')).toMatchObject({
+        requestId: opened.requestId,
+        status: 'approved',
+      });
+
+      expect(processHandle.stdin.lines.map(parseLine)).toContainEqual({
+        jsonrpc: '2.0',
+        id: 'approval-1',
+        result: { decision: scope === 'all' ? 'accept' : 'acceptForSession' },
+      });
+      const linesBefore = processHandle.stdin.lines.length;
+      writeServerMessage(adapter, 'thread-session-grant', {
+        id: 'approval-2',
+        method:
+          scope === 'all'
+            ? 'item/fileChange/requestApproval'
+            : 'item/commandExecution/requestApproval',
+        params: {
+          threadId: 'codex-session-grant',
+          turnId: 'turn-1',
+          itemId: 'cmd-2',
+          command: 'git log --oneline -5',
+          reason: 'Recent history',
+        },
+      });
+      let autoResponse: any;
+      for (let i = 0; i < 50 && autoResponse === undefined; i++) {
+        await flushIo();
+        const fresh = processHandle.stdin.lines
+          .slice(linesBefore)
+          .map(parseLine)
+          .find((line) => line.id === 'approval-2');
+        if (fresh) autoResponse = fresh;
+      }
+      expect(autoResponse).toMatchObject({
+        id: 'approval-2',
+        result: { decision: 'accept' },
+      });
+      if (scope === 'all') {
+        writeServerMessage(adapter, 'thread-session-grant', {
+          id: 'approval-form',
+          method: 'mcpServer/elicitation/request',
+          params: {
+            serverName: 'forms',
+            message: 'Enter a name',
+            requestedSchema: {
+              type: 'object',
+              properties: { name: { type: 'string' } },
+            },
+            sessionGrantAll: true,
+          },
+        });
+        const form = await nextEvent(iterator, 'request.opened');
+        expect(form.payload).not.toHaveProperty('sessionGrantAll');
+        await adapter.respondToRequest(
+          'thread-session-grant',
+          form.requestId,
+          'decline',
+        );
+
+        const turn = adapter.sendTurn({
+          threadId: 'thread-session-grant',
+          input: 'Continue',
+          modelOptions: { approvalMode: 'auto' },
+        });
+        await flushIo();
+        writeServerMessage(adapter, 'thread-session-grant', {
+          id: '3',
+          result: { turn: { id: 'turn-mode-change' } },
+        });
+        await withTimeout(turn, 'sendTurn after mode change');
+        writeServerMessage(adapter, 'thread-session-grant', {
+          id: 'approval-after-mode-change',
+          method: 'item/commandExecution/requestApproval',
+          params: {
+            threadId: 'codex-session-grant',
+            turnId: 'turn-mode-change',
+            itemId: 'cmd-3',
+            command: 'pwd',
+          },
+        });
+        let afterModeChange = await nextEvent(iterator, 'request.opened');
+        while (afterModeChange.method !== 'request.opened') {
+          afterModeChange = await nextEvent(iterator, 'request.opened');
+        }
+        await adapter.respondToRequest(
+          'thread-session-grant',
+          afterModeChange.requestId,
+          'decline',
+        );
+        await adapter.stopAll();
+        return;
+      }
+      const noPrompt = await Promise.race([
+        iterator.next().then((result) => result.value),
+        new Promise<'TIMED_OUT'>((resolve) =>
+          setTimeout(() => resolve('TIMED_OUT'), 150),
+        ),
+      ]);
+      expect(noPrompt).toBe('TIMED_OUT');
+      await adapter.stopAll();
+    },
+  );
 
   test.each([
     ['succeeds', false],

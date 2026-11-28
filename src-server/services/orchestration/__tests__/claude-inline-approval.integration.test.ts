@@ -156,6 +156,7 @@ describe('#2316 inline approval card → Claude adapter', () => {
     toolName = 'Bash',
     toolInput: Record<string, unknown> = { command: 'ls' },
     autoApprove: string[] = [],
+    suggestions: import('@anthropic-ai/claude-agent-sdk').PermissionUpdate[] = [],
   ) {
     await service.dispatch(
       {
@@ -177,7 +178,7 @@ describe('#2316 inline approval card → Claude adapter', () => {
     const permission = canUseTool(toolName, toolInput, {
       signal: new AbortController().signal,
       toolUseID: 'toolu-inline-1',
-      suggestions: [],
+      suggestions,
     });
     const opened = await eventually(() =>
       eventStore
@@ -188,6 +189,48 @@ describe('#2316 inline approval card → Claude adapter', () => {
     if (opened.method !== 'request.opened') throw new Error('unreachable');
     return { permission, opened };
   }
+
+  test('an all-scoped Claude edit answer preserves the recorded Ask mode', async () => {
+    const threadId = 'claude-inline';
+    const { permission, opened } = await openBashRequest(
+      'Edit',
+      { file_path: 'src/readme.md' },
+      [],
+      [{ type: 'setMode', mode: 'acceptEdits', destination: 'session' }],
+    );
+    service.recordApprovalModeDecision({
+      threadId,
+      provider: 'claude',
+      approvalMode: 'ask',
+      basedOnSequence: null,
+    });
+    expect(toolRequestSessionGrantFromPayload(opened.payload)).toBe(
+      'edit-mode',
+    );
+    expect(opened.payload).toHaveProperty('sessionGrantAll', true);
+    await service.dispatchWithReceipt(
+      {
+        type: 'respondToRequest',
+        threadId,
+        requestId: opened.requestId,
+        expectedRequestEventId: opened.eventId,
+        decision: 'acceptForSession',
+        sessionGrantScope: 'all',
+      },
+      { approvalModeAuthority: true },
+    );
+    await expect(permission).resolves.toMatchObject({
+      behavior: 'allow',
+      updatedPermissions: undefined,
+    });
+    const modeDecisions = eventStore
+      .listEvents(threadId)
+      .map(({ payload }) => payload)
+      .filter((event) => event.method === 'session.approval-mode-set');
+    expect(modeDecisions).toEqual([
+      expect.objectContaining({ approvalMode: 'ask' }),
+    ]);
+  });
 
   test('wildcard approval never answers a question; validated answers reach the suspended SDK call', async () => {
     const input = {

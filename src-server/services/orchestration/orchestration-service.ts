@@ -16431,8 +16431,8 @@ export class OrchestrationService {
    * session answer whose grant (`toolRequestSessionGrantFromPayload`, the
    * computation the approval surfaces and the Claude adapter use) is
    * `edit-mode`, read from the request as it stands before it is answered.
-   * A scoped answer (`sessionGrantScope`) is never one: an edit request
-   * offers no scope, so the adapter takes it as a one-call accept.
+   * An all-scoped answer to an edit uses the adapter’s session-wide grant
+   * and leaves the approval mode as recorded.
    */
   private isEditModeSessionAnswer(
     command: {

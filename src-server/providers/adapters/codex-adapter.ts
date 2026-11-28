@@ -37,6 +37,7 @@ import type {
   Prerequisite,
 } from '@kontourai/station-contracts/tool';
 import { validateInputRequestContent } from '@kontourai/station-shared/input-request';
+import { toolRequestNeedsPerson } from '@kontourai/station-shared/tool-request-preview';
 import type {
   PreToolPolicyDecision,
   StagedPreToolPolicyEvaluator,
@@ -1037,6 +1038,7 @@ export class CodexAdapter implements ProviderAdapterShape {
     // #2880: Codex's `serverRequest/resolved` acknowledges the request closed.
     approvalAcknowledgement: CODEX_APPROVAL_ACKNOWLEDGEMENT,
     displayName: 'Codex',
+    sessionGrantScopes: ['all'] as const,
     description: 'Codex app-server runtime over the local Codex CLI.',
     capabilities: [
       'agent-runtime',
@@ -2455,6 +2457,12 @@ export class CodexAdapter implements ProviderAdapterShape {
     record.childModelAcceptsImages = (modelId) =>
       this.modelCatalogCache?.value.models.find((model) => model.id === modelId)
         ?.capabilities?.imageInput !== false;
+    const delegation = input.metadata?.delegation;
+    record.denyApprovals =
+      typeof delegation === 'object' &&
+      delegation !== null &&
+      'denyApprovals' in delegation &&
+      delegation.denyApprovals === true;
     record.preparedResumeBindingKey = resumeBindingKey;
     // Where Codex writes this session's thread rollouts, children included:
     // a child's transcript ref names it, never a file path.
@@ -3589,11 +3597,14 @@ export class CodexAdapter implements ProviderAdapterShape {
       };
       // The mode this turn really runs at: Station's own bound-tool approvals
       // read it, so full access asks nothing there either.
-      if (postured)
-        record.appliedApprovalMode = mapCodexKnobsToApprovalMode({
+      if (postured) {
+        const mode = mapCodexKnobsToApprovalMode({
           approvalPolicy: postured.knobs.approvalPolicy,
           sandbox: postured.plan.applied,
         });
+        if (record.appliedApprovalMode !== mode) record.allGranted = false;
+        record.appliedApprovalMode = mode;
+      }
 
       this.transport.publish({
         eventId: crypto.randomUUID(),
@@ -4153,13 +4164,22 @@ export class CodexAdapter implements ProviderAdapterShape {
     )
       return true;
     if (delegation?.denyApprovals) return false;
+    const allOffered =
+      decision.behavior === 'defer' && !toolRequestNeedsPerson(name);
+    if (allOffered && record.allGranted) return true;
     record.boundToolApprovals ??= new Map();
     const pending = record.boundToolApprovals;
     if (pending.size >= 16 || record.cancelledBoundTurns?.has(turnId))
       return false;
     const requestId = crypto.randomUUID();
     return new Promise((resolve) => {
-      pending.set(requestId, { resolve, turnId, rpcKey, toolName: name });
+      pending.set(requestId, {
+        resolve,
+        turnId,
+        rpcKey,
+        toolName: name,
+        allOffered,
+      });
       this.transport.publish({
         eventId: crypto.randomUUID(),
         provider: 'codex',
@@ -4173,7 +4193,11 @@ export class CodexAdapter implements ProviderAdapterShape {
         ...(decision.behavior === 'ask' && decision.guardianReason
           ? { guardianReason: decision.guardianReason }
           : {}),
-        payload: { toolName: name, toolInput: args },
+        payload: {
+          toolName: name,
+          toolInput: args,
+          ...(allOffered ? { sessionGrantAll: true } : {}),
+        },
       });
     });
   }
@@ -4242,8 +4266,13 @@ export class CodexAdapter implements ProviderAdapterShape {
         throw new Error('This Codex approval request is not open.');
       }
       record.boundToolApprovals!.delete(requestId);
-      if (decision === 'acceptForSession')
-        record.approvedTools.add(bound.toolName);
+      if (decision === 'acceptForSession') {
+        if (context?.sessionGrantScope !== 'all') {
+          record.approvedTools.add(bound.toolName);
+        } else if (bound.allOffered) {
+          record.allGranted = true;
+        }
+      }
       this.transport.publish({
         eventId: crypto.randomUUID(),
         provider: 'codex',
@@ -4294,11 +4323,14 @@ export class CodexAdapter implements ProviderAdapterShape {
     if (context?.inputContent !== undefined)
       throw new Error('This request does not accept question answers.');
     record.pendingApprovals.delete(requestId);
+    const allScoped =
+      decision === 'acceptForSession' && context?.sessionGrantScope === 'all';
     const outcome = resolveApprovalOutcome(
       pending.method,
       pending.payload,
-      decision,
+      allScoped ? 'accept' : decision,
     );
+    if (allScoped && pending.allOffered) record.allGranted = true;
     // Tool-level session grant (mirrors claude-adapter `approvedTools`): on
     // top of the decision `resolveApprovalOutcome` sends Codex, Station
     // remembers the tool itself so a later, different call of it does not
@@ -4307,6 +4339,7 @@ export class CodexAdapter implements ProviderAdapterShape {
     // the wire even for `acceptForSession`, and must not mint a grant.
     if (
       decision === 'acceptForSession' &&
+      !allScoped &&
       pending.toolName &&
       resolveSessionGrantAutoApproval(pending.method, pending.payload) !== null
     ) {
