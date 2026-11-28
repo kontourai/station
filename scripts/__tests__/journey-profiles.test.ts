@@ -72,6 +72,15 @@ test('UI-only captures require production assets and actual browser provenance',
     buildProvenanceSha256: 'build-digest',
     viewport: { width: 390, height: 844 },
     device: { userAgent: 'Chromium', devicePixelRatio: 1 },
+    inputTiming: {
+      supported: true,
+      scope: 'final-document',
+      durationThresholdMs: 16,
+      observedEventCount: 0,
+      observedInteractionCount: 0,
+      worstObservedInteractionMs: null,
+      events: [],
+    },
     responsiveness: {
       scope: 'final-document',
       phaseStartMs: 0,
@@ -97,6 +106,13 @@ test('UI-only captures require production assets and actual browser provenance',
     { buildProvenanceSha256: 'another-build' },
     { viewport: null },
     { device: null },
+    { inputTiming: null },
+    {
+      inputTiming: {
+        ...captured.inputTiming,
+        worstObservedInteractionMs: 0,
+      },
+    },
     { responsiveness: null },
     { responsiveness: { ...captured.responsiveness, phaseStartMs: 11 } },
     { responsiveness: { ...captured.responsiveness, phaseEndMs: 180 } },
@@ -123,4 +139,55 @@ test('UI-only captures require production assets and actual browser provenance',
       uiOnly: true,
     }),
   ).toContain('missing/mismatched production build provenance');
+  const event = {
+    name: 'keydown',
+    startTime: 10,
+    duration: 16,
+    processingStart: 11,
+    processingEnd: 27,
+    interactionId: 7,
+  };
+  const observed = {
+    ...captured.inputTiming,
+    observedEventCount: 1,
+    observedInteractionCount: 1,
+    worstObservedInteractionMs: 16,
+    events: [event],
+  };
+  const validateInput = (inputTiming: object) =>
+    validateJourneyProfile(
+      { ...captured, inputTiming },
+      'home-history',
+      'sha',
+      undefined,
+      { uiOnly: true, buildProvenanceSha256: 'build-digest' },
+    );
+  expect(validateInput(observed)).toEqual([]);
+  expect(validateInput({ ...captured.inputTiming, supported: false })).toEqual(
+    [],
+  );
+  expect(
+    validateInput({
+      ...observed,
+      observedEventCount: 2,
+      worstObservedInteractionMs: 24,
+      events: [event, { ...event, name: 'keyup', duration: 24 }],
+    }),
+  ).toEqual([]);
+  for (const inputTiming of [
+    { ...observed, supported: false },
+    { ...observed, observedEventCount: 0 },
+    { ...observed, observedInteractionCount: 2 },
+    { ...observed, worstObservedInteractionMs: 32 },
+    { ...observed, events: [{ ...event, interactionId: 0 }] },
+    { ...observed, events: [{ ...event, duration: 8 }] },
+    { ...observed, events: [{ ...event, startTime: -1 }] },
+    { ...observed, events: [{ ...event, processingStart: 9 }] },
+    { ...observed, events: [{ ...event, processingEnd: 201 }] },
+    { ...observed, events: [{ ...event, processingEnd: 9 }] },
+    { ...observed, events: [{ ...event, processingEnd: NaN }] },
+  ])
+    expect(validateInput(inputTiming)).toContain(
+      'missing/invalid input timing observation',
+    );
 });
