@@ -39,7 +39,7 @@ interface BootstrapDependencies {
 }
 
 export interface BundledLocalProfileBootstrapResult {
-  /** Safe, actionable copy for the one replacement write failure we own. */
+  /** Actionable notice for a saved Station that needs recovery after startup. */
   recoveryError?: string;
 }
 
@@ -62,7 +62,7 @@ async function windowAlreadyShown(adapter: NativePlatformAdapter) {
   return admitted.status !== 'ok' || admitted.value;
 }
 
-/** Bootstrap and authorize a fresh desktop-owned sidecar before first paint. */
+/** Bootstrap the desktop's selected Station before first paint. */
 export async function bootstrapBundledLocalProfile(
   dependencies: BootstrapDependencies,
 ): Promise<BundledLocalProfileBootstrapResult> {
@@ -86,23 +86,23 @@ export async function bootstrapBundledLocalProfile(
       );
       continue;
     }
-    // The native command is also the read-only owner resolver for an attached
-    // (including stopped) service. `null` is a confirmed unowned home; an
-    // error is ambiguity or invalid metadata and must never select the shared
-    // default as a fallback.
-    let profileName: unknown;
-    try {
-      profileName = await invoke('station_ensure_bundled_local_profile');
-    } catch {
-      return {};
-    }
-    // `null` is a confirmed absence of this channel's local owner. A shared
-    // default may name another packaged channel, so authorizing it here would
-    // read that channel's keyring entry merely because this one is missing.
-    // Leave the process without a native authorization and let ordinary
-    // onboarding make the next explicit choice instead.
-    if (profileName === null && status.value.ownership === 'none') return {};
+    // An attached service can be running without its installed manifest.
+    // Only this client's explicit selection may supply authority if local
+    // ownership cannot be resolved; the CLI default may belong to another app.
+    const profileName = await invoke(
+      'station_ensure_bundled_local_profile',
+    ).catch(() => null);
     if (typeof profileName !== 'string' || profileName.length === 0) {
+      try {
+        await repository.authorizeRememberedProfile({
+          fallbackToDefault: false,
+        });
+      } catch {
+        return {
+          recoveryError:
+            'Station couldn’t reconnect to your saved Station. Open the Station menu to reconnect.',
+        };
+      }
       return {};
     }
     await repository.refresh();
