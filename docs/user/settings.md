@@ -470,8 +470,8 @@ Browser's **⋯ › Browser settings…** opens it on that Browser's Project.
   some, and nothing is shared until you choose it. Shared servers appear as
   buttons on an empty Browser.
 - **Open device setup** opens the device setup wizard: the device helper,
-  sharing devices with Projects, and agent device access. You can [go directly
-  to the Device setup row](/settings?view=advanced&highlight=device-setup).
+  sharing devices with Projects, and agent device access. On your Station,
+  `/settings?view=advanced&highlight=device-setup` scrolls to this row.
 
 With **Device access requests in chat** enabled in Feature previews, an agent
 can call `request_device_agent_access` to ask for access. In chat, the Station
