@@ -5175,6 +5175,20 @@ test('profiles switching between authoritative conversations', async ({
   const menu = page.getByRole('region', { name: 'Chats', exact: true });
   const textarea = page.locator('textarea[placeholder*="Type a message"]');
   await expect(switcher).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const chats: { conversationId?: string; currentSessionId?: string }[] =
+          JSON.parse(sessionStorage.getItem('activeChats') ?? '[]');
+        return chats.find((chat) => chat.conversationId === 'conv-running')
+          ?.currentSessionId;
+      }),
+    )
+    .toBe('conv-running');
+  await expect(textarea).toBeEnabled();
+  await expect(
+    page.getByRole('log', { name: 'Conversation transcript' }),
+  ).toContainText('Working through the current task.');
   await profileJourney(
     page,
     testInfo,
