@@ -490,7 +490,7 @@ describe('lifecycle event journal', () => {
   );
 
   it.runIf(process.platform === 'win32')(
-    'retains and reads a full-size journal beyond the readiness-file bound',
+    'retains a full-size journal and refuses reads beyond its bound',
     () => {
       const root = createJournalRoot('station-journal-capacity-');
       const file = join(root, 'events.jsonl');
@@ -526,6 +526,14 @@ describe('lifecycle event journal', () => {
           ...records,
           appended,
         ]);
+        writeFileSync(
+          file,
+          Buffer.alloc(DEFAULT_LIFECYCLE_JOURNAL_MAX_BYTES + 1, 0x20),
+        );
+        expect(() => readLifecycleEvents(file)).toThrow(
+          /exceeds its read bound/,
+        );
+        expect(readFileSync(`${file}.previous`, 'utf8')).toBe(content);
       } finally {
         rmSync(root, { recursive: true, force: true });
       }

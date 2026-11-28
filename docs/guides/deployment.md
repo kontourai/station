@@ -1196,6 +1196,20 @@ short-lived operation ID and expiry plus a completed, already-absent, or failed
 result; failed, orphaned, and expired operations cannot classify later exits as
 expected.
 
+On Windows, the journal uses retained native file handles rather than POSIX
+mode bits: a file must belong to the current user and have a protected DACL
+granting only that user FullControl. Existing broader file ACLs are refused,
+not silently repaired. Handles retain non-reparse ancestors and deny concurrent
+write/delete sharing; reads check file identity and the handle's DACL before
+and after reading. Each generation is limited to 10 MiB, transferred in bounded
+chunks without command-line content transport. Rotation copies and flushes the
+current generation before atomically replacing the previous generation; its
+parent must also pass Station's execution-safe Windows directory policy. This
+does not harden arbitrary existing parent directories or defend against the
+same user or an administrator. POSIX ownership/mode checks remain unchanged.
+These journal guarantees do not establish privacy of the separate runtime log,
+instance-state files, or an installed Nightly build.
+
 The terminal and voice `/__station/health` upgrades are identity-only: they
 close before registering a business client, allocating a terminal, starting a
 voice provider, or creating a voice session. Managed instance state also pins
