@@ -1,0 +1,23 @@
+{
+  "revision": "03d9fcc76f87c464554d87f994e57ceeb3651975",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"Reviewed runtime-service-bootstrap.ts readiness wiring: getRuntimeReadiness now enforces agent-kind, managed policy refusal, and enabled state on bound connections; cited architecture, knowledge, connections, operations, and security docs remain accurate.","inputs":["src-server/runtime/bootstrap/runtime-service-bootstrap.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed runtime-service-bootstrap.ts readiness wiring: getRuntimeReadiness now enforces agent-kind, managed policy refusal, and enabled state on bound connections; cited architecture, knowledge, connections, operations, and security docs remain accurate.","inputs":["src-server/runtime/bootstrap/runtime-service-bootstrap.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed runtime-service-bootstrap.ts readiness wiring: getRuntimeReadiness now enforces agent-kind, managed policy refusal, and enabled state on bound connections; cited architecture, knowledge, connections, operations, and security docs remain accurate.","inputs":["src-server/runtime/bootstrap/runtime-service-bootstrap.ts"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"Reviewed runtime-service-bootstrap.ts readiness wiring: getRuntimeReadiness now enforces agent-kind, managed policy refusal, and enabled state on bound connections; cited architecture, knowledge, connections, operations, and security docs remain accurate.","inputs":["src-server/runtime/bootstrap/runtime-service-bootstrap.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Reviewed runtime-service-bootstrap.ts readiness wiring: getRuntimeReadiness now enforces agent-kind, managed policy refusal, and enabled state on bound connections; cited architecture, knowledge, connections, operations, and security docs remain accurate.","inputs":["src-server/runtime/bootstrap/runtime-service-bootstrap.ts"]},
+
+    {"path":"docs/design/knowledge-foundation.md","note":"Reviewed runtime-service-bootstrap.ts readiness wiring: getRuntimeReadiness now enforces agent-kind, managed policy refusal, and enabled state on bound connections; cited architecture, knowledge, connections, operations, and security docs remain accurate.","inputs":["src-server/runtime/bootstrap/runtime-service-bootstrap.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed runtime-service-bootstrap.ts readiness wiring: getRuntimeReadiness now enforces agent-kind, managed policy refusal, and enabled state on bound connections; cited architecture, knowledge, connections, operations, and security docs remain accurate.","inputs":["src-server/runtime/bootstrap/runtime-service-bootstrap.ts"]},
+
+    {"path":"docs/guides/knowledge.md","note":"Reviewed runtime-service-bootstrap.ts readiness wiring: getRuntimeReadiness now enforces agent-kind, managed policy refusal, and enabled state on bound connections; cited architecture, knowledge, connections, operations, and security docs remain accurate.","inputs":["src-server/runtime/bootstrap/runtime-service-bootstrap.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Reviewed runtime-service-bootstrap.ts readiness wiring: getRuntimeReadiness now enforces agent-kind, managed policy refusal, and enabled state on bound connections; cited architecture, knowledge, connections, operations, and security docs remain accurate.","inputs":["src-server/runtime/bootstrap/runtime-service-bootstrap.ts"]}
+  ]
+}
