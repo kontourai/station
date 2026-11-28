@@ -565,10 +565,13 @@ export class AgentService {
     const defaults = await this.registryDefaults();
     for (const agent of defaults) {
       if (registeredIds.has(agent.slug)) continue;
+      const boundConnectionId = agent.execution?.agentConnectionId;
+      const usesManagedDefault = agent.slug === 'station' && !boundConnectionId;
       const readinessId =
-        agent.slug === 'station'
-          ? engineConnectionId('default')
-          : agent.execution?.agentConnectionId;
+        boundConnectionId ??
+        (usesManagedDefault
+          ? engineConnectionId(RUNTIME_DEFAULT_AGENT_KEY)
+          : undefined);
       const readiness = readinessId
         ? await this.getRuntimeReadiness?.(readinessId)
         : undefined;
@@ -581,7 +584,7 @@ export class AgentService {
         unavailableReason: readiness?.available
           ? undefined
           : (readiness?.reason ??
-            (agent.slug === 'station'
+            (usesManagedDefault
               ? 'Station default Agent is not registered with the managed runtime.'
               : // archive#3742: a connection id is not a user noun, and this
                 // path has no connection record to name — only the binding it

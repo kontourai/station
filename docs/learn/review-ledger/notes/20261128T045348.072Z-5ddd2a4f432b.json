@@ -1,0 +1,9 @@
+{
+  "revision": "03d9fcc76f87c464554d87f994e57ceeb3651975",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed agent-service.ts default Station agent readiness projection: bound engineConnectionId is checked before falling back to managed default runtime; module-map and agent-smoke-confidence docs remain accurate.","inputs":["src-server/services/agents/agent-service.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Reviewed agent-service.ts default Station agent readiness projection: bound engineConnectionId is checked before falling back to managed default runtime; module-map and agent-smoke-confidence docs remain accurate.","inputs":["src-server/services/agents/agent-service.ts"]}
+  ]
+}

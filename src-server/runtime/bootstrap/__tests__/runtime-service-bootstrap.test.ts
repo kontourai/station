@@ -2,11 +2,13 @@ import { rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DEFAULT_GRANT_PAIRING_SCOPE } from '@kontourai/station-contracts';
+import { engineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import { MCPLocalConnectionCustody } from '@kontourai/station-shared/mcp';
 import { afterAll, describe, expect, test, vi } from 'vitest';
 import { registerEngineConnection } from '../../../domain/agent-registry.js';
 import { KnowledgeStoreProvider } from '../../../knowledge-store/knowledge-store-provider.js';
 import { providerAdapterLaunchabilitySource } from '../../../providers/registries/registry.js';
+import { createAgentRoutes } from '../../../routes/agents/agents.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { ProjectManifestStore } from '../../../services/projects/project-manifest-store.js';
 import { createRuntimeServiceBundle } from '../runtime-service-bootstrap.js';
@@ -134,10 +136,41 @@ describe('createRuntimeServiceBundle', () => {
     expect(bundle.agentService).toEqual({ kind: 'agent-service' });
   });
 
-  test('resolves a default agent public identity to its registered runtime connection for readiness', async () => {
-    const getConnection = vi.fn(async (id: string) =>
-      id === 'claude' ? { status: 'ready' } : null,
-    );
+  test.each([
+    {
+      state: 'bound to a ready engine',
+      enabled: true,
+      expected: { available: true, unavailableReason: undefined },
+    },
+    {
+      state: 'bound to a disabled engine',
+      enabled: false,
+      expected: {
+        available: false,
+        unavailableReason: 'OpenCode is turned off.',
+      },
+    },
+    {
+      state: 'unbound without a registered managed runtime',
+      enabled: undefined,
+      expected: {
+        available: false,
+        unavailableReason:
+          'Station default Agent is not registered with the managed runtime.',
+      },
+    },
+  ])('Station readiness: $state', async ({ enabled, expected }) => {
+    const getConnection = async (id: string) =>
+      id === 'opencode'
+        ? {
+            kind: 'agent',
+            type: 'acp',
+            name: 'OpenCode',
+            config: {},
+            enabled,
+            status: 'ready',
+          }
+        : null;
     const stationHomeDir = await import('node:fs/promises').then(
       ({ mkdtemp }) => mkdtemp(join(tmpdir(), 'station-runtime-bootstrap-')),
     );
@@ -145,11 +178,14 @@ describe('createRuntimeServiceBundle', () => {
     const configLoader = {
       getProjectHomeDir: () => stationHomeDir,
       agentExists: vi.fn(async () => false),
+      readAgentCatalog: async () => [],
       loadACPConfig: vi.fn(async () => ({ connections: [] })),
       loadAppConfig: vi.fn(async () => ({})),
       updateAppConfig: vi.fn(async () => ({})),
     };
-    await registerEngineConnection(configLoader as any, 'claude');
+    await registerEngineConnection(configLoader as any, 'opencode', {
+      kind: 'user-acp',
+    });
     const context = {
       projectHomeDir: stationHomeDir,
       port: 4123,
@@ -169,7 +205,22 @@ describe('createRuntimeServiceBundle', () => {
       monitoringEvents: {} as any,
       memoryAdapters: new Map(),
       activeAgents: new Map(),
-      agentMetadataMap: new Map(),
+      agentMetadataMap: new Map(
+        enabled === undefined
+          ? []
+          : [
+              [
+                'default',
+                {
+                  slug: 'default',
+                  name: 'Station Assistant',
+                  execution: {
+                    agentConnectionId: engineConnectionId('opencode'),
+                  },
+                },
+              ],
+            ],
+      ),
       agentSpecs: new Map(),
       agentTools: new Map(),
       agentHooks: new Map(),
@@ -202,12 +253,28 @@ describe('createRuntimeServiceBundle', () => {
       createFeedbackService: () => ({}),
     });
 
-    await expect(bundle.agentService.getEnrichedAgents([])).resolves.toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ slug: 'claude', available: true }),
-      ]),
+    const app = createAgentRoutes(
+      bundle.agentService,
+      bundle.skillService,
+      vi.fn(),
+      () => ({ getAgents: () => [] }),
     );
-    expect(getConnection).toHaveBeenCalledWith('claude');
+    const response = await app.request('/');
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      data: Array<{
+        slug: string;
+        available?: boolean;
+        unavailableReason?: string;
+        execution?: { agentConnectionId?: string };
+      }>;
+    };
+    const station = body.data.find((agent) => agent.slug === 'station');
+    expect(station?.available).toBe(expected.available);
+    expect(station?.unavailableReason).toBe(expected.unavailableReason);
+    expect(station?.execution?.agentConnectionId).toBe(
+      enabled === undefined ? undefined : 'opencode',
+    );
   });
 
   // K2 (archive#200 Wave 2): `knowledgeStoreProvider` is an ADDITIVE field on the bundle —

@@ -1,0 +1,9 @@
+{
+  "revision": "1363f5f635422b34c2d9d9c50d17d77c1dd54e51",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the hidden-draft sizing feedback fix against the composer interaction, short-dock reservation, status-row and retained draft claims in chat-composer and getting-started. Suppression is identity-based, only while the draft remains unmeasurable, and excludes real or mixed child mutations. Visible reconciliation, sibling resize observation, send controls and draft persistence are unchanged. Focused Chromium reveal-without-typing, pinned transcript, cap/shrink, status and keyboard cases passed; this is not physical-device or visible-speedup evidence. Existing explanations remain accurate; no prose change.","inputs":["src-ui/src/components/chat/ChatInputArea.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the hidden-draft sizing feedback fix against the composer interaction, short-dock reservation, status-row and retained draft claims in chat-composer and getting-started. Suppression is identity-based, only while the draft remains unmeasurable, and excludes real or mixed child mutations. Visible reconciliation, sibling resize observation, send controls and draft persistence are unchanged. Focused Chromium reveal-without-typing, pinned transcript, cap/shrink, status and keyboard cases passed; this is not physical-device or visible-speedup evidence. Existing explanations remain accurate; no prose change.","inputs":["src-ui/src/components/chat/ChatInputArea.tsx"]}
+  ]
+}

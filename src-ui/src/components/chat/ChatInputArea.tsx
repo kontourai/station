@@ -525,6 +525,8 @@ function placeStatusRow(body: HTMLElement, composer: HTMLElement) {
     body.toggleAttribute('data-status-floats', floats);
 }
 
+const draftMeasurementMirrors = new WeakSet<Node>();
+
 /**
  * The textarea's auto-height, clamped to the viewport, and the draft's floor:
  * two lines (or its whole content, when shorter). In a short dock the draft
@@ -541,6 +543,7 @@ function sizeDraft(
   // Measure out of flow: collapsing the live draft lets the browser clamp
   // the pinned transcript while the composer is temporarily shorter (#3661).
   const mirror = textarea.cloneNode(false) as HTMLTextAreaElement;
+  draftMeasurementMirrors.add(mirror);
   mirror.removeAttribute('id');
   mirror.removeAttribute('name');
   mirror.setAttribute('aria-hidden', 'true');
@@ -1314,7 +1317,20 @@ export function ChatInputArea({
       for (const row of root.querySelectorAll(observed)) observer.observe(row);
     };
     observeRows();
-    const mutations = new MutationObserver(() => {
+    const mutations = new MutationObserver((records) => {
+      if (
+        draftUnsizedRef.current &&
+        records.length > 0 &&
+        records.every((record) => {
+          if (record.type !== 'childList') return false;
+          const changedNodes = [...record.addedNodes, ...record.removedNodes];
+          return (
+            changedNodes.length > 0 &&
+            changedNodes.every((node) => draftMeasurementMirrors.has(node))
+          );
+        })
+      )
+        return;
       observeRows();
       placeNow();
       scheduleReserve();
