@@ -80,6 +80,7 @@ async function mockTaskFirstHome(
   options: {
     sessionEvents?: Array<Record<string, unknown>>;
     historyCount?: number;
+    historyRefresh?: { firstTitle: string; failTasks: boolean };
     commands?: Array<Record<string, unknown>>;
     workflowTasks?: Array<Record<string, unknown>>;
     /**
@@ -114,6 +115,20 @@ async function mockTaskFirstHome(
       mode: 'isolated-child',
     },
   };
+  const historyUpdatedAt = Date.now();
+  const historySessions = options.historyCount
+    ? Array.from({ length: options.historyCount }, (_, index) => ({
+        ...taskSession,
+        threadId: `history-${index}`,
+        conversationId: `conversation-${index}`,
+        displayTitle: `History session ${index}`,
+        eventCount: 0,
+        delegation: undefined,
+        lifecycleState: 'completed',
+        status: 'closed',
+        updatedAt: new Date(historyUpdatedAt - index * 60_000).toISOString(),
+      }))
+    : [taskSession];
   await installVisualViewportFixture(page);
   await page.addInitScript(() => {
     localStorage.setItem('recentAgents', JSON.stringify(['codex-agent']));
@@ -349,23 +364,22 @@ async function mockTaskFirstHome(
       return;
     }
     if (path === '/api/orchestration/sessions/read-model') {
-      await route.fulfill(
-        json(
-          options.historyCount
-            ? Array.from({ length: options.historyCount }, (_, index) => ({
-                ...taskSession,
-                threadId: `history-${index}`,
-                conversationId: `conversation-${index}`,
-                displayTitle: `History session ${index}`,
-                eventCount: 0,
-                delegation: undefined,
-                lifecycleState: 'completed',
-                status: 'closed',
-                updatedAt: new Date(Date.now() - index * 60_000).toISOString(),
-              }))
-            : [taskSession],
-        ),
-      );
+      const historyRefresh = options.historyRefresh;
+      const sessions = historyRefresh
+        ? historySessions.map((session, index) =>
+            index === 0
+              ? { ...session, displayTitle: historyRefresh.firstTitle }
+              : session,
+          )
+        : historySessions;
+      await route.fulfill(json(sessions));
+      return;
+    }
+    if (path === '/api/tasks' && options.historyRefresh?.failTasks) {
+      await route.fulfill({
+        status: 503,
+        json: { success: false, error: 'Tasks unavailable' },
+      });
       return;
     }
     if (
@@ -3046,7 +3060,35 @@ for (const viewport of [
   }, testInfo) => {
     await page.setViewportSize(viewport);
     await installJourneyProfile(page);
-    await mockTaskFirstHome(page, { historyCount: 1000 });
+    const historyRefresh = {
+      firstTitle: 'History session 0',
+      failTasks: false,
+    };
+    await mockTaskFirstHome(page, { historyCount: 1000, historyRefresh });
+    const waitForRefreshReads = () =>
+      Promise.all(
+        [
+          '/api/orchestration/sessions/read-model',
+          '/api/tasks',
+          '/api/conversations?limit=100',
+          '/api/environments/ssh/sessions',
+        ].map(async (endpoint) => {
+          const response = await page.waitForResponse((response) => {
+            const url = new URL(response.url());
+            const target = new URL(endpoint, url.origin);
+            return (
+              response.request().method() === 'GET' &&
+              url.pathname === target.pathname &&
+              [...target.searchParams].every(
+                ([name, value]) => url.searchParams.get(name) === value,
+              ) &&
+              response.ok()
+            );
+          });
+          expect(await response.json()).toMatchObject({ success: true });
+        }),
+      );
+    const initialReads = waitForRefreshReads();
     await profileJourney(
       page,
       testInfo,
@@ -3068,6 +3110,7 @@ for (const viewport of [
         ).toBeVisible();
       },
     );
+    await initialReads;
     const composer = page
       .getByRole('form', { name: 'Start work' })
       .getByRole('textbox', { name: 'What would you like done?' });
@@ -3106,5 +3149,72 @@ for (const viewport of [
       body: await page.screenshot(),
       contentType: 'image/png',
     });
+    const recentWork = page.getByRole('region', {
+      name: 'Recent work',
+      exact: true,
+    });
+    const refresh = recentWork.getByRole('button', {
+      name: 'Refresh recent work',
+      exact: true,
+    });
+    const freshTitle = 'Refreshed history session';
+    await expect(recentWork.getByText(freshTitle, { exact: true })).toHaveCount(
+      0,
+    );
+    await refresh.scrollIntoViewIfNeeded();
+    historyRefresh.firstTitle = freshTitle;
+    await profileJourney(
+      page,
+      testInfo,
+      viewport.width === 1280 ? 'home-refresh' : 'home-refresh-mobile',
+      { sessions: 1000, authoritativeReads: 4 },
+      async () => {
+        const refreshedReads = waitForRefreshReads();
+        await refresh.click();
+        await refreshedReads;
+        await expect(
+          recentWork.getByText(freshTitle, { exact: true }),
+        ).toBeVisible();
+        await expect(
+          recentWork.getByText('History session 0', { exact: true }),
+        ).toHaveCount(0);
+        await expect(
+          recentWork.getByText('Updated', { exact: true }),
+        ).toBeVisible();
+        await expect(composer).toHaveValue(draft);
+        await expect(refresh).toBeFocused();
+      },
+    );
+    historyRefresh.failTasks = true;
+    const failedRead = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === '/api/tasks' &&
+        response.status() === 503,
+    );
+    await refresh.click();
+    await failedRead;
+    await expect(
+      recentWork.getByText('Couldn’t refresh', { exact: true }),
+    ).toBeVisible();
+    await expect(
+      recentWork.getByText(freshTitle, { exact: true }),
+    ).toBeVisible();
+    await expect(composer).toHaveValue(draft);
+    historyRefresh.failTasks = false;
+    historyRefresh.firstTitle = 'Recovered history session';
+    const recoveredReads = waitForRefreshReads();
+    await refresh.click();
+    await recoveredReads;
+    await expect(
+      recentWork.getByText('Recovered history session', { exact: true }),
+    ).toBeVisible();
+    await expect(recentWork.getByText(freshTitle, { exact: true })).toHaveCount(
+      0,
+    );
+    await expect(
+      recentWork.getByText('Updated', { exact: true }),
+    ).toBeVisible();
+    await expect(composer).toHaveValue(draft);
+    await expect(refresh).toBeFocused();
   });
 }
