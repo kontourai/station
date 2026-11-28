@@ -1,0 +1,7 @@
+{
+  "revision": "37ebc35fe377de232a732f787f6368b03749e5a2",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Checked ADR0010 against docs/reference/session-api.md update: historical orchestration flag rationale is unchanged by UI background handoff status observation.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","docs/reference/session-api.md"]}
+  ]
+}

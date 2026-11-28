@@ -1,4 +1,5 @@
 import { useId, useRef, useState } from 'react';
+import { useBackgroundStatusReconciliation } from '../../../hooks/useBackgroundStatusReconciliation';
 import { useStationOutlivesApp } from '../../../hooks/useStationOutlivesApp';
 import type { MessageDeliveryState } from '../../../utils/messageDeliveryState';
 import { describeStationFailure } from '../../../utils/stationFailure';
@@ -124,6 +125,27 @@ export function MessageDeliveryNote({
 
   // A message already delivered when it first renders (history, a remount)
   // is a plain filled bubble: there is no transition to show.
+  const needsBackgroundCheck =
+    (state === 'unconfirmed' || state === 'awaiting-confirmation') &&
+    Boolean(port.check);
+  useBackgroundStatusReconciliation({
+    active: needsBackgroundCheck,
+    resetKey: state,
+    initialDelayMs: 2_500,
+    intervalsMs: [4_000, 8_000],
+    check: async () => {
+      if (checking.current || !port.check) return 'pending';
+      checking.current = true;
+      try {
+        const outcome = await port.check();
+        return outcome === 'started' || outcome === 'not-received'
+          ? 'settled'
+          : 'pending';
+      } finally {
+        checking.current = false;
+      }
+    },
+  });
   if (!seenUndelivered.current) return null;
 
   const run = async (

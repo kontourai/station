@@ -2,6 +2,7 @@ import type { DevicePresentation } from '@kontourai/station-contracts/system-sta
 import type { AgentConnectionView } from '@kontourai/station-contracts/tool';
 import { lazy, Suspense, useState } from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
+import { useBackgroundStatusReconciliation } from '../../hooks/useBackgroundStatusReconciliation';
 import { openExternalLink } from '../../platform/openExternalLink';
 import { ActionRow } from '../ActionRow';
 import { type AgentFixRoute, AgentReadinessCell } from '../AgentReadinessCell';
@@ -36,6 +37,17 @@ export function ChatSetupHelper({
   onCheck: () => void;
 }) {
   const [choosingStationEngine, setChoosingStationEngine] = useState(false);
+  useBackgroundStatusReconciliation({
+    active: !busy,
+    initialDelayMs: null,
+    recheckOnFocus: true,
+    recheckOnVisible: true,
+    recheckOnOnline: false,
+    eventDebounceMs: 1_500,
+    check: () => {
+      onCheck();
+    },
+  });
   return (
     <section className="chat-start__setup" aria-label="Set up an engine">
       <div className="chat-start__recent-heading">

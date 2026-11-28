@@ -8,6 +8,7 @@
 import type { ACPEngineInstallRecipe } from '@kontourai/station-contracts/acp';
 import type { DevicePresentation } from '@kontourai/station-contracts/system-status';
 import { useState } from 'react';
+import { useBackgroundStatusReconciliation } from '../../hooks/useBackgroundStatusReconciliation';
 import { copyToClipboard } from '../../lib/clipboard';
 import { openExternalLink } from '../../platform/openExternalLink';
 import { Button } from '../Button';
@@ -38,6 +39,18 @@ export function EngineInstallHint({
   const [copied, setCopied] = useState(false);
   const [copyFailed, setCopyFailed] = useState(false);
   const command = recipe?.command;
+  useBackgroundStatusReconciliation({
+    active: Boolean(onCheckAgain && !checking),
+    resetKey: name,
+    initialDelayMs: null,
+    recheckOnFocus: true,
+    recheckOnVisible: true,
+    recheckOnOnline: false,
+    eventDebounceMs: 1_500,
+    check: () => {
+      onCheckAgain?.();
+    },
+  });
   return (
     <fieldset
       className="engine-install-hint"

@@ -1,0 +1,7 @@
+{
+  "revision": "46217f15825f97253a128803ddc77be0f02c1fc5",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Rechecked EngineSignInPanel focus/visibility refresh: now uses read-only GET view.refetch instead of POST status-check mutation; Check again remains explicit.","inputs":["docs/guides/connections.md","src-ui/src/__tests__/EngineAccountOverview.test.tsx","src-ui/src/views/EngineAccountOverview.tsx","src-ui/src/components/engine-sign-in/EngineSignInPanel.tsx"]}
+  ]
+}

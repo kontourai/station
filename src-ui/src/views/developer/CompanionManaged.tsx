@@ -15,6 +15,7 @@ import { Button } from '../../components/Button';
 import { Checkbox } from '../../components/Checkbox';
 import { ErrorState, SkeletonBlock } from '../../components/state';
 import type { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
+import { useBackgroundStatusReconciliation } from '../../hooks/useBackgroundStatusReconciliation';
 import { describeStationFailure } from '../../utils/stationFailure';
 import { CompanionProductTrends } from './CompanionProductTrends';
 import { newCompanionOperationId } from './companion-operation-id';
@@ -82,13 +83,92 @@ export function CompanionManaged({
     { requestScope: authority },
   );
   const pending = install.isPending || control.isPending;
-  const check = () => {
-    void state.refetch();
-    void preparation.refetch();
-    if (install.isError && install.variables)
-      void installationReceipt.refetch();
-    if (control.isError && control.variables) void actionReceipt.refetch();
+  const check = async () => {
+    const [nextState] = await Promise.all([
+      state.refetch(),
+      preparation.refetch(),
+      ...(install.isError && install.variables
+        ? [installationReceipt.refetch()]
+        : []),
+      ...(control.isError && control.variables
+        ? [actionReceipt.refetch()]
+        : []),
+    ]);
+    const latest = nextState.data;
+    const latestState = latest?.runtime;
+    if (
+      latest &&
+      !latest.hasOperationLock &&
+      latest.installation?.phase !== 'preparing' &&
+      (!latest.latestAction || latest.latestAction.phase === 'completed') &&
+      latestState !== 'unknown'
+    )
+      return 'settled' as const;
+    return 'pending' as const;
   };
+  const current = state.data;
+  const installed = current?.installation;
+  const prepared = !preparation.isError ? preparation.data : undefined;
+  const directInstall =
+    !installationReceipt.isError &&
+    installationReceipt.data &&
+    install.variables &&
+    installationReceipt.data.installationId === install.variables.installationId
+      ? installationReceipt.data
+      : null;
+  const directAction =
+    !actionReceipt.isError &&
+    actionReceipt.data &&
+    control.variables &&
+    actionReceipt.data.action === control.variables.action
+      ? actionReceipt.data
+      : null;
+  const recoveredInstall =
+    current?.installation &&
+    install.variables &&
+    current.installation.installationId === install.variables.installationId
+      ? current.installation
+      : directInstall;
+  const recoveredAction =
+    current?.latestAction &&
+    control.variables &&
+    current.latestAction.operationId === control.variables.operationId &&
+    current.latestAction.installationId === control.variables.installationId &&
+    current.latestAction.action === control.variables.action
+      ? current.latestAction
+      : directAction;
+  const installUnknown =
+    install.isError &&
+    !refused(install.error) &&
+    (!recoveredInstall || recoveredInstall.phase === 'preparing');
+  const actionUnknown =
+    control.isError && !refused(control.error) && !recoveredAction;
+  const unknown = installUnknown || actionUnknown;
+  const uncertainAction =
+    current?.latestAction && current.latestAction.phase !== 'completed';
+  const uncertainRecovered =
+    control.isError &&
+    recoveredAction !== null &&
+    recoveredAction.phase !== 'completed';
+  const companionState = current?.runtime;
+  const needsBackgroundCheck = Boolean(
+    current &&
+      !pending &&
+      (current.hasOperationLock ||
+        installed?.phase === 'preparing' ||
+        uncertainAction ||
+        uncertainRecovered ||
+        unknown ||
+        companionState === 'unknown' ||
+        preparation.isError),
+  );
+  const reconcile = useBackgroundStatusReconciliation({
+    active: Boolean(current && !pending),
+    resetKey: `${authority.apiBase}:${authority.authorityKey}:${needsBackgroundCheck ? 'poll' : 'idle'}:${current?.hasOperationLock ? '1' : '0'}:${unknown ? 'u' : 'c'}:${companionState ?? ''}`,
+    initialDelayMs: needsBackgroundCheck ? 1_500 : null,
+    intervalsMs: [2_500, 5_000, 8_000],
+    check,
+  });
   const checkButton = (
     <Button
       variant="secondary"
@@ -98,7 +178,7 @@ export function CompanionManaged({
         installationReceipt.isFetching ||
         actionReceipt.isFetching
       }
-      onClick={check}
+      onClick={() => void check()}
     >
       Check companion status
     </Button>
@@ -123,52 +203,13 @@ export function CompanionManaged({
         {checkButton}
       </section>
     );
-  if (!state.data || state.isFetching)
+  if (!current)
     return (
       <section className="companion-managed" aria-label="Managed companion">
         {pendingText}
         <SkeletonBlock count={1} label="Checking managed companion" />
       </section>
     );
-  const current = state.data;
-  const installed = current.installation;
-  const prepared =
-    !preparation.isError && !preparation.isFetching
-      ? preparation.data
-      : undefined;
-  const directInstall =
-    !installationReceipt.isError &&
-    !installationReceipt.isFetching &&
-    installationReceipt.data &&
-    installationReceipt.data?.installationId ===
-      install.variables?.installationId
-      ? installationReceipt.data
-      : null;
-  const directAction =
-    !actionReceipt.isError &&
-    !actionReceipt.isFetching &&
-    actionReceipt.data &&
-    actionReceipt.data?.action === control.variables?.action
-      ? actionReceipt.data
-      : null;
-  const recoveredInstall =
-    current.installation?.installationId === install.variables?.installationId
-      ? current.installation
-      : directInstall;
-  const recoveredAction =
-    current.latestAction?.operationId === control.variables?.operationId &&
-    current.latestAction?.installationId ===
-      control.variables?.installationId &&
-    current.latestAction?.action === control.variables?.action
-      ? current.latestAction
-      : directAction;
-  const installUnknown =
-    install.isError &&
-    !refused(install.error) &&
-    (!recoveredInstall || recoveredInstall.phase === 'preparing');
-  const actionUnknown =
-    control.isError && !refused(control.error) && !recoveredAction;
-  const unknown = installUnknown || actionUnknown;
   const cryptoAvailable =
     typeof globalThis.crypto?.getRandomValues === 'function';
   const hasProfile =
@@ -189,12 +230,6 @@ export function CompanionManaged({
     !pending &&
     !unknown &&
     cryptoAvailable;
-  const uncertainAction =
-    current.latestAction && current.latestAction.phase !== 'completed';
-  const uncertainRecovered =
-    control.isError &&
-    recoveredAction !== null &&
-    recoveredAction.phase !== 'completed';
   const canStart =
     current.supported &&
     installed?.phase === 'installed' &&
@@ -420,7 +455,9 @@ export function CompanionManaged({
       <ActionRow
         label="Companion controls"
         overflowLabel="More companion controls"
-        secondary={checkButton}
+        secondary={
+          needsBackgroundCheck && reconcile.exhausted ? checkButton : undefined
+        }
         primary={
           installed ? (
             <Button

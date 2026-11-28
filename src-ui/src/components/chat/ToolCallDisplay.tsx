@@ -33,6 +33,7 @@ import {
   readApprovalAnswerState,
   subscribeApprovalAnswers,
 } from '../../hooks/orchestration/answerRequest';
+import { useBackgroundStatusReconciliation } from '../../hooks/useBackgroundStatusReconciliation';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useRevealOnce } from '../../hooks/useRevealOnce';
 import { formatBytes } from '../../utils/formatBytes';
@@ -685,6 +686,7 @@ function useApprovalDecision(
     ? { ...reference, authorityKey: target?.requestScope?.authorityKey }
     : undefined;
   const admission = useRef(false);
+  const checkingRef = useRef(false);
   const [checking, setChecking] = useState(false);
   const [localPhase, setPhase] = useState<ApprovalPhase>('idle');
   const shared = useSyncExternalStore(subscribeApprovalAnswers, () =>
@@ -792,22 +794,38 @@ function useApprovalDecision(
       },
     );
   };
+  const runCheck = async (manual: boolean): Promise<'settled' | 'pending'> => {
+    if (!onCheck || checkingRef.current) return 'pending';
+    checkingRef.current = true;
+    if (manual) setChecking(true);
+    try {
+      const outcome = await onCheck();
+      setPhase(outcome === 'pending' ? 'idle' : 'already-settled');
+      admission.current = outcome !== 'pending';
+      setFailure(null);
+      return 'settled';
+    } catch (error) {
+      if (manual) {
+        setFailure({
+          summary: describeStationFailure(error, target?.station).body,
+        });
+      }
+      return 'pending';
+    } finally {
+      checkingRef.current = false;
+      if (manual) setChecking(false);
+    }
+  };
+  const backgroundCheck = useBackgroundStatusReconciliation({
+    active: Boolean(onCheck) && (phase === 'sent' || phase === 'unconfirmed'),
+    resetKey: `${reference?.apiBase ?? ''}:${reference?.authorityKey ?? ''}:${reference?.threadId ?? ''}:${reference?.requestId ?? ''}:${reference?.requestEventId ?? ''}:${phase}`,
+    initialDelayMs: phase === 'unconfirmed' ? 2_000 : 2_500,
+    intervalsMs: [2_000, 4_000, 8_000],
+    check: () => runCheck(false),
+  });
   const check = onCheck
     ? async () => {
-        if (checking) return;
-        setChecking(true);
-        try {
-          const outcome = await onCheck();
-          setPhase(outcome === 'pending' ? 'idle' : 'already-settled');
-          admission.current = outcome !== 'pending';
-          setFailure(null);
-        } catch (error) {
-          setFailure({
-            summary: describeStationFailure(error, target?.station).body,
-          });
-        } finally {
-          setChecking(false);
-        }
+        await runCheck(true);
       }
     : undefined;
   return {
@@ -817,6 +835,7 @@ function useApprovalDecision(
     chosen,
     checking,
     check,
+    showSentCheck: phase === 'sent' && backgroundCheck.exhausted,
     busy: denied || phase !== 'idle',
   };
 }
@@ -826,18 +845,21 @@ function ApprovalDecisionStatus({
   failure,
   check,
   checking,
+  showSentCheck,
 }: {
   phase: ApprovalPhase;
   failure: { summary: string; detail?: string } | null;
   check?: () => Promise<void>;
   checking?: boolean;
+  showSentCheck?: boolean;
 }) {
   // The chosen button already reads "Allowing…" / "Denying…" while a
-  // decision is in flight, so no sentence repeats it. A sent decision whose
-  // settlement has not arrived keeps only the way to check on it.
+  // decision is in flight, so no sentence or extra row interrupts the normal
+  // happy path. Accepted decisions reconcile quietly in the background and
+  // offer Check status only if background checks exhaust without settling.
   return (
     <>
-      {phase === 'sent' && check && (
+      {phase === 'sent' && showSentCheck && check && (
         <p className="tool-call__approve-status">
           <Button pending={checking} onClick={() => void check()}>
             Check status
@@ -969,8 +991,16 @@ function ToolApprovalSheet({
   openGrouped: () => boolean;
   grouped?: boolean;
 }) {
-  const { phase, failure, decide, chosen, busy, check, checking } =
-    useApprovalDecision(onApprove, onCheck, reference);
+  const {
+    phase,
+    failure,
+    decide,
+    chosen,
+    busy,
+    check,
+    checking,
+    showSentCheck,
+  } = useApprovalDecision(onApprove, onCheck, reference);
   const sheet = useRequestSheet(true);
   // Accepted but not yet settled reads as in progress, not as a frozen
   // sheet: the row stays until the durable `request.resolved` removes it.
@@ -982,6 +1012,7 @@ function ToolApprovalSheet({
       failure={failure}
       check={check}
       checking={checking}
+      showSentCheck={showSentCheck}
     />
   );
   const actions = (
@@ -1045,8 +1076,16 @@ function ToolApprovalButtons({
   allGrant = false,
   sessionGrant,
 }: ToolApprovalControlProps) {
-  const { phase, failure, decide, chosen, check, checking, busy } =
-    useApprovalDecision(onApprove, onCheck, reference);
+  const {
+    phase,
+    failure,
+    decide,
+    chosen,
+    check,
+    checking,
+    showSentCheck,
+    busy,
+  } = useApprovalDecision(onApprove, onCheck, reference);
   // #2915/#2916: undefined where no session grant is offered.
   const grantLabel = toolRequestGrantLabel(grantToolName, sessionGrant);
   // #3390: the options come from the approval's decision body. #2316: the
@@ -1074,6 +1113,7 @@ function ToolApprovalButtons({
         failure={failure}
         check={check}
         checking={checking}
+        showSentCheck={showSentCheck}
       />
     </>
   );

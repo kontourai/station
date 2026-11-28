@@ -1,0 +1,7 @@
+{
+  "revision": "37ebc35fe377de232a732f787f6368b03749e5a2",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Checked abstraction-review against docs/guides/monitoring.md update: companion preparation UI background polling does not alter documented architecture findings.","inputs":["docs/architecture/abstraction-review.md","docs/guides/monitoring.md"]}
+  ]
+}

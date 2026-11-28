@@ -122,7 +122,7 @@ in the panel that reported the error.
 | **Couldn’t refresh Review.** | Select **Retry Review**. |
 | **Code review unavailable** | Select **Reload review data** to check the review. If the panel says access changed, reopen the Task first. |
 | **Request recovery could not be saved** | Allow browser storage, then select **Check status** to read the review state before requesting a review again. |
-| **Request outcome unknown** | Select **Check request** to check whether Station received that review request. |
+| **Request outcome unknown** | Station checks delivery automatically in the background; if it stays unknown, select **Check request** to check whether Station received that review request. |
 | **Couldn’t load this Screen.** | Select **Retry Screen** in the Screen detail. |
 | **Couldn’t load this item.** | Select **Retry item**. |
 | **Couldn’t load clips.** or **Couldn’t load this clip.** | Select **Retry clips** for the list or **Retry clip** for the open clip. |

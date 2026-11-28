@@ -208,12 +208,12 @@ export function useExactRequestDecision(
     typeof receipt.commandId === 'string'
       ? receipt.commandId
       : undefined;
-  const recheck = () => {
-    if (checking || !authority.isCurrent()) return;
+  const recheck = (): Promise<'settled' | 'pending'> => {
+    if (checking || !authority.isCurrent()) return Promise.resolve('pending');
     setChecking(true);
-    void query
+    return query
       .refetch()
-      .then((fresh) => {
+      .then((fresh): 'settled' | 'pending' => {
         if (authority.isCurrent() && fresh.isSuccess && fresh.data) {
           response.reset();
           if (
@@ -225,7 +225,9 @@ export function useExactRequestDecision(
               .findAll({ mutationKey, exact: true }))
               queryClient.getMutationCache().remove(mutation);
           }
+          return 'settled';
         }
+        return 'pending';
       })
       .finally(() => setChecking(false));
   };

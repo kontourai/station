@@ -140,8 +140,10 @@ export function useEngineStationTools(id: string, scope: ApiRequestScope) {
         readEnvelopeOrThrow,
       ),
     onSuccess: () => {
-      void client.invalidateQueries({ queryKey });
       void client.invalidateQueries({ queryKey: ['agents'] });
+    },
+    onSettled: () => {
+      void client.invalidateQueries({ queryKey });
     },
     retry: false,
   });
@@ -154,9 +156,11 @@ export function useEngineStationTools(id: string, scope: ApiRequestScope) {
         { id: launch.id, command: launch.command, args: launch.args },
       ).then(readEnvelopeOrThrow),
     onSuccess: () => {
-      void client.invalidateQueries({ queryKey });
       void client.invalidateQueries({ queryKey: ['acp-connections'] });
       void client.invalidateQueries({ queryKey: ['engine-connections'] });
+    },
+    onSettled: () => {
+      void client.invalidateQueries({ queryKey });
     },
     retry: false,
   });

@@ -668,7 +668,7 @@ describe('ConversationHandoffDialog', () => {
         'This request’s agent, engine or model isn’t available here. Restore that setup to retry.',
       );
       expect(retry.getAttribute('aria-describedby')).toBe(reason.id);
-      expect(screen.getByRole('button', { name: 'Check status' })).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'Check status' })).toBeNull();
     });
   });
 
@@ -887,7 +887,8 @@ describe('ConversationHandoffDialog', () => {
     ).toBe(true);
     // The same draft is still in the composer: it is the retried request.
     expect(screen.getByText('Retries the earlier request.')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Check status' }));
+    expect(screen.queryByRole('button', { name: 'Check status' })).toBeNull();
+    window.dispatchEvent(new Event('online'));
     await waitFor(() => expect(restored.onAccepted).toHaveBeenCalledOnce());
     expect(getConversationHandoffStatus.mock.calls[0][2]).toBe(key);
   });
@@ -987,7 +988,7 @@ describe('ConversationHandoffDialog', () => {
     fireEvent.click(
       screen.getByRole('button', { name: 'Continue with Codex reviewer' }),
     );
-    await waitFor(() => screen.getByRole('button', { name: 'Check status' }));
+    await waitFor(() => screen.getByRole('button', { name: 'Retry safely' }));
     first.unmount();
 
     getConversationHandoffStatus.mockResolvedValueOnce(acceptedStatus());
@@ -1004,7 +1005,7 @@ describe('ConversationHandoffDialog', () => {
     expect(screen.getByRole('status').textContent).toContain(
       'isn’t available here',
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Check status' }));
+    window.dispatchEvent(new Event('online'));
 
     await waitFor(() => expect(restored.onAccepted).toHaveBeenCalledOnce());
     expect(restored.onAccepted.mock.calls[0][0].target).toBeUndefined();
@@ -1087,14 +1088,14 @@ describe('ConversationHandoffDialog', () => {
     fireEvent.click(
       screen.getByRole('button', { name: 'Continue with Codex reviewer' }),
     );
-    await waitFor(() => screen.getByRole('button', { name: 'Check status' }));
+    await waitFor(() => screen.getByRole('button', { name: 'Retry safely' }));
     getConversationHandoffStatus.mockResolvedValueOnce({
       ...acceptedStatus(),
       status: 'failed',
       providerTurnId: 'failed-provider-turn',
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Check status' }));
+    window.dispatchEvent(new Event('online'));
     await waitFor(() => expect(view.onAccepted).toHaveBeenCalledOnce());
     expect(view.onAccepted.mock.calls[0][0].receipt.currentSessionId).toBe(
       'session-b',
@@ -1127,13 +1128,13 @@ describe('ConversationHandoffDialog', () => {
       fireEvent.click(
         screen.getByRole('button', { name: 'Continue with Codex reviewer' }),
       );
-      await waitFor(() => screen.getByRole('button', { name: 'Check status' }));
+      await waitFor(() => screen.getByRole('button', { name: 'Retry safely' }));
       getConversationHandoffStatus.mockResolvedValueOnce({
         ...acceptedStatus(),
         status,
       });
 
-      fireEvent.click(screen.getByRole('button', { name: 'Check status' }));
+      window.dispatchEvent(new Event('online'));
       await waitFor(() =>
         expect(screen.getByRole('alert').textContent).toBe(feedback),
       );
@@ -1294,7 +1295,7 @@ describe('handoff review fixes', () => {
     fireEvent.click(
       screen.getByRole('button', { name: 'Continue with Codex reviewer' }),
     );
-    await waitFor(() => screen.getByRole('button', { name: 'Check status' }));
+    await waitFor(() => screen.getByRole('button', { name: 'Retry safely' }));
     first.unmount();
 
     getConversationHandoffStatus.mockResolvedValueOnce(acceptedStatus());
@@ -1306,7 +1307,7 @@ describe('handoff review fixes', () => {
         'Retries the earlier request. Your new draft stays in the composer.',
       ),
     ).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Check status' }));
+    window.dispatchEvent(new Event('online'));
     await waitFor(() => expect(restored.onAccepted).toHaveBeenCalledOnce());
     expect(restored.onAccepted.mock.calls[0][0]).toMatchObject({
       message: 'follow up',
@@ -1358,7 +1359,7 @@ describe('handoff delta-review fixes', () => {
     fireEvent.click(
       screen.getByRole('button', { name: 'Continue with Codex reviewer' }),
     );
-    await waitFor(() => screen.getByRole('button', { name: 'Check status' }));
+    await waitFor(() => screen.getByRole('button', { name: 'Retry safely' }));
     first.unmount();
 
     getConversationHandoffStatus.mockResolvedValueOnce(acceptedStatus());
@@ -1366,7 +1367,7 @@ describe('handoff delta-review fixes', () => {
       draftQuotes: [quote],
     });
     expect(screen.getByText('Retries the earlier request.')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Check status' }));
+    window.dispatchEvent(new Event('online'));
     await waitFor(() => expect(restored.onAccepted).toHaveBeenCalledOnce());
     expect(restored.onAccepted.mock.calls[0][0]).toMatchObject({
       clearsComposer: true,
@@ -1406,7 +1407,7 @@ describe('handoff third-round fixes', () => {
     );
     getConversationHandoffStatus.mockResolvedValueOnce(acceptedStatus());
     const view = renderDialog();
-    fireEvent.click(screen.getByRole('button', { name: 'Check status' }));
+    window.dispatchEvent(new Event('online'));
     await waitFor(() => expect(view.onAccepted).toHaveBeenCalledOnce());
     expect(view.onAccepted.mock.calls[0][0].sentQuotes).toEqual([]);
   });
@@ -1430,7 +1431,7 @@ test('a request already made is not blocked by its own turn: Retry safely stays 
   fireEvent.click(
     screen.getByRole('button', { name: 'Continue with Codex reviewer' }),
   );
-  await waitFor(() => screen.getByRole('button', { name: 'Check status' }));
+  await waitFor(() => screen.getByRole('button', { name: 'Retry safely' }));
   first.unmount();
   // The dispatch marked the chat as busy with this very request's turn.
   const key = handoffExecutionMessage.mock.calls[0][2].idempotencyKey;
@@ -1577,7 +1578,7 @@ describe('handoff polish-round fixes', () => {
     fireEvent.click(
       screen.getByRole('button', { name: 'Continue with Codex reviewer' }),
     );
-    await waitFor(() => screen.getByRole('button', { name: 'Check status' }));
+    await waitFor(() => screen.getByRole('button', { name: 'Retry safely' }));
     return view;
   }
 
@@ -1613,13 +1614,7 @@ describe('handoff polish-round fixes', () => {
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(false);
-    expect(
-      (
-        screen.getByRole('button', {
-          name: 'Check status',
-        }) as HTMLButtonElement
-      ).disabled,
-    ).toBe(false);
+    expect(screen.queryByRole('button', { name: 'Check status' })).toBeNull();
     expect(screen.queryByText(/remove attachments/)).toBeNull();
   });
 

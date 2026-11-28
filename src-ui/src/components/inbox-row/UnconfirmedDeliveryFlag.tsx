@@ -1,6 +1,7 @@
 import type { TurnDeliveryOutcome } from '@kontourai/station-contracts/orchestration';
 import { useEffect, useRef, useState } from 'react';
 import { toastStore } from '../../contexts/ToastContext';
+import { useBackgroundStatusReconciliation } from '../../hooks/useBackgroundStatusReconciliation';
 import { recheckChatMessageDelivery } from '../../hooks/useMessageDeliveryState';
 import { describeStationFailure } from '../../utils/stationFailure';
 import type { WorkFacts } from '../../views/home/work-facts';
@@ -87,6 +88,35 @@ export function UnconfirmedDeliveryFlag({
         row.querySelector<HTMLButtonElement>('.inbox-row__open')?.focus();
     };
   }, []);
+  useBackgroundStatusReconciliation({
+    active: checkable && turns.length > 0,
+    resetKey: turns.map((turn) => turn.clientTurnId).join(','),
+    initialDelayMs: 2_500,
+    intervalsMs: [4_000, 8_000],
+    check: async () => {
+      if (running.current) return 'pending';
+      running.current = true;
+      const asked = turns.slice(-CHECK_LIMIT);
+      const remaining = turns.length - asked.length;
+      try {
+        const outcomes: (TurnDeliveryOutcome | undefined)[] = [];
+        for (const turn of asked) {
+          outcomes.push(
+            await recheckChatMessageDelivery(
+              turn.chatSessionId,
+              turn.clientTurnId,
+              connection,
+            ),
+          );
+        }
+        return remaining === 0 && outcomes.every(settles)
+          ? 'settled'
+          : 'pending';
+      } finally {
+        running.current = false;
+      }
+    },
+  });
   const run = async () => {
     if (running.current) return;
     running.current = true;

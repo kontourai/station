@@ -12,6 +12,7 @@ import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
 import type { ProjectMetadata } from '../../contexts/ProjectsContext';
+import { useBackgroundStatusReconciliation } from '../../hooks/useBackgroundStatusReconciliation';
 import type { PreparedOutgoingText } from '../../hooks/useChatInput';
 import type { FileAttachment } from '../../types';
 import {
@@ -647,9 +648,15 @@ export function ConversationHandoffDialog({
     }
   };
 
-  const observe = async () => {
-    setState('pending');
-    setFeedback(undefined);
+  const observe = async ({
+    background = false,
+  }: {
+    background?: boolean;
+  } = {}): Promise<'settled' | 'pending'> => {
+    if (!background) {
+      setState('pending');
+      setFeedback(undefined);
+    }
     try {
       const result = await getConversationHandoffStatus(
         apiBase,
@@ -707,17 +714,33 @@ export function ConversationHandoffDialog({
             reset: result.marker.reset,
           },
         });
-        return;
+        return 'settled';
       }
       setState('indeterminate');
       setFeedback(handoffStatusFeedback(result.status));
+      return result.status === 'reserved' || result.status === 'failed'
+        ? 'settled'
+        : 'pending';
     } catch (error) {
       setState('indeterminate');
-      setFeedback(
-        error instanceof Error ? userFacingErrorMessage(error) : String(error),
-      );
+      if (!background) {
+        setFeedback(
+          error instanceof Error
+            ? userFacingErrorMessage(error)
+            : String(error),
+        );
+      }
+      return 'pending';
     }
   };
+
+  const handoffReconcile = useBackgroundStatusReconciliation({
+    active: state === 'indeterminate',
+    resetKey: `${apiBase}:${conversationId}:${idempotencyKey.current}`,
+    initialDelayMs: 1_500,
+    intervalsMs: [2_500, 5_000],
+    check: () => observe({ background: true }),
+  });
 
   const primaryDisabled =
     state === 'pending' || !retryEligible || Boolean(preconditionReason);
@@ -897,7 +920,7 @@ export function ConversationHandoffDialog({
           {/* The shared action row owns phone wrapping, tap targets and the
               safe area; this class keeps only the desktop alignment. */}
           <ResponsiveSurfaceActions className="conversation-handoff-dialog__actions">
-            {state === 'indeterminate' && (
+            {state === 'indeterminate' && handoffReconcile.exhausted && (
               <Button onClick={() => void observe()}>Check status</Button>
             )}
             <Button

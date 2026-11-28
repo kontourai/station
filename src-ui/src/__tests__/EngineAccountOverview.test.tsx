@@ -423,7 +423,8 @@ test.each([
     await waitFor(() => expect(signIn).toHaveProperty('disabled', false));
     fireEvent.click(signIn);
     await screen.findByText('Another sign-in is starting. Try again shortly.');
-    fireEvent.click(screen.getByRole('button', { name: 'Check status' }));
+    expect(screen.queryByRole('button', { name: 'Check status' })).toBeNull();
+    window.dispatchEvent(new Event('online'));
     await waitFor(() => expect(signIn).toHaveProperty('disabled', false));
     fireEvent.click(signIn);
     await screen.findByRole('button', {

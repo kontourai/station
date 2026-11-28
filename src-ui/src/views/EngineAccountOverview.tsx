@@ -22,6 +22,7 @@ import { Button } from '../components/Button';
 import { ResponsiveSurfaceActions } from '../components/ResponsiveDialogSurface';
 import { Empty, SkeletonBlock } from '../components/state';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
+import { useBackgroundStatusReconciliation } from '../hooks/useBackgroundStatusReconciliation';
 import { useCoarseNow } from '../hooks/useCoarseNow';
 import { openExternalLink } from '../platform/openExternalLink';
 import { formatDuration } from '../utils/relativeTime';
@@ -450,6 +451,20 @@ function AccountLogin({
         void query.refetch();
       },
     });
+  const loginReconcile = useBackgroundStatusReconciliation({
+    active: allowed && (query.isError || Boolean(failure)),
+    resetKey: `${connectionId}:${account.ref ?? 'default'}:${query.isError ? 'err' : failure}`,
+    initialDelayMs: 1_500,
+    intervalsMs: [3_000, 6_000],
+    check: async () => {
+      const result = await query.refetch();
+      if (!result.isError) {
+        setFailure('');
+        return 'settled';
+      }
+      return 'pending';
+    },
+  });
   if (!allowed && account.ref === null && account.authState === 'authenticated')
     return null;
   if (!allowed)
@@ -463,8 +478,13 @@ function AccountLogin({
   if (query.isError)
     return (
       <div role="alert">
-        Sign-in status unavailable.{' '}
-        <Button onClick={() => void query.refetch()}>Check status</Button>
+        Sign-in status unavailable.
+        {loginReconcile.exhausted ? (
+          <>
+            {' '}
+            <Button onClick={() => void query.refetch()}>Check status</Button>
+          </>
+        ) : null}
       </div>
     );
   if (active)
@@ -472,15 +492,20 @@ function AccountLogin({
       <div className="engine-account-overview__login" aria-live="polite">
         {failure && (
           <p role="alert">
-            {failure}{' '}
-            <Button
-              onClick={() => {
-                setFailure('');
-                void query.refetch();
-              }}
-            >
-              Check status
-            </Button>
+            {failure}
+            {loginReconcile.exhausted ? (
+              <>
+                {' '}
+                <Button
+                  onClick={() => {
+                    setFailure('');
+                    void query.refetch();
+                  }}
+                >
+                  Check status
+                </Button>
+              </>
+            ) : null}
           </p>
         )}
         <ResponsiveSurfaceActions className="engine-account-overview__login-actions">
@@ -565,15 +590,20 @@ function AccountLogin({
     <div>
       {failure && (
         <p role="alert">
-          {failure}{' '}
-          <Button
-            onClick={() => {
-              setFailure('');
-              void query.refetch();
-            }}
-          >
-            Check status
-          </Button>
+          {failure}
+          {loginReconcile.exhausted ? (
+            <>
+              {' '}
+              <Button
+                onClick={() => {
+                  setFailure('');
+                  void query.refetch();
+                }}
+              >
+                Check status
+              </Button>
+            </>
+          ) : null}
         </p>
       )}
       {login?.phase === 'failed' && <p role="alert">{login.reason}</p>}

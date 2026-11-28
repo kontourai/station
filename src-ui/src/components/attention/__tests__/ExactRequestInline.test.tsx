@@ -154,15 +154,22 @@ test('an already-answered request says so and offers no decision', async () => {
   expect(screen.getByRole('link', { name: 'Open chat' })).toBeTruthy();
 });
 
-test('a failed decision stays on the row with a way to check it', async () => {
-  const fetch = vi.fn(async (_url: unknown, init?: RequestInit) =>
-    init?.method === 'POST'
-      ? new Response(JSON.stringify({ success: false, error: 'boom' }), {
-          status: 500,
-          headers: { 'Content-Type': 'application/json' },
-        })
-      : ok(open),
-  );
+test('a failed decision stays on the row, checks in the background, and falls back to Check again', async () => {
+  let reads = 0;
+  const fetch = vi.fn(async (_url: unknown, init?: RequestInit) => {
+    if (init?.method === 'POST') {
+      return new Response(JSON.stringify({ success: false, error: 'boom' }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    reads += 1;
+    if (reads === 1) return ok(open);
+    return new Response(JSON.stringify({ success: false, error: 'offline' }), {
+      status: 503,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  });
   vi.stubGlobal('fetch', fetch);
   wrap(<ExactRequestInline reference={reference} />);
   const approve = await screen.findByRole('button', { name: 'Approve once' });
@@ -174,12 +181,19 @@ test('a failed decision stays on the row with a way to check it', async () => {
   });
 
   expect(await screen.findByText("Couldn't confirm the decision")).toBeTruthy();
-  expect(screen.getByRole('button', { name: 'Check again' })).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Check again' })).toBeNull();
   // An unconfirmed attempt is never re-sent from here.
   expect(
     (screen.getByRole('button', { name: 'Approve once' }) as HTMLButtonElement)
       .disabled,
   ).toBe(true);
+  await act(async () => {
+    window.dispatchEvent(new Event('online'));
+  });
+  await waitFor(() => expect(reads).toBeGreaterThanOrEqual(2));
+  expect(
+    fetch.mock.calls.filter((call) => call[1]?.method === 'POST'),
+  ).toHaveLength(1);
 });
 
 test("the tray row answers an exact request inline and never through the notification's own action", async () => {

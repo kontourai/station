@@ -506,14 +506,34 @@ describe('ChatDockBody stale busy wait', () => {
     expect(chatInputPropsMock.current?.turnInFlight).toBe(false);
   });
 
-  test('a busy wait with no turn in flight offers Check again', () => {
-    const onRetryConversationOpen = vi.fn();
-    renderDock({ onRetryConversationOpen });
-    expect(
-      screen.getByText(/waiting for the active turn to finish/i),
-    ).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Check again' }));
-    expect(onRetryConversationOpen).toHaveBeenCalledOnce();
+  test('a busy wait with no turn in flight reconciles in the background and falls back to Check again after exhaustion', async () => {
+    vi.useFakeTimers();
+    try {
+      const onRetryConversationOpen = vi.fn();
+      renderDock({ onRetryConversationOpen });
+      expect(
+        screen.queryByText(/waiting for the active turn to finish/i),
+      ).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Check again' })).toBeNull();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_500);
+      });
+      expect(onRetryConversationOpen).toHaveBeenCalledTimes(1);
+      expect(screen.queryByRole('button', { name: 'Check again' })).toBeNull();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(9_000);
+      });
+      expect(onRetryConversationOpen).toHaveBeenCalledTimes(3);
+      expect(
+        screen.getByText(/waiting for the active turn to finish/i),
+      ).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: 'Check again' }));
+      expect(onRetryConversationOpen).toHaveBeenCalledTimes(4);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   // A chat reopened mid-turn resolves `busy`, but its open turn is live: the
