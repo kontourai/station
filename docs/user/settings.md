@@ -239,6 +239,7 @@ only when this Station's build can run it; if none is, the section says
 | `plugin-recovery-inventory` | Plugin recovery inventory | Enables the operator's retained plugin backup listing and manual recovery guidance. | The listing reveals local backup paths to the operator; it does not restore backups. |
 | `browser-artifacts` | Browser artifacts | Enables Browser annotation, chat attachment, recording and network diagnostics. | Images and clips can contain page content; recording uses FFmpeg and temporary storage; network query values are redacted. |
 | `walkthroughs` | Walkthroughs | Imports narrated recordings and enables Task-bound Browser and Device clips. | One-time consented media/speech tool download; CPU use; recordings may contain private information. |
+| `device-access-chat-approval` | Device access requests in chat | Lets an agent ask the Station operator in chat to allow agent control of simulators and emulators. | Approval enables agent device control and installs the pinned agent-device version from npm. Requests expire after ten minutes. |
 | `device-developer-loop` | Device developer loop | Enables app-filtered logs, Device clips and agent-open auto-float. | Device clips also require Walkthroughs; logs and recordings may contain private information. |
 | `local-speech` | Local speech | Offers Station (local) in Voice → Speech-to-text: record a message, then transcribe it on this Station. | One-time consented tool/model download; English batch dictation only; microphone permission; shares one recognizer and a bounded wait queue with Walkthroughs. |
 | `chat-host-images` | Chat images from the host | On by default. Shows images an agent saves on this Station and names by absolute path in its reply, on any device, and tells agents where to save them. | Station copies each admitted image (up to 5 per reply, 512 KiB each) into the chat's attachment storage; engines started while it is on get a per-session temporary folder. |
@@ -469,7 +470,15 @@ Browser's **⋯ › Browser settings…** opens it on that Browser's Project.
   some, and nothing is shared until you choose it. Shared servers appear as
   buttons on an empty Browser.
 - **Open device setup** opens the device setup wizard: the device helper,
-  sharing devices with Projects, and agent device access.
+  sharing devices with Projects, and agent device access. You can [go directly
+  to the Device setup row](/settings?view=advanced&highlight=device-setup).
+
+With **Device access requests in chat** enabled in Feature previews, an agent
+can call `request_device_agent_access` to ask for access. In chat, the Station
+operator can choose **Allow and install** to turn on agent device access and
+install the displayed version of `agent-device` from npm. The operator can
+also choose **Decline** or leave the request to expire after ten minutes.
+The agent can check the outcome using the proposal ID.
 
 ## Device hosts
 

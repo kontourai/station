@@ -31,6 +31,7 @@ import { isMobileDeviceHostId } from '@kontourai/station-contracts/mobile-device
 import { Hono } from 'hono';
 import { readBoundedRequestBody } from '../security/bounded-request-body.js';
 import { isValidBrowserProjectId } from '../services/browser/browser-session-registry.js';
+import type { DeviceAccessProposals } from '../services/devices/device-access-proposals.js';
 import {
   type DeviceAccessDeps,
   type DeviceCaller,
@@ -53,6 +54,7 @@ import {
   DeviceToolNotConsentedError,
 } from '../services/devices/toolchain/device-toolchain-service.js';
 import { isValidMobileDeviceId } from '../services/mobile-device/mobile-device-host.js';
+import { isNonPersonCaller } from './plugins/plugin-person-approval.js';
 
 const MAX_BODY_BYTES = 16 * 1024;
 const HUB_PATH = /^\/hosts\/([^/]+)\/hub(\/.*)$/;
@@ -79,6 +81,8 @@ export interface DeviceToolchainRoutesDeps {
     | 'startHub'
     | 'ensureHub'
   >;
+  accessProposals?: DeviceAccessProposals;
+  accessProposalsEnabled?: () => boolean;
   /** D12: operator, Project admin authorizers and the share list. */
   access: DeviceAccessDeps;
   shares: Pick<DeviceShareStore, 'list' | 'add' | 'remove'>;
@@ -345,8 +349,40 @@ export function createDeviceToolchainRoutes(deps: DeviceToolchainRoutesDeps) {
     return c.json({ success: true, data: await deps.service.status() }, 202);
   });
 
+  const mayDecideAgentAccess = async (request: Request) =>
+    !isNonPersonCaller(request) &&
+    (await isOperator(request)) &&
+    deps.isRequestPrincipalCurrent(request);
+
+  app.get('/toolchain/agent-access-proposals/:id', async (c) => {
+    if (!deps.accessProposals || !deps.accessProposalsEnabled?.())
+      return c.json({ success: false, code: 'unavailable' }, 404);
+    if (!(await mayDecideAgentAccess(c.req.raw))) return c.json(denied, 403);
+    const proposal = deps.accessProposals.read(c.req.param('id'));
+    return proposal
+      ? c.json({ success: true, data: proposal })
+      : c.json({ success: false, code: 'proposal-unavailable' }, 404);
+  });
+
+  app.post('/toolchain/agent-access-proposals/:id', async (c) => {
+    if (!deps.accessProposals || !deps.accessProposalsEnabled?.())
+      return c.json({ success: false, code: 'unavailable' }, 404);
+    if (!(await mayDecideAgentAccess(c.req.raw))) return c.json(denied, 403);
+    const body = await readJsonObject(c.req.raw, ['decision']);
+    if (body?.decision !== 'approve' && body?.decision !== 'decline')
+      return c.json(invalid, 400);
+    if (!deps.isRequestPrincipalCurrent(c.req.raw)) return c.json(denied, 403);
+    const proposal = deps.accessProposals.decide(
+      c.req.param('id'),
+      body.decision,
+    );
+    return proposal
+      ? c.json({ success: true, data: proposal })
+      : c.json({ success: false, code: 'proposal-unavailable' }, 404);
+  });
+
   app.post('/toolchain/agent-access', async (c) => {
-    if (!(await isOperator(c.req.raw))) return c.json(denied, 403);
+    if (!(await mayDecideAgentAccess(c.req.raw))) return c.json(denied, 403);
     const body = await readJsonObject(c.req.raw, ['enabled', 'consent']);
     if (!body || typeof body.enabled !== 'boolean') return c.json(invalid, 400);
     if (body.enabled && body.consent !== true)

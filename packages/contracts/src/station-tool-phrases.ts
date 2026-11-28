@@ -102,6 +102,7 @@ const listed = (object: string) => entry(...LISTED, fixed(object));
 
 const STATION_TOOL_PHRASES: Readonly<Record<string, PhraseEntry>> = {
   // Devices
+  request_device_agent_access: listed('devices'),
   device_list: listed('devices'),
   device_open: entry('Opened', 'Opening', 'Open', fixed('a device')),
   device_screenshot: entry(

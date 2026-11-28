@@ -1,3 +1,4 @@
+import { DEVICE_SETUP_SETTINGS_PATH } from '@kontourai/station-contracts/device-toolchain';
 import type { MobileDeviceTarget } from '@kontourai/station-contracts/mobile-device';
 import { browserAgentCallerRefusal } from '../../tools/station-control-browser-tools.js';
 import type { StationControlCaller } from '../../tools/station-control-shared.js';
@@ -20,13 +21,22 @@ export interface DeviceAgentAccessDeps {
 }
 
 /** Re-resolve the verified caller and membership; tool arguments supply no identity. */
-export async function authorizeDeviceAgentCaller(deps: DeviceAgentAccessDeps) {
+export async function authorizeDeviceAgentCaller(
+  deps: DeviceAgentAccessDeps,
+  purpose: 'control' | 'request-access' = 'control',
+) {
   const caller = deps.resolveCaller();
   const refusal = browserAgentCallerRefusal(caller);
   if (refusal || !caller)
     return { ok: false as const, code: refusal?.code ?? 'caller-required' };
-  if (!deps.agentAccessEnabled())
-    return { ok: false as const, code: 'agent-access-disabled' };
+  if (purpose === 'control' && !deps.agentAccessEnabled())
+    return {
+      ok: false as const,
+      code: 'agent-access-disabled',
+      message:
+        'Use request_device_agent_access to ask the Station operator, or have the operator open Device setup in Settings.',
+      settingsPath: DEVICE_SETUP_SETTINGS_PATH,
+    };
   const principalId = caller.principal!.id;
   const projectId = caller.localProjectId!;
   const actor = await deps.authorizePrincipal(principalId, projectId);
@@ -39,7 +49,7 @@ export async function authorizeDeviceAgentCaller(deps: DeviceAgentAccessDeps) {
     fresh.principal?.id !== principalId ||
     fresh.localProjectId !== projectId ||
     fresh.conversationId !== caller.conversationId ||
-    !deps.agentAccessEnabled()
+    (purpose === 'control' && !deps.agentAccessEnabled())
   )
     return { ok: false as const, code: 'not-authorized' };
   return {

@@ -4,6 +4,7 @@ import { isMobileDeviceHostId } from '@kontourai/station-contracts/mobile-device
 import { parseTaskReviewCreateCaptureRequest } from '@kontourai/station-contracts/task-review';
 import { Hono } from 'hono';
 import { readBoundedRequestBody } from '../security/bounded-request-body.js';
+import type { DeviceAccessProposals } from '../services/devices/device-access-proposals.js';
 import {
   authorizeDeviceAgentCaller,
   type DeviceAgentAccessDeps,
@@ -35,6 +36,8 @@ export interface DeviceAgentRoutesDeps
   isInternalRequest(request: Request): boolean;
   resolveCaller(request: Request): StationControlCaller | null;
   automation: DeviceAutomation;
+  accessProposals?: DeviceAccessProposals;
+  accessProposalsEnabled?: () => boolean;
   /**
    * #4769: whether the calling session's start ran with a restricted
    * network. A device drives a simulator, emulator or phone that has its own
@@ -74,6 +77,40 @@ export function createDeviceAgentRoutes(deps: DeviceAgentRoutesDeps) {
               : 'device-error',
     }),
   );
+  app.post('/request-access', async (c) => {
+    if (!deps.accessProposals || !deps.accessProposalsEnabled?.())
+      return c.json({ ok: false, code: 'unavailable' });
+    const body = await readBoundedRequestBody(c.req.raw, 1024);
+    if (body.status !== 'ok')
+      return c.json({ ok: false, code: 'invalid-request' });
+    let input: unknown;
+    try {
+      input = JSON.parse(body.body || '{}');
+    } catch {
+      return c.json({ ok: false, code: 'invalid-request' });
+    }
+    if (!input || typeof input !== 'object' || Array.isArray(input))
+      return c.json({ ok: false, code: 'invalid-request' });
+    const { proposalId } = input as Record<string, unknown>;
+    const caller = await authorizeDeviceAgentCaller(
+      { ...deps, resolveCaller: () => deps.resolveCaller(c.req.raw) },
+      'request-access',
+    );
+    if (!caller.ok) return c.json(caller);
+    if (!deps.accessProposalsEnabled())
+      return c.json({ ok: false, code: 'unavailable' });
+    const owner = caller.authority;
+    if (proposalId === undefined)
+      return c.json(deps.accessProposals.propose(owner));
+    if (typeof proposalId !== 'string')
+      return c.json({ ok: false, code: 'invalid-request' });
+    const proposal = deps.accessProposals.read(proposalId, owner);
+    return c.json(
+      proposal
+        ? { ok: true, proposal }
+        : { ok: false, code: 'proposal-unavailable' },
+    );
+  });
   app.post('/:operation', async (c) => {
     const access = {
       ...deps,

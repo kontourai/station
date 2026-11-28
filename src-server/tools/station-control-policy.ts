@@ -366,6 +366,7 @@ const DEVICE_AGENT = {
 } as const satisfies StationControlToolPolicy;
 
 export const STATION_CONTROL_TOOL_POLICY = {
+  request_device_agent_access: DEVICE_AGENT,
   device_list: DEVICE_AGENT,
   device_open: DEVICE_AGENT,
   device_screenshot: DEVICE_AGENT,

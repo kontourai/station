@@ -4,6 +4,7 @@ import {
   DEFAULT_NOTIFICATION_SOUND_PREFERENCES,
   DEVICE_SETTINGS_REGISTRY,
 } from '@kontourai/station-contracts/device-settings';
+import { DEVICE_SETUP_SETTINGS_PATH } from '@kontourai/station-contracts/device-toolchain';
 import type {
   TelemetryChoiceCapabilities,
   TelemetryTierChoices,
@@ -345,10 +346,11 @@ vi.mock('@kontourai/station-sdk', async () => {
 });
 const updateAppLogLevel = vi.fn();
 vi.mock('@kontourai/station-sdk/app-config', () => ({ updateAppLogLevel }));
+let deviceSetupScope: { apiBase: string; authorityKey: string } | null = null;
 vi.mock('../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://station.test' }),
   // This catalog fixture has no request-scoped account administration authority.
-  useHostRequestAuthorityScope: () => null,
+  useHostRequestAuthorityScope: () => deviceSetupScope,
 }));
 const updateConfig = vi.fn();
 const INITIAL_CONFIG = { logLevel: 'info', templateVariables: [] };
@@ -1716,6 +1718,34 @@ describe('settings catalog completeness', () => {
         .querySelector('#core-app-updates')
         ?.classList.contains('settings__highlight-pulse'),
     ).toBe(true);
+  });
+
+  test('the device setup link scrolls to the row with Open device setup', async () => {
+    const scroll = vi.fn();
+    Element.prototype.scrollIntoView = scroll;
+    deviceSetupScope = {
+      apiBase: 'http://station.test',
+      authorityKey: 'device-setup',
+    };
+    try {
+      window.history.replaceState({}, '', DEVICE_SETUP_SETTINGS_PATH);
+      const { SettingsView } = await import('../views/SettingsView');
+      render(
+        <QueryClientProvider client={new QueryClient()}>
+          <SettingsView onBack={vi.fn()} />
+        </QueryClientProvider>,
+      );
+      const button = await screen.findByRole('button', {
+        name: 'Open device setup',
+      });
+      const row = button.closest('#device-setup');
+      expect(row).not.toBeNull();
+      await waitFor(() => expect(document.activeElement).toBe(row));
+      expect(scroll.mock.instances).toContain(row);
+      expect(window.location.search).toBe('?view=browser-devices');
+    } finally {
+      deviceSetupScope = null;
+    }
   });
 
   test('the desktop-only update row deep-links and pulses when desktop', async () => {

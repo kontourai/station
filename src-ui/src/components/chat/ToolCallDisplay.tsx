@@ -65,6 +65,11 @@ import {
 } from './bounded-tool-result';
 import { ClaudeArtifactCard } from './ClaudeArtifactCard';
 import { claudeArtifactLinkOf } from './claude-artifact-link';
+import { DeviceAccessProposalCard } from './DeviceAccessProposalCard';
+import {
+  deviceAccessProposalId,
+  isDeviceAccessProposalCall,
+} from './device-access-proposal-result';
 import { DecisionActionRow, DecisionButtons } from './InputRequestDecision';
 import { LoadFullContent } from './LoadFullContent';
 import { transcriptMcpToolRef } from './mcp-app-tool-ref';
@@ -1389,6 +1394,26 @@ function ToolCallDisplayComponent(
                   componentProps={{ proposal, sessionId: props.sessionId }}
                 />
               )}
+            </>
+          );
+        }}
+      </LoadFullContent>
+    );
+  }
+  if (isDeviceAccessProposalCall(props.toolCall)) {
+    return (
+      <LoadFullContent
+        threadId={props.toolCall.contentThreadId}
+        value={{ output: props.toolCall.output ?? props.toolCall.result }}
+      >
+        {(full) => {
+          const id = deviceAccessProposalId(
+            full?.output ?? props.toolCall.output ?? props.toolCall.result,
+          );
+          return (
+            <>
+              <ToolCallRow {...props} />
+              {id && <DeviceAccessProposalCard key={id} id={id} />}
             </>
           );
         }}

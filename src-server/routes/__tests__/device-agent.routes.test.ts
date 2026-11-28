@@ -3,6 +3,7 @@ import { realpath, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { MobileDeviceInventory } from '@kontourai/station-contracts/mobile-device';
 import { McpServer } from '@modelcontextprotocol/server';
+import { Hono } from 'hono';
 import { afterEach, expect, test, vi } from 'vitest';
 import { ZipFile } from 'yazl';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
@@ -12,6 +13,7 @@ import {
   revokeStationControlMcpToken,
 } from '../../runtime/mcp/station-control-mcp-token.js';
 import { createBrowserPrincipalAuthorizer } from '../../services/browser/browser-agent-authority.js';
+import { DeviceAccessProposals } from '../../services/devices/device-access-proposals.js';
 import {
   authorizeDeviceAgentCaller,
   mintDeviceAgentGrant,
@@ -25,6 +27,13 @@ import {
 } from '../../services/devices/device-tools.js';
 import type { DeviceInstallOutcome } from '../../services/devices/hosts/device-app-install.js';
 import {
+  syntheticPins,
+  syntheticTool,
+  writeFakeInstall,
+} from '../../services/devices/toolchain/__tests__/fake-tool-install.js';
+import { DeviceToolchain } from '../../services/devices/toolchain/device-toolchain.js';
+import { DeviceToolchainService } from '../../services/devices/toolchain/device-toolchain-service.js';
+import {
   claimAgentControl,
   claimHumanControl,
   LiveSurfaceRegistry,
@@ -36,6 +45,7 @@ import {
   withStationControlCallerContext,
 } from '../../tools/station-control-shared.js';
 import { createDeviceAgentRoutes } from '../device-agent.js';
+import { createDeviceToolchainRoutes } from '../device-toolchain.js';
 import { createDeviceToolsRoutes } from '../device-tools.js';
 import { createMobileDeviceRoutes } from '../mobile-device.js';
 
@@ -69,6 +79,7 @@ function harness(
     operatorDevice?: boolean;
     /** #4769: what the route reads for the calling session's network. */
     networkRestricted?: (sessionId: string) => boolean;
+    consentService?: DeviceToolchainService;
   } = {},
 ) {
   const sessionId = `device-test-${Math.random()}`;
@@ -77,6 +88,7 @@ function harness(
   let active = true;
   let enabled = true;
   let loopEnabled = true;
+  let accessPreview = false;
   let operator = options.operator === true;
   let operatorDevice = options.operatorDevice === true;
   let principalId = 'admin';
@@ -313,7 +325,8 @@ function harness(
         : undefined,
   });
   const access = {
-    agentAccessEnabled: () => enabled,
+    agentAccessEnabled: () =>
+      options.consentService?.agentAccessEnabled() ?? enabled,
     resolveCaller: () =>
       callingSession === sessionId
         ? caller()
@@ -348,7 +361,16 @@ function harness(
     },
     resolveAndroidAvd: async () => 'Test',
   };
+  const proposals =
+    options.consentService && new DeviceAccessProposals(options.consentService);
+  const proposalOptions = proposals
+    ? {
+        accessProposals: proposals,
+        accessProposalsEnabled: () => accessPreview,
+      }
+    : {};
   const routes = createDeviceAgentRoutes({
+    ...proposalOptions,
     deviceLoopEnabled: () => loopEnabled,
     ...access,
     isInternalRequest: () => true,
@@ -383,6 +405,28 @@ function harness(
         }
       : {}),
   });
+  const operatorRoutes =
+    options.consentService &&
+    new Hono().route(
+      '/api/mobile-devices',
+      createDeviceToolchainRoutes({
+        ...proposalOptions,
+        service: options.consentService,
+        access: {
+          authorizeOperator: async (request) =>
+            request.headers.get('authorization') === 'Bearer operator',
+          authorizeProject: async () => ({
+            kind: 'project-admin',
+            principalId: 'admin',
+          }),
+          resolveProject: () => ({ id: 'project' }),
+          shares: access.shares,
+        },
+        shares: { list: () => [], add: vi.fn(), remove: vi.fn() },
+        listProjects: () => [],
+        isRequestPrincipalCurrent: () => true,
+      }),
+    );
   const humanDevices = createMobileDeviceRoutes(host, {
     isRequestPrincipalCurrent: () => active,
     access: {
@@ -473,6 +517,25 @@ function harness(
   });
   return {
     run,
+    setAccessPreview: () => {
+      accessPreview = true;
+    },
+    decideAccess: (
+      id: string,
+      credential: string,
+      decision: 'approve' | 'decline',
+    ) =>
+      operatorRoutes!.request(
+        `/api/mobile-devices/toolchain/agent-access-proposals/${id}`,
+        {
+          method: 'POST',
+          headers: {
+            authorization: `Bearer ${credential}`,
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({ decision }),
+        },
+      ),
     humanDevices,
     raw: (operation: string, body: unknown) =>
       routes.request(`/${operation}`, {
@@ -1772,4 +1835,79 @@ test('agent history records failed when authorization fails before app dispatch'
   expect(h.sessions.actionHistory(id)).toContainEqual(
     expect.objectContaining({ action: 'launch', outcome: 'failed' }),
   );
+});
+
+test('device access requests require operator consent and report approval, decline and expiration', async () => {
+  const stationHome = await makeTempDir('station-device-approval-');
+  const runInstall = vi.fn(async ({ dir }: { dir: string }) => {
+    writeFakeInstall(dir, syntheticTool('agent-device'));
+  });
+  const toolchain = new DeviceToolchain({
+    stationHome,
+    pins: syntheticPins(),
+    installer: { run: runInstall },
+  });
+  const service = new DeviceToolchainService({
+    stationHome,
+    toolchain,
+    probePlatforms: async () => [],
+  });
+  disposals.push(() => service.shutdown());
+  const h = harness('sdk-in-process', { consentService: service });
+  const request = async (proposalId?: string) =>
+    parsed(
+      await h.run(
+        'request_device_agent_access',
+        proposalId ? { proposalId } : {},
+      ),
+    );
+
+  expect(await request()).toMatchObject({ ok: false, code: 'unavailable' });
+  h.setAccessPreview();
+  expect(parsed(await h.run('device_list'))).toMatchObject({
+    ok: false,
+    code: 'agent-access-disabled',
+    message: expect.stringContaining('request_device_agent_access'),
+    settingsPath: '/settings?view=advanced&highlight=device-setup',
+  });
+
+  const first = (await request()).proposal;
+  expect(first).toMatchObject({
+    state: 'pending',
+    version: toolchain.pin('agent-device').version,
+  });
+  expect((await h.decideAccess(first.id, 'admin', 'approve')).status).toBe(403);
+  expect((await h.decideAccess(first.id, 'operator', 'decline')).status).toBe(
+    200,
+  );
+  expect(await request(first.id)).toMatchObject({
+    proposal: { state: 'declined' },
+  });
+
+  vi.useFakeTimers({ toFake: ['Date'] });
+  const second = (await request()).proposal;
+  vi.setSystemTime(second.expiresAt);
+  expect(await request(second.id)).toMatchObject({
+    proposal: { state: 'expired' },
+  });
+  expect(
+    (await (await h.decideAccess(second.id, 'operator', 'approve')).json()).data
+      .state,
+  ).toBe('expired');
+  expect(service.agentAccessEnabled()).toBe(false);
+  expect(runInstall).not.toHaveBeenCalled();
+
+  const third = (await request()).proposal;
+  expect((await h.decideAccess(third.id, 'operator', 'approve')).status).toBe(
+    200,
+  );
+  expect(await request(third.id)).toMatchObject({
+    proposal: { state: 'approved' },
+  });
+  expect(await request()).toEqual({ ok: true, state: 'already-enabled' });
+  expect(parsed(await h.run('device_list'))).toMatchObject({ ok: true });
+  await vi.waitFor(() => {
+    expect(runInstall).toHaveBeenCalledTimes(1);
+    expect(toolchain.installedEntry('agent-device')).toBeDefined();
+  });
 });

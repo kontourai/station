@@ -1,3 +1,4 @@
+import { DEVICE_SETUP_SETTINGS_PATH } from '@kontourai/station-contracts/device-toolchain';
 import { TASK_REVIEW_LIMITS } from '@kontourai/station-contracts/task-review';
 import { z } from 'zod';
 import type { StationControlToolRegistry } from './station-control-mcp-server.js';
@@ -11,7 +12,11 @@ async function callDevice(operation: string, body: Record<string, unknown>) {
     });
     if (typeof result?.ok !== 'boolean')
       return jsonToolResult(
-        { ok: false, code: 'unavailable' },
+        {
+          ok: false,
+          code: 'unavailable',
+          settingsPath: DEVICE_SETUP_SETTINGS_PATH,
+        },
         { failed: true },
       );
     if (result.ok && result.screenshot) {
@@ -50,6 +55,13 @@ async function callDevice(operation: string, body: Record<string, unknown>) {
 }
 
 export function registerDeviceTools(registry: StationControlToolRegistry) {
+  registry.tool(
+    'request_device_agent_access',
+    'Ask the Station operator in chat to allow agent control of simulators and emulators. Omit proposalId to request approval, or pass the returned ID later to see whether the operator approved or declined, or the request expired. Requires the Device access requests in chat Feature Preview. If access is already on, returns immediately.',
+    { proposalId: z.string().uuid().optional() },
+    async (args) => callDevice('request-access', args),
+    { replay: 'unsafe' },
+  );
   const deviceSessionId = z
     .string()
     .min(1)
