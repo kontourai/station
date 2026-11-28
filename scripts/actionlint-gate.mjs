@@ -509,11 +509,11 @@ export const CHECKOUT_ACTION =
 export const SETUP_NODE_ACTION =
   'actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1';
 export const CODEQL_INIT_ACTION =
-  'github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066';
+  'github/codeql-action/init@1bd86f2fdb4b86187fa4059f16f31a3202acc9ea';
 export const CODEQL_ANALYZE_ACTION =
-  'github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066';
+  'github/codeql-action/analyze@1bd86f2fdb4b86187fa4059f16f31a3202acc9ea';
 export const DEPENDENCY_REVIEW_ACTION =
-  'actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294';
+  'actions/dependency-review-action@bbc44d14a204704ccc493733616cd1e93a0321ec';
 export const WINDOWS_PR_EVIDENCE_UPLOAD_ACTION =
   'actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9';
 const WINDOWS_PR_WORKFLOW = '.github/workflows/windows-pr-verification.yml';
@@ -538,7 +538,7 @@ const WINDOWS_PR_EVIDENCE_PATHS =
  * written down is not. Landing a bump is now one deliberate edit here.
  */
 export const PNPM_SETUP_ACTION =
-  'pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e';
+  'pnpm/setup@731dfb6463bbd11c11fd0ee11fe00ed0e36d48a1';
 // Reviewed fixed source: npm signature plus pinned SHA512, no dependency install or cache.
 export const VERIFIED_PNPM_SETUP_ACTION =
   'kontourai/station/.github/actions/setup-verified-pnpm@382b4af65e5f8bc5e3d62bd64ef1eba8653af50f';
@@ -813,7 +813,7 @@ const UNTRUSTED_ACTION_CACHE_POLICY = Object.freeze({
   // trusted-base topology separately owns its credential admission.
   'actions/create-github-app-token': (step) =>
     step.uses ===
-    'actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510'
+    'actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc'
       ? []
       : [UNREVIEWED_CACHE_ACTION_MESSAGE],
   'actions/upload-artifact': noCacheFindings,
