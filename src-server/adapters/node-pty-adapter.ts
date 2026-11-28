@@ -28,6 +28,9 @@ import { terminatePtyProcessGroups } from './pty-process-groups.js';
 
 const logger = createLogger({ name: 'node-pty-adapter' });
 
+type TaskkillFailure = Error &
+  Pick<ExecFileException, 'code' | 'signal' | 'killed'>;
+
 let nodePtyPromise: Promise<typeof import('node-pty')> | null = null;
 let didFixSpawnHelper = false;
 
@@ -275,7 +278,7 @@ class NodePtyProcess implements IPtyProcess {
         stderr: '',
       };
       this.taskkillReceipt = receipt;
-      const failure = await new Promise<ExecFileException | null>((resolve) => {
+      const failure = await new Promise<TaskkillFailure | null>((resolve) => {
         receipt.command = windowsSystemUtilityPath('taskkill');
         const helper = execFile(
           receipt.command,
@@ -304,7 +307,7 @@ class NodePtyProcess implements IPtyProcess {
           );
         });
       }).catch(
-        (error: unknown): ExecFileException =>
+        (error: unknown): TaskkillFailure =>
           error instanceof Error ? error : new Error(String(error)),
       );
       this.trace.taskkillDone = Date.now();
