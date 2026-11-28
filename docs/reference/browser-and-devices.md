@@ -740,8 +740,9 @@ chat. Approval enables access and starts installing the displayed
 `agent-device` version from npm. Use the proposal ID to check for
 `approved`, `declined`, or `expired`. Requests expire after ten minutes
 and are cleared on Station restart. An already-enabled Station returns
-`already-enabled` without creating a request.
-
+`already-enabled` without creating a request. A Session with a restricted
+network can submit or check the proposal. Device control still requires an
+unrestricted Session.
 
 `device_list` lists accessible local and configured SSH-host devices and sessions opened by this
 conversation. `device_open` starts a stopped device asynchronously (a `starting`

@@ -57,7 +57,7 @@ async function callDevice(operation: string, body: Record<string, unknown>) {
 export function registerDeviceTools(registry: StationControlToolRegistry) {
   registry.tool(
     'request_device_agent_access',
-    'Ask the Station operator in chat to allow agent control of simulators and emulators. Omit proposalId to request approval, or pass the returned ID later to see whether the operator approved or declined, or the request expired. Requires the Device access requests in chat Feature Preview. If access is already on, returns immediately.',
+    'Ask the Station operator in chat to allow agent device control. Pass proposalId to check the decision. Returns immediately if access is already on.',
     { proposalId: z.string().uuid().optional() },
     async (args) => callDevice('request-access', args),
     { replay: 'unsafe' },

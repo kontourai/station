@@ -6,6 +6,7 @@ import { McpServer } from '@modelcontextprotocol/server';
 import { Hono } from 'hono';
 import { afterEach, expect, test, vi } from 'vitest';
 import { ZipFile } from 'yazl';
+import { readJson } from '../../__test-utils__/read-json.js';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { resolveStationControlCallerFromToken } from '../../runtime/mcp/station-control-caller.js';
 import {
@@ -1895,10 +1896,11 @@ test('device access requests require operator consent and report approval, decli
   expect(await request(second.id)).toMatchObject({
     proposal: { state: 'expired' },
   });
-  expect(
-    (await (await h.decideAccess(second.id, 'operator', 'approve')).json()).data
-      .state,
-  ).toBe('expired');
+  const lateApproval = await h.decideAccess(second.id, 'operator', 'approve');
+  expect(await readJson(lateApproval)).toMatchObject({
+    success: true,
+    data: { state: 'expired' },
+  });
   expect(service.agentAccessEnabled()).toBe(false);
   expect(runInstall).not.toHaveBeenCalled();
 

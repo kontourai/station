@@ -1,4 +1,4 @@
-import { stationToolOf } from '@kontourai/station-contracts/station-tool-identity';
+import { stationToolOf } from '@kontourai/station-contracts/station-tool-phrases';
 
 export function isDeviceAccessProposalCall(call: {
   server?: string;

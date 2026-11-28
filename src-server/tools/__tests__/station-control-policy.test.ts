@@ -1218,8 +1218,18 @@ describe('#4769: the tools a restricted session keeps', () => {
 
   test('the served list follows an Agent selection, and a withheld route is the device, preview or settings route', () => {
     expect(
-      restrictedNetworkStationControlTools(['task_record', 'device_open']),
-    ).toEqual(['task_record']);
+      restrictedNetworkStationControlTools([
+        'task_record',
+        'request_device_agent_access',
+        'device_open',
+      ]),
+    ).toEqual(['task_record', 'request_device_agent_access']);
+    expect(
+      restrictedNetworkRouteWithheld(
+        'POST',
+        '/api/device-agent/request-access',
+      ),
+    ).toBe(false);
     expect(restrictedNetworkStationControlTools()).not.toContain('device_open');
     expect(
       restrictedNetworkRouteWithheld('POST', '/api/device-agent/open'),
