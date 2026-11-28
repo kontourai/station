@@ -339,7 +339,9 @@ describe('account preference HTTP persistence', () => {
       { 'x-test-person': 'other' },
       { 'x-test-tenant': 'other' },
     ]) {
-      const other = await (await f.call(undefined, header)).json();
+      const other = (await (await f.call(undefined, header)).json()) as {
+        data: { values: Record<string, unknown> };
+      };
       expect(other.data.values).toEqual({});
     }
     const reset = await f.call({
@@ -347,7 +349,10 @@ describe('account preference HTTP persistence', () => {
       interactiveApprovalModes: { opencode: null },
     });
     expect(reset.status).toBe(200);
-    const resetValues = (await reset.json()).data.values;
+    const resetBody = (await reset.json()) as {
+      data: { values: Record<string, unknown> };
+    };
+    const resetValues = resetBody.data.values;
     expect(resetValues.interactiveApprovalModes).toEqual({
       codex: 'auto',
       claude: 'ask',
