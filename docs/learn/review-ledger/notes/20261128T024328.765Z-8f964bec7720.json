@@ -1,0 +1,7 @@
+{
+  "revision": "475aa08ec4ac923f10e1558535832b3584573086",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed 475aa08ec4 switching-profile changes against the coverage-map representative browser-owner claims and campaign evidence boundaries. The initial conversation now requires authoritative /open-derived session identity and readable transcript; every measured destination requires the expected chat URL and distinct readable text before the next switch. Independent report-only review resolved the previously unobserved Running-leg completion gap. This remains fixture-backed browser readable-destination evidence, not network quiescence, fresh provider reads, physical mobile or a performance verdict. No guide prose change is needed; runtime/profile validation is pending and earlier profile timings are not equivalent to this strengthened workload.","inputs":["tests/mobile-chat-composer.spec.ts"]}
+  ]
+}
