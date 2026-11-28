@@ -69,7 +69,7 @@ jobs:
           sudo xcode-select -s /Applications/Xcode_26.6.app/Contents/Developer
           xcodebuild -version
       - if: steps.lookup.outputs.cache-hit != 'true'
-        run: brew install xcodegen
+        run: brew install xcodegen libimobiledevice cocoapods
       - if: steps.lookup.outputs.cache-hit != 'true'
         run: npm run dependencies:ci && npm run build:native-client
       - if: steps.lookup.outputs.cache-hit != 'true'
