@@ -109,7 +109,7 @@ function renderComposer(
 }
 
 describe('ChatInputArea: one capability contract while a turn runs', () => {
-  test('unavailable steering stays disabled and explains the missing host profile', async () => {
+  test('unavailable steering explains the missing host profile and keeps Queue selected', async () => {
     renderComposer({
       // The picker is a choice about a draft; it appears once there is one.
       input: 'A follow-up',
@@ -120,9 +120,9 @@ describe('ChatInputArea: one capability contract while a turn runs', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Send mode: Queue' }));
     expect(
       (
-        (await screen.findByRole('button', {
+        await screen.findByRole<HTMLButtonElement>('button', {
           name: 'Steer this turn',
-        })) as HTMLButtonElement
+        })
       ).disabled,
     ).toBe(true);
     expect(

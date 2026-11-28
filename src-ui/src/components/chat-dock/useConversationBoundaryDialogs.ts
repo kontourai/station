@@ -59,7 +59,9 @@ export function useConversationBoundaryDialogs({
   forkScope?: string;
   forkViewId?: string;
 }) {
-  const handoffReturnFocusRef = useRef<HTMLButtonElement | null>(null);
+  const handoffReturnFocusRef = useRef<
+    HTMLButtonElement | HTMLTextAreaElement | null
+  >(null);
   const [handoffSource, setHandoffSource] = useState<{
     id: string;
     agentSlug: string;
@@ -253,7 +255,7 @@ export function useConversationBoundaryDialogs({
               : undefined;
 
   const openConversationHandoff = useCallback(
-    (returnFocusTarget: HTMLButtonElement | null) => {
+    (returnFocusTarget: HTMLButtonElement | HTMLTextAreaElement | null) => {
       if (!activeSession?.conversationId) return;
       handoffReturnFocusRef.current = returnFocusTarget;
       setHandoffSource({
@@ -266,11 +268,14 @@ export function useConversationBoundaryDialogs({
   );
 
   const openExecutionHandoff = useCallback(
-    (model?: SelectableModel) => {
+    (
+      model?: SelectableModel,
+      returnFocusTarget?: HTMLTextAreaElement | null,
+    ) => {
       if (!activeSession?.conversationId) return;
       // The engine picker owns no button to return to; the dialog returns
       // focus to the composer instead.
-      handoffReturnFocusRef.current = null;
+      handoffReturnFocusRef.current = returnFocusTarget ?? null;
       setHandoffSource({
         id: activeSession.conversationId,
         agentSlug: activeSession.agentSlug,
