@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { ChildProcess, execFile, spawn } from 'node:child_process';
 import {
   existsSync,
   mkdirSync,
@@ -21,6 +21,11 @@ import {
   windowsBirthMicroseconds,
 } from '../process-utils.js';
 
+vi.mock('node:child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:child_process')>();
+  return { ...actual, execFile: vi.fn(actual.execFile) };
+});
+
 /**
  * #3873: the owned-process registry on Windows. Node reports synthetic POSIX
  * modes there (a writable directory reads 0o666), so the POSIX trust rule
@@ -35,6 +40,7 @@ const platform = Object.getOwnPropertyDescriptor(process, 'platform')!;
 afterEach(() => {
   Object.defineProperty(process, 'platform', platform);
   vi.unstubAllEnvs();
+  vi.mocked(execFile).mockReset();
 });
 
 function simulateWindows(): { localAppData: string; registryDir: string } {
@@ -255,41 +261,103 @@ describe('Windows owned-process registry (#3873)', () => {
     }
   });
 
-  test('retains the record when the process table cannot be read', async () => {
-    const { registryDir } = simulateWindows();
-    mkdirSync(registryDir, { recursive: true });
-    const enginePid = 2_000_000_020;
-    const file = join(registryDir, `engine-${enginePid}.json`);
-    writeFileSync(
-      file,
-      `${JSON.stringify({
-        schemaVersion: 1,
-        enginePid,
-        engineBirth: ENGINE_BIRTH,
-        owner: {
-          pid: 2_000_000_019,
-          instanceId: 'g',
-          bootId: 'g',
-          birth: null,
-        },
-        command: 'engine',
-        spawnedAt: '2026-10-31T10:00:00Z',
-      })}\n`,
-    );
-    const killWindowsProcesses = vi.fn(async () => {});
-    const result = await sweepOrphanedOwnedProcesses({
-      registryDir,
-      probeIdentity: (pid) =>
-        pid === enginePid
-          ? { state: 'exact', identity: { pid, start: ENGINE_BIRTH } }
-          : { state: 'dead' },
-      listWindowsProcesses: async () => null,
-      killWindowsProcesses,
-    });
-    expect(result.retained).toBe(1);
-    expect(killWindowsProcesses).not.toHaveBeenCalled();
-    expect(existsSync(file)).toBe(true);
-  });
+  test.each([
+    'unreadable',
+    'execution',
+    'missing-utility',
+    'invalid-output',
+    'utility-resolution',
+  ])(
+    'retains the record when the process table cannot be read: %s',
+    async (failure) => {
+      const { registryDir } = simulateWindows();
+      mkdirSync(registryDir, { recursive: true });
+      const enginePid = 2_000_000_020;
+      const file = join(registryDir, `engine-${enginePid}.json`);
+      writeFileSync(
+        file,
+        `${JSON.stringify({
+          schemaVersion: 1,
+          enginePid,
+          engineBirth: ENGINE_BIRTH,
+          owner: {
+            pid: 2_000_000_019,
+            instanceId: 'g',
+            bootId: 'g',
+            birth: null,
+          },
+          command: 'engine',
+          spawnedAt: '2026-10-31T10:00:00Z',
+        })}\n`,
+      );
+      const killWindowsProcesses = vi.fn(async () => {});
+      const log = vi.fn();
+      if (failure === 'utility-resolution') {
+        vi.stubEnv('SystemRoot', 'relative');
+      } else if (failure === 'missing-utility') {
+        vi.stubEnv(
+          'SystemRoot',
+          `C:\\station-probe-missing-${process.pid}-${Date.now()}`,
+        );
+      } else if (failure !== 'unreadable') {
+        vi.mocked(execFile).mockImplementationOnce((...args) => {
+          const callback = args.at(-1);
+          if (typeof callback !== 'function')
+            throw new Error('missing callback');
+          callback(
+            failure === 'execution'
+              ? Object.assign(new Error('private probe error'), {
+                  cmd: 'private probe command',
+                  code: 'ETIMEDOUT',
+                  signal: 'SIGKILL' as const,
+                  killed: true,
+                })
+              : null,
+            'private invalid process table',
+            'private stderr',
+          );
+          return new ChildProcess();
+        });
+      }
+      const result = await sweepOrphanedOwnedProcesses({
+        registryDir,
+        log,
+        probeIdentity: (pid) =>
+          pid === enginePid
+            ? { state: 'exact', identity: { pid, start: ENGINE_BIRTH } }
+            : { state: 'dead' },
+        ...(failure === 'unreadable'
+          ? { listWindowsProcesses: async () => null }
+          : {}),
+        killWindowsProcesses,
+      });
+      expect(result.retained).toBe(1);
+      expect(killWindowsProcesses).not.toHaveBeenCalled();
+      expect(existsSync(file)).toBe(true);
+      if (failure !== 'unreadable') {
+        expect(log).toHaveBeenCalledWith(
+          'owned-process sweep: Windows process table probe failed',
+          expect.objectContaining({
+            stage: failure === 'missing-utility' ? 'execution' : failure,
+            timeoutMs: 30_000,
+            elapsedMs: expect.any(Number),
+            error:
+              failure === 'execution'
+                ? {
+                    name: 'Error',
+                    code: 'ETIMEDOUT',
+                    signal: 'SIGKILL',
+                    killed: true,
+                  }
+                : failure === 'missing-utility'
+                  ? expect.objectContaining({ code: 'ENOENT' })
+                  : expect.any(Object),
+          }),
+        );
+        expect(JSON.stringify(log.mock.calls)).not.toContain('private');
+      }
+    },
+  );
 });
 
 function isAlive(pid: number | null | undefined): boolean {
@@ -379,8 +447,13 @@ describe.runIf(process.platform === 'win32')(
         expect(isAlive(engine)).toBe(true);
         expect(isAlive(grandchild)).toBe(true);
 
-        const result = await sweepOrphanedOwnedProcesses({ registryDir });
-        expect(result.reaped).toEqual([engine]);
+        const sweepLogs: Array<{ message: string; data?: unknown }> = [];
+        const result = await sweepOrphanedOwnedProcesses({
+          registryDir,
+          log: (message, data) => sweepLogs.push({ message, data }),
+        });
+        const diagnostics = () => JSON.stringify({ record, result, sweepLogs });
+        expect(result.reaped, diagnostics()).toEqual([engine]);
         for (
           let i = 0;
           i < 200 && (isAlive(engine) || isAlive(grandchild));
@@ -388,11 +461,12 @@ describe.runIf(process.platform === 'win32')(
         ) {
           await new Promise((r) => setTimeout(r, 25));
         }
-        expect(isAlive(engine)).toBe(false);
-        expect(isAlive(grandchild)).toBe(false);
-        expect(existsSync(join(registryDir, `engine-${engine}.json`))).toBe(
-          false,
-        );
+        expect(isAlive(engine), diagnostics()).toBe(false);
+        expect(isAlive(grandchild), diagnostics()).toBe(false);
+        expect(
+          existsSync(join(registryDir, `engine-${engine}.json`)),
+          diagnostics(),
+        ).toBe(false);
       } finally {
         for (const pid of [owner.pid, engine, grandchild]) {
           if (!pid || !isAlive(pid)) continue;
