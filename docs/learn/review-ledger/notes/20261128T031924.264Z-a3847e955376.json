@@ -1,0 +1,9 @@
+{
+  "revision": "6999006f60e2eb346d29e724e12609dc2119c4ec",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Withdrew the composer observer reconciliation candidate at 6999006f60 after complete five-pair e44a85716 production comparison. Reply layout median fell 28.62 percent but scripting rose 4.55 percent, elapsed 3.72 percent and blocking 7.87 percent; switching scripting rose 3.37 percent and elapsed 1.95 percent. Original composer source restored byte-identically to origin/main, preserving documented reservation, status placement and reader behavior. The chat-composer guide remains accurate; no shipped speedup or no-regression claim. Benchmark fixture repairs remain separately reviewed.","inputs":["src-ui/src/components/chat/ChatInputArea.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Withdrew the composer observer reconciliation candidate at 6999006f60 after complete five-pair e44a85716 production comparison. Reply layout median fell 28.62 percent but scripting rose 4.55 percent, elapsed 3.72 percent and blocking 7.87 percent; switching scripting rose 3.37 percent and elapsed 1.95 percent. Original composer source restored byte-identically to origin/main, preserving documented reservation, status placement and reader behavior. The chat-composer guide remains accurate; no shipped speedup or no-regression claim. Benchmark fixture repairs remain separately reviewed.","inputs":["src-ui/src/components/chat/ChatInputArea.tsx"]}
+  ]
+}
