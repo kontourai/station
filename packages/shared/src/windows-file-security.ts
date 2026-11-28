@@ -365,6 +365,7 @@ function openPrivateFile(
 ): WindowsPrivateFile {
   const { koffi, functions, sid } = api();
   assertNoReparse(file);
+  if (operation === 'log') assertExecutionSafeParent(ancestors, file);
   const acl = Buffer.alloc(8 + 8 + sid.length);
   const security = Buffer.alloc(40);
   if (
@@ -405,7 +406,6 @@ function openPrivateFile(
     assertNoReparse(file);
     fileInformation(handle);
     if (operation === 'log') {
-      assertExecutionSafeParent(ancestors, file);
       const owner = [null];
       const descriptor = [null];
       const ownerStatus = functions.GetSecurityInfo(
