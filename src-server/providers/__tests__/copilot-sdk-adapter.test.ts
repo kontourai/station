@@ -559,7 +559,14 @@ describe('Copilot SDK adapter: session create and resume', () => {
 });
 
 describe('Copilot SDK adapter: turns', () => {
-  test.each([
+  const toolCases: Array<
+    Omit<
+      Extract<SessionEvent, { type: 'tool.execution_start' }>['data'],
+      'toolCallId'
+    > & {
+      expectedKind: 'execute' | 'other';
+    }
+  > = [
     {
       toolName: 'bash',
       arguments: { command: 'ls' },
@@ -572,7 +579,8 @@ describe('Copilot SDK adapter: turns', () => {
       readOnly: true,
       expectedKind: 'other',
     },
-  ])(
+  ];
+  test.each(toolCases)(
     'streams $toolName, text and usage, and completes on session.idle',
     async ({ expectedKind, ...tool }) => {
       const h = harness();
