@@ -1299,6 +1299,70 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
           expect(
             store.readSessionByThread(reserved!.sessionId),
           ).toBeUndefined();
+          const authority = sessionReadAuthorityFromRequest(
+            OWNER,
+            undefined,
+            undefined,
+          );
+          const predecessorId = handoffReceipt.data.sessionId;
+          const messages = service.readSessionMessages(
+            predecessorId,
+            authority,
+          );
+          expect(messages.length).toBeGreaterThan(0);
+          const opened = await service.resolveConversationOpen(
+            conversationId,
+            authority,
+          );
+          expect(opened).toMatchObject({
+            status: 'resolved',
+            currentSessionId: predecessorId,
+            transcript: {
+              available: true,
+              owner: 'runtime',
+              messageCount: messages.length,
+            },
+            canContinue: false,
+            recoveryActions: [],
+          });
+          expect(opened).not.toHaveProperty('continuationPending');
+          expect(opened).not.toHaveProperty('nextTurnStartsSession');
+
+          const foreignAuthority = sessionReadAuthorityFromRequest(
+            'other-owner',
+            undefined,
+            undefined,
+          );
+          expect(
+            await service.resolveConversationOpen(
+              conversationId,
+              foreignAuthority,
+            ),
+          ).toBeNull();
+
+          const setReservationConversation = store['db'].prepare(
+            'UPDATE orchestration_conversation_handoffs SET conversation_id = ? WHERE session_id = ?',
+          );
+          setReservationConversation.run(
+            'foreign-conversation',
+            reserved!.sessionId,
+          );
+          try {
+            expect(
+              await service.resolveConversationOpen(conversationId, authority),
+            ).toBeNull();
+          } finally {
+            setReservationConversation.run(conversationId, reserved!.sessionId);
+          }
+
+          await expect(
+            service.resolveConversationContinuation(conversationId, authority, {
+              provider: source.provider,
+              connectionId: source.connectionId,
+            }),
+          ).rejects.toMatchObject({
+            code: CONVERSATION_HANDOFF_REFUSAL_CODES.awaitingTarget,
+          });
           reservedSeedDigest = reserved!.contextSeed!.seedDigest;
           // A later source event must not be folded into this already pinned
           // reservation when Station reopens it.
