@@ -1,0 +1,7 @@
+{
+  "revision": "3d23682b85770b86dda3a56eb5a7306b99fed2bc",
+
+  "notes": [
+    {"path":"docs/user/native-recovery.md","note":"Verified packaged Windows reproduction with a running service registry and missing manifest. The desktop bootstrap can now authorize its saved selection when local owner resolution fails, without assuming local process ownership. The regression is red on the old bootstrap and passes with the fix.","inputs":["docs/user/native-recovery.md","src-ui/src/platform/native/bundledLocalProfileBootstrap.ts","src-ui/src/platform/native/__tests__/bundledLocalProfileBootstrap.test.ts"]}
+  ]
+}

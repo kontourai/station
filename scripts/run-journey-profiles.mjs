@@ -98,6 +98,40 @@ export function validateJourneyProfile(
     )
       errors.push('missing browser device provenance');
     const responsiveness = profile.responsiveness;
+    const host = profile.hostObservation;
+    if (
+      host?.scope !== 'runner-host' ||
+      host.sampleIntervalMs !== 1000 ||
+      (host.logicalCpus !== null &&
+        (!Number.isInteger(host.logicalCpus) || host.logicalCpus <= 0)) ||
+      !Number.isFinite(host.totalMemoryBytes) ||
+      host.totalMemoryBytes <= 0 ||
+      !Array.isArray(host.samples) ||
+      host.samples.length < 2 ||
+      host.samples[0]?.offsetMs !== 0 ||
+      host.samples[0]?.cpuBusyPercent !== null ||
+      !(host.samples.at(-1)?.offsetMs > 0) ||
+      host.samples.some(
+        (entry, index) =>
+          !entry ||
+          !Number.isFinite(entry.offsetMs) ||
+          entry.offsetMs < (host.samples[index - 1]?.offsetMs ?? 0) ||
+          (entry.cpuBusyPercent !== null &&
+            (!Number.isFinite(entry.cpuBusyPercent) ||
+              entry.cpuBusyPercent < 0 ||
+              entry.cpuBusyPercent > 100)) ||
+          !Number.isFinite(entry.freeMemoryBytes) ||
+          entry.freeMemoryBytes < 0 ||
+          entry.freeMemoryBytes > host.totalMemoryBytes ||
+          (entry.loadAverage !== null &&
+            (!Array.isArray(entry.loadAverage) ||
+              entry.loadAverage.length !== 3 ||
+              entry.loadAverage.some(
+                (value) => !Number.isFinite(value) || value < 0,
+              ))),
+      )
+    )
+      errors.push('missing/invalid runner host observation');
     if (
       !responsiveness ||
       responsiveness.scope !== 'final-document' ||

@@ -1,0 +1,7 @@
+{
+  "revision": "3d23682b85770b86dda3a56eb5a7306b99fed2bc",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked the desktop bootstrap fallback against native readiness and the exact saved-profile request binding. Local-window admission, sidecar waiting, and process ownership still follow the documented path.","inputs":["docs/architecture/module-map.md","src-ui/src/platform/native/bundledLocalProfileBootstrap.ts"]}
+  ]
+}
