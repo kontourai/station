@@ -1,0 +1,13 @@
+{
+  "revision": "38df5098a1c24e2eec5416e00a0d6590d4ea0afa",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Traced the Station-owned log approval through the shared grant label, guarded dispatch, redacted diagnostics path, and session retirement. Form elicitation continues to refuse a session grant.","inputs":["docs/conformance/tool-policy-delivery.md"]},
+
+    {"path":"docs/reference/config.md","note":"Traced preview selection and the distinction between chat approval and the unattended-grant API. The diagnostics runtime regression verifies redaction for the first and subsequent chat-approved reads.","inputs":["docs/reference/config.md","src-server/routes/system/diagnostics.ts","src-server/runtime/routes/runtime-routes.ts","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Checked caller eligibility, owner and current-event checks, active-turn refusal, forced redaction, and session isolation and retirement. Evidence covers simulated engine and HTTP fixture authority, without a live deployment.","inputs":["docs/security/remote-access-threat-model.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/settings.md","note":"Checked preview wording, the approval options, the query card and its one-minute expiry, and in-memory grant lifetime against the runtime and diagnostics integration.","inputs":["docs/user/settings.md"]}
+  ]
+}
