@@ -1,0 +1,7 @@
+{
+  "revision": "3fec4a691daac2ecf3967754fc466031312322f1",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Verified strict typecheck follow-up in ChatInputArea (onModelClose?.()) introduces no behavior or getting-started documentation changes.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat/ChatInputArea.tsx"]}
+  ]
+}
