@@ -223,7 +223,12 @@ async function composeOver(
       conversationForSession: (threadId: string) =>
         store.conversationForSession(threadId),
       conversationSessions: () => [],
-      readSessionByThread: () => undefined,
+      readSessionByThread: (threadId: string) =>
+        store.readSessionByThread(threadId),
+      conversationRootFirstPromptedTurn: (threadId: string) =>
+        store.conversationRootFirstPromptedTurn(threadId),
+      firstTurnStartedWithPrompt: (threadId: string) =>
+        store.firstTurnStartedWithPrompt(threadId),
       sessionControlRequestKeys: () => store.sessionControlRequestKeys(),
       threadInboxStore: () => store.threadInboxStore(),
       readSteerInput: (input: Parameters<EventStore['readSteerInput']>[0]) =>
@@ -422,18 +427,45 @@ describe('configureRuntimeRoutes: delegated result delivery wiring (#3158)', () 
     expect(response.status).toBe(200);
   }
 
+  /** The child's first prompted turn is also the title it is listed under. */
+  const CHILD_TITLE = 'Write the release notes';
   const settleChild = (
     emit: (threadId: string, method: string, fields?: object) => void,
   ) => {
-    emit(CHILD, 'turn.started', { turnId: 'child-turn-1', prompt: 'work' });
+    emit(CHILD, 'turn.started', {
+      turnId: 'child-turn-1',
+      prompt: CHILD_TITLE,
+    });
     emit(CHILD, 'turn.completed', {
       turnId: 'child-turn-1',
       outputText: 'notes are written',
     });
   };
+  /**
+   * The child as the delegating start leaves it, a recorded Session: without
+   * a record there is no chat to name.
+   */
+  function recordChild(store: EventStore) {
+    const at = new Date().toISOString();
+    store.upsertSession({
+      provider: 'claude',
+      threadId: CHILD,
+      status: 'ready',
+      createdAt: at,
+      updatedAt: at,
+    });
+  }
+  /** The sender a reader sees: the finished chat, named as the Inbox lists it. */
+  const recordedSender = {
+    kind: 'delegation-result',
+    sessionId: CHILD,
+    title: CHILD_TITLE,
+    engine: 'claude',
+  };
 
   test("a bound caller's child result starts a parent turn through the production port, as the dispatch was attributed", async () => {
-    const { base, emit } = await setup();
+    const { base, emit, store } = await setup();
+    recordChild(store);
     await delegate(base, 'sdk-in-process');
     settleChild(emit);
     await vi.waitFor(() => expect(support.continued).toHaveLength(1));
@@ -444,12 +476,15 @@ describe('configureRuntimeRoutes: delegated result delivery wiring (#3158)', () 
       fullAccessGrant: null,
       clientOrigin: {
         actor: { kind: 'internal' },
-        sender: { kind: 'delegation-result', sessionId: CHILD },
+        sender: recordedSender,
       },
     });
     expect(String(support.continued[0]!.message)).toContain(
       '> notes are written',
     );
+    // The engine is told the same as before this was recorded: its text has
+    // no title, so a re-drive repeats the bytes an earlier attempt started.
+    expect(String(support.continued[0]!.message)).not.toContain(CHILD_TITLE);
   });
 
   test("a copied-token (url-token) caller's child result is replayed unattributed, never verified-bound", async () => {
@@ -461,7 +496,8 @@ describe('configureRuntimeRoutes: delegated result delivery wiring (#3158)', () 
   });
 
   test('a busy parent is steered through the production steer port with the recorded attribution', async () => {
-    const { base, emit } = await setup();
+    const { base, emit, store } = await setup();
+    recordChild(store);
     await delegate(base, 'url-token');
     emit(PARENT, 'turn.started', { turnId: 'parent-turn-a' });
     settleChild(emit);
@@ -473,7 +509,7 @@ describe('configureRuntimeRoutes: delegated result delivery wiring (#3158)', () 
         ownerAttribution: 'unattributed-agent',
         clientOrigin: {
           actor: { kind: 'internal' },
-          sender: { kind: 'delegation-result', sessionId: CHILD },
+          sender: recordedSender,
         },
       },
     });

@@ -1,0 +1,9 @@
+{
+  "revision": "abbfb1163c0721cca3bccac502e2aa91ea7ba270",
+
+  "notes": [
+    {"path":"docs/design/outside-agent-mcp-r3-evidence.md","note":"Reviewed cited production UI proxy exclusions and unchanged outside OAuth/MCP transport test against uiRequestHandler/buildUiServerScript. This diff reuses shell argv checks and registers a spaced archive fixture home only; no OAuth, forwarding, authorization, exposure or historical-client claim changes. Full Linux lifecycle owner passes 247 cases; native/client qualification was not rerun.","inputs":["packages/cli/src/__tests__/lifecycle.test.ts"]},
+
+    {"path":"docs/reference/outside-agent-oauth.md","note":"Reviewed cited production UI proxy exclusions and unchanged outside OAuth/MCP transport test against uiRequestHandler/buildUiServerScript. This diff reuses shell argv checks and registers a spaced archive fixture home only; no OAuth, forwarding, authorization, exposure or historical-client claim changes. Full Linux lifecycle owner passes 247 cases; native/client qualification was not rerun.","inputs":["packages/cli/src/__tests__/lifecycle.test.ts"]}
+  ]
+}
