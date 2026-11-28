@@ -231,6 +231,7 @@ const DECLARED_SCOPE: ReadonlyMap<string, string> = new Map(
 
 const PUBLISHED_SCOPE_BY_ID: Readonly<Record<string, string>> = {
   'account-preference-sync': 'account',
+  'chat-default-send-mode': 'account',
   'personal-codex-approval': 'account',
   'personal-claude-approval': 'account',
   'personal-muse-approval': 'account',
