@@ -1,0 +1,7 @@
+{
+  "revision": "17394811b193d4a2bd28c4d89a7801e39f535c1a",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Updated inbox row actions design section for Inbox row actions preview, Pinned shelf, desktop context menu, and mobile selection Pin/Copy ID.","inputs":["docs/design/chat-composer.md","packages/contracts/src/device-settings.ts","src-ui/src/components/chat-dock/ChatDockInboxPanel.css","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx","src-ui/src/components/chat-dock/mobile-activity-groups.ts","src-ui/src/components/chat-dock/useInboxGroups.ts","src-ui/src/components/chat-dock/useInboxPanelController.ts","src-ui/src/components/drafts/DiscardDraftButton.tsx","src-ui/src/components/inbox-row/inbox-row-actions.ts"]}
+  ]
+}

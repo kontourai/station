@@ -1,0 +1,23 @@
+{
+  "revision": "17394811b193d4a2bd28c4d89a7801e39f535c1a",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Verified additive pinned field in COMPOSITE_BOOLEAN_FIELDS.inboxSections preserves device-settings validation and storage claims.","inputs":["src-ui/src/lib/device-settings-store.ts"]},
+
+    {"path":"docs/design/placement.md","note":"Verified additive pinned field in COMPOSITE_BOOLEAN_FIELDS.inboxSections preserves device-settings validation and storage claims.","inputs":["src-ui/src/lib/device-settings-store.ts"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Verified additive pinned field in COMPOSITE_BOOLEAN_FIELDS.inboxSections preserves device-settings validation and storage claims.","inputs":["src-ui/src/lib/device-settings-store.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Verified additive pinned field in COMPOSITE_BOOLEAN_FIELDS.inboxSections preserves device-settings validation and storage claims.","inputs":["src-ui/src/lib/device-settings-store.ts"]},
+
+    {"path":"docs/guides/keyboard-shortcuts.md","note":"Verified additive pinned field in COMPOSITE_BOOLEAN_FIELDS.inboxSections preserves device-settings validation and storage claims.","inputs":["src-ui/src/lib/device-settings-store.ts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Verified additive pinned field in COMPOSITE_BOOLEAN_FIELDS.inboxSections preserves device-settings validation and storage claims.","inputs":["src-ui/src/lib/device-settings-store.ts"]},
+
+    {"path":"docs/guides/theming.md","note":"Verified additive pinned field in COMPOSITE_BOOLEAN_FIELDS.inboxSections preserves device-settings validation and storage claims.","inputs":["src-ui/src/lib/device-settings-store.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"Verified additive pinned field in COMPOSITE_BOOLEAN_FIELDS.inboxSections preserves device-settings validation and storage claims.","inputs":["src-ui/src/lib/device-settings-store.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Verified additive pinned field in COMPOSITE_BOOLEAN_FIELDS.inboxSections preserves device-settings validation and storage claims.","inputs":["src-ui/src/lib/device-settings-store.ts"]}
+  ]
+}

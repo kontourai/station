@@ -1,0 +1,15 @@
+{
+  "revision": "17394811b193d4a2bd28c4d89a7801e39f535c1a",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Verified additive inbox pin migration and close-chat wiring preserve controller ownership and connection boundary claims.","inputs":["src-ui/src/components/chat-dock/useInboxPanelController.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Verified additive inbox pin migration and close-chat wiring preserve controller ownership and connection boundary claims.","inputs":["src-ui/src/components/chat-dock/useInboxPanelController.ts"]},
+
+    {"path":"docs/design/station-connection.md","note":"Verified additive inbox pin migration and close-chat wiring preserve controller ownership and connection boundary claims.","inputs":["src-ui/src/components/chat-dock/useInboxPanelController.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Verified additive inbox pin migration and close-chat wiring preserve controller ownership and connection boundary claims.","inputs":["src-ui/src/components/chat-dock/useInboxPanelController.ts"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Verified additive inbox pin migration and close-chat wiring preserve controller ownership and connection boundary claims.","inputs":["src-ui/src/components/chat-dock/useInboxPanelController.ts"]}
+  ]
+}

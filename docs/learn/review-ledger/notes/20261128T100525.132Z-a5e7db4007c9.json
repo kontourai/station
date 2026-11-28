@@ -1,0 +1,7 @@
+{
+  "revision": "17394811b193d4a2bd28c4d89a7801e39f535c1a",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Verified touch-target min-block-size and monospace ID ellipsis rules preserve responsive-ui layout claims.","inputs":["src-ui/src/components/chat-dock/ChatInboxHoverCard.css"]}
+  ]
+}
