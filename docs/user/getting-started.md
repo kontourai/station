@@ -1132,9 +1132,10 @@ When the engine transcript is open, sent instructions are collapsed in the
 Station list; open one to read its attributed copy. Unconfirmed instructions
 remain visible, and the engine's prompts remain available in its transcript.
 
-Keep typing during a turn. The amber **Queue** button holds your message until
-the turn finishes. Use the chevron to switch to the green **Steer** button
-when the engine supports it. A Station-managed turn takes the steer at its
+Keep typing during a turn. **Queue** holds your message until the turn finishes,
+and **Steer** delivers it into the running turn when the engine supports it. Use
+the crossing-arrows mode button before **Send** to switch for this chat or save
+your account default (also available in **Settings → Your account**). A Station-managed turn takes the steer at its
 next safe boundary. An ACP engine with interrupting steering stops the running
 step before continuing with your instruction. A steer appears with an outline
 while waiting for acknowledgement.
