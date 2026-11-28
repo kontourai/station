@@ -538,7 +538,7 @@ const WINDOWS_PR_EVIDENCE_PATHS =
  * written down is not. Landing a bump is now one deliberate edit here.
  */
 export const PNPM_SETUP_ACTION =
-  'pnpm/setup@731dfb6463bbd11c11fd0ee11fe00ed0e36d48a1';
+  'pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e';
 // Reviewed fixed source: npm signature plus pinned SHA512, no dependency install or cache.
 export const VERIFIED_PNPM_SETUP_ACTION =
   'kontourai/station/.github/actions/setup-verified-pnpm@382b4af65e5f8bc5e3d62bd64ef1eba8653af50f';
