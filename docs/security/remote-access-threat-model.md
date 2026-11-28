@@ -2438,8 +2438,10 @@ machine", and the difference is the residue, stated without softening:
   principals **without** terminal/agent authority (a phone using Developer →
   Logs or a scoped grant that cannot spawn a shell). Agent `read_logs` calls
   require a verified bound session and operator authorization. The operator
-  can grant access to the session through the existing API or approve a single
-  redacted query from the active chat when the personal Station preview is on.
+  can grant access through the existing API. When the personal Station preview
+  is on, the owner can approve one query or grant subsequent reads in the same
+  session from the active chat. Chat-approved reads always use redacted output.
+  Station clears the in-memory grant when the session ends or resets.
   Caller-less and weaker-assurance channels cannot use either path.
   Scrubbing the token from PTY/engine env closes the cheaper path that used
   to turn `printenv` into an ephemeral `home-possession` principal.

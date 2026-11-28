@@ -417,8 +417,10 @@ On a personal Station, enable **Server log approvals in chat** under
 **Settings → Advanced → Feature previews** to approve a log query from its
 active conversation. The approval card shows the severity, time bounds, and
 maximum entries. Station checks the operator's authority when the operator
-answers, then returns redacted results for that query. The approval expires
-after one minute and applies to a single read.
+answers. Choose **Allow** for one query or **Allow all read_logs calls for this
+session** for subsequent active turns in the same session. The card expires
+after one minute. Both choices return redacted results. The session grant is
+held in memory and ends when the session stops, resets, or the server restarts.
 
 Agent log reads are denied by default, including calls made with the internal
 token and no verified caller. An operator may grant one verified **bound**

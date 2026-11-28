@@ -15,6 +15,12 @@ inspected or executed. They are not new provider results for SDK 0.3.322.
 pre-tool blocking or grant decision on the actual tool-call path. It does not
 claim that post-hoc configuration, quality, or uniform-stop gates are absent.
 
+Station owns the chat approval for diagnostics log reads. The owner must answer
+the current request in its active turn. A session answer authorizes later
+`read_logs` calls in that same session while the preview is enabled. Both
+approval choices force redaction. Session teardown, reset, and server restart
+clear the in-memory chat grant. Form elicitation has no session grant.
+
 The managed Station engine delivers its full pre-tool chain through
 `beforeToolCall`. Claude Code is partial. For a session with a resolved Agent
 and its evaluator, `PreToolUse` runs Station's staged evaluator before the call.

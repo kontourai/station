@@ -4447,7 +4447,7 @@ export function configureRuntimeRoutes(
         id: 'chat-server-log-approval',
         label: 'Server log approvals in chat',
         description:
-          'Let the Station owner approve a single agent log query from its chat.',
+          'Let the Station owner approve redacted agent log reads from its chat.',
       });
   context.app.route(
     '/api/diagnostics',
