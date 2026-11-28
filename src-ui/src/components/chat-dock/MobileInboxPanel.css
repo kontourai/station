@@ -199,6 +199,7 @@
 }
 .mobile-inbox-selection__meta {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: var(--k-space-2);
@@ -267,4 +268,16 @@
   max-height: 100%;
   border-radius: var(--k-radius-lg, var(--k-space-3));
   background: var(--k-panel-raised);
+}
+
+.mobile-inbox-selection__identity {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-1);
+  margin-inline-start: auto;
+}
+
+.mobile-inbox-selection__identity button {
+  min-block-size: var(--touch-target-min, 44px);
+  min-inline-size: var(--touch-target-min, 44px);
 }

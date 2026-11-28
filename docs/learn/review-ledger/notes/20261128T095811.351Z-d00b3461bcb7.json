@@ -1,0 +1,7 @@
+{
+  "revision": "17394811b193d4a2bd28c4d89a7801e39f535c1a",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Updated Inbox getting-started docs for Inbox row actions preview (desktop right-click/Shift+F10 menu, Pinned shelf, durable ID copy, desktop Details sheet, and mobile selection Pin/Unpin + ID copy).","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx","src-ui/src/components/chat-dock/useInboxGroups.ts","src-ui/src/components/chat-dock/useInboxPanelController.ts","src-ui/src/components/drafts/DiscardDraftButton.tsx","src-ui/src/components/inbox-row/inbox-row-actions.ts","src-ui/src/contexts/active-chats-store.ts"]}
+  ]
+}

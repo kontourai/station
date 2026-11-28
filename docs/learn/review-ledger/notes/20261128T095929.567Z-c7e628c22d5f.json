@@ -1,0 +1,7 @@
+{
+  "revision": "17394811b193d4a2bd28c4d89a7801e39f535c1a",
+
+  "notes": [
+    {"path":"docs/design/settings-architecture.md","note":"Updated Experimental project tools list to include Inbox row actions preview among the six default-off device previews.","inputs":["docs/design/settings-architecture.md","src-ui/src/lib/device-settings-store.ts","src-ui/src/views/settings/DeveloperFeatures.tsx","src-ui/src/views/settings/settings-catalog.ts"]}
+  ]
+}

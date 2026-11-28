@@ -64,6 +64,7 @@ try {
   if ($LASTEXITCODE -ne 0) { throw 'Connect build failed' }
   npm.cmd run build:desktop -- --verbose --target x86_64-pc-windows-msvc --config (Join-Path $root 'src-desktop/tauri.nightly.conf.json') --config $env:STATION_WINDOWS_CONFIG
   if ($LASTEXITCODE -ne 0) { throw 'Windows installer build failed' }
+  & (Join-Path $PSScriptRoot 'verify-windows-installer-space.ps1') -ProofRoot (Join-Path $out 'installer-space-proof')
   $installers = @(Get-ChildItem 'src-desktop/target/x86_64-pc-windows-msvc/release/bundle/nsis/*-setup.exe' | Where-Object { $_.Name.Contains($config.version) })
   if ($installers.Count -ne 1 -or $installers[0].Length -lt 1MB) { throw 'Expected one nonempty NSIS installer for this version' }
   $installerPath = $installers[0].FullName

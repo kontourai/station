@@ -8,6 +8,8 @@ import {
 } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { toastStore } from '../../../contexts/ToastContext';
+import { deviceSettingsStore } from '../../../lib/device-settings-store';
+import { isInboxPinned, readInboxPins } from '../../../utils/inbox-pin-store';
 import type { HomeWorkItem } from '../../../views/home/home-view-model';
 import {
   resetPendingUndoForTest,
@@ -29,6 +31,8 @@ vi.mock('../useConversationWorkState', () => ({
   }),
 }));
 beforeEach(() => {
+  localStorage.clear();
+  deviceSettingsStore.reloadFromStorage();
   mutate.mockReset();
   reopen.mockReset();
   work.supported = true;
@@ -208,4 +212,48 @@ it('marks a Just finished row done on this device when settlement is off', async
   fireEvent.click(screen.getByRole('button', { name: 'Mark done' }));
   await waitFor(() => expect(onChange).toHaveBeenCalledWith(null));
   expect(dismiss).toHaveBeenCalledWith(row('one'));
+});
+
+it('pins a single selection, pins a mixed selection, and unpins when every selected row is pinned', () => {
+  deviceSettingsStore.merge({
+    developerToolsEnabled: true,
+    experimentalInboxRowActionsEnabled: true,
+  });
+  const first = row('one');
+  const second = row('two');
+  const { rerender } = render(tray([first]));
+  fireEvent.click(screen.getByRole('button', { name: 'Pin' }));
+  expect(isInboxPinned(first, readInboxPins())).toBe(true);
+  rerender(tray([first, second]));
+  fireEvent.click(screen.getByRole('button', { name: 'Pin' }));
+  expect(isInboxPinned(second, readInboxPins())).toBe(true);
+  rerender(tray([first, second]));
+  fireEvent.click(screen.getByRole('button', { name: 'Unpin' }));
+  expect(readInboxPins()).toEqual({});
+});
+
+it('copies the one selected row’s chat ID without leaving selection', async () => {
+  deviceSettingsStore.merge({
+    developerToolsEnabled: true,
+    experimentalInboxRowActionsEnabled: true,
+  });
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  const original = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+  Object.defineProperty(navigator, 'clipboard', {
+    configurable: true,
+    value: { writeText },
+  });
+  const onChange = vi.fn();
+  try {
+    render(tray([row('selected-chat')], onChange));
+    fireEvent.click(screen.getByRole('button', { name: 'Copy chat ID' }));
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith('selected-chat'),
+    );
+    expect(onChange).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Details' })).toBeTruthy();
+  } finally {
+    if (original) Object.defineProperty(navigator, 'clipboard', original);
+    else Reflect.deleteProperty(navigator, 'clipboard');
+  }
 });

@@ -1,0 +1,7 @@
+{
+  "revision": "d56886ea2bb003ea3a0b55c1b0674b14a6d4b299",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed ChatDock callback-only delta through message action callers and retained responsive reader boundaries. No breakpoint, geometry, action-placement or visibility change introduced. Source-only review; no visual, gesture or device qualification.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

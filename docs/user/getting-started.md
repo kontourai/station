@@ -875,8 +875,21 @@ Each row's **⋯** menu holds its actions in one order: **Open chat**, **Mark
 done** (or **Reopen** once it is done), **Snooze** with its choices (In 1 hour,
 This evening, Tomorrow morning, Next week, each with the time it ends; **Wake
 now** once snoozed), and **Discard draft** when the row has a draft. On a phone
-the same actions are in the row's Details sheet. Closing a chat is not an inbox
-action; close it from the open chat. On mobile, hold a conversation or choose **Select conversations** from **Actions for Chats**. Choose **Details** for one selected row to open its actions. The bottom tray offers **Snooze** and **Mark done** for the selection. Use **Filter chats** for Station, Project and status. On narrow phones, Search and Filter are in **Actions for Chats**. With **Sheet gestures preview** enabled in Settings → Advanced →
+the same actions are in the row's Details sheet. Enable **Inbox row actions
+preview** under Settings → Advanced → Developer tools to try pinning and
+copying IDs. Right-click a row or press Shift+F10 on a focused row to open
+its menu. You can pin it, see its details,
+copy its chat, session, or task ID, or close its open chat. The Pinned section
+stays at the top of Chats. Pins are saved on this browser, and pinning a snoozed
+row wakes it.
+
+On mobile, hold a row or choose **Select conversations** from **Actions for
+Chats**. The bottom tray offers **Snooze**, **Mark done**, and **Pin** or
+**Unpin** for the selection when the Inbox row actions preview is on. With
+one row selected, choose **Details** to see its metadata and actions. With
+the preview on, you can copy its ID from the tray. Use **Filter chats**
+for Station, Project and status. On narrow phones, Search and Filter are in
+**Actions for Chats**. With **Sheet gestures preview** enabled in Settings → Advanced →
 Developer tools, swipe left to reveal labelled actions; the row follows your
 finger and snaps open when released. Only one row's actions stay revealed.
 **Snooze** opens duration choices, and **Mark done** puts the conversation away.

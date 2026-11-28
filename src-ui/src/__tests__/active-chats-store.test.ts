@@ -1,6 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { readSnoozes, writeSnooze } from '../utils/activity-snooze-store';
 
+import {
+  isInboxPinned,
+  pinInboxItem,
+  readInboxPins,
+} from '../utils/inbox-pin-store';
+
 let ActiveChatsStore: typeof import('../contexts/active-chats-store').ActiveChatsStore;
 
 /** A real in-memory `localStorage` double — the outer `beforeEach`'s stub is
@@ -377,6 +383,24 @@ describe('ActiveChatsStore', () => {
     const snoozes = readSnoozes(now);
     expect(snoozes['conv-999']).toBeDefined();
     expect(snoozes['draft:1']).toBeUndefined();
+  });
+
+  test('assignConversationId carries a draft pin over to the promoted conversation', () => {
+    vi.stubGlobal('localStorage', new MemoryLocalStorage());
+    const store = new ActiveChatsStore({ storage: new MemoryStorage() });
+    store.initChat('draft:pin', {
+      agentSlug: 'planner',
+      agentName: 'Planner',
+      title: 'Draft',
+    });
+    pinInboxItem({ id: 'draft:pin' });
+    const previous = readInboxPins()['draft:pin'];
+
+    store.assignConversationId('draft:pin', 'conversation-pinned');
+
+    const pins = readInboxPins();
+    expect(isInboxPinned({ id: 'draft:pin' }, pins)).toBe(false);
+    expect(pins['conversation-pinned']).toEqual(previous);
   });
 
   // No live snooze under the old key: assignConversationId must not

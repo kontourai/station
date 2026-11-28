@@ -292,6 +292,7 @@ const PUBLISHED_SCOPE_BY_ID: Readonly<Record<string, string>> = {
   'experimental-trust': 'device',
   'experimental-station-routes': 'device',
   'experimental-sheet-gestures': 'device',
+  'experimental-inbox-row-actions': 'device',
   'shared-answers': 'station',
   'github-automations': 'station',
   'plugin-visibility': 'station',

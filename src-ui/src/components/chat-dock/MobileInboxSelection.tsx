@@ -1,10 +1,19 @@
 import { useLayoutEffect, useRef, useState } from 'react';
+import {
+  isInboxPinned,
+  pinInboxItem,
+  unpinInboxItem,
+} from '../../utils/inbox-pin-store';
 import type { HomeWorkItem } from '../../views/home/home-view-model';
 import type { WorkFactsById } from '../../views/home/work-facts';
 import { ActionOverflowMenu } from '../ActionOverflowMenu';
 import { Button } from '../Button';
-import { CheckGlyph, TimeGlyph } from '../icons/Glyph';
+import { CheckGlyph, PinGlyph, TimeGlyph } from '../icons/Glyph';
 import { snoozeChoices } from '../inbox-row/snooze-presets';
+import {
+  useInboxPins,
+  useInboxRowCopy,
+} from '../inbox-row/useInboxRowIdentityActions';
 import { offerInboxUndo } from './inbox-dismissals';
 import type { MobileActivityGroup } from './mobile-activity-groups';
 import { inboxResolutionId } from './mobile-inbox-selection';
@@ -38,6 +47,8 @@ export function MobileInboxSelection({
   restore(item: HomeWorkItem): void;
   details(item: HomeWorkItem): void;
 }) {
+  const { enabled: rowActionsEnabled, namespace, pins } = useInboxPins();
+  const copy = useInboxRowCopy();
   const work = useConversationWorkState();
   const busy = useRef(false);
   const mounted = useRef(false);
@@ -58,6 +69,17 @@ export function MobileInboxSelection({
     }
   }
   const entries = [...available.values()];
+  const allPinned =
+    entries.length > 0 &&
+    entries.every(({ item }) => isInboxPinned(item, pins));
+  const copyActions =
+    rowActionsEnabled && entries.length === 1 ? copy(entries[0].item) : [];
+  const updatePins = () => {
+    if (!isCurrent()) return;
+    const update = allPinned ? unpinInboxItem : pinInboxItem;
+    for (const { item } of entries) update(item, namespace);
+    onChange(null);
+  };
   /** The settlement Mark done uses for this row, when it reaches it. */
   const settleId = (entry: Entry) =>
     inboxResolutionId(entry.item, facts?.get(entry.item.id), work.supported);
@@ -182,6 +204,19 @@ export function MobileInboxSelection({
             <span>Mark done</span>
           </span>
         </Button>
+        {rowActionsEnabled && (
+          <Button
+            variant="ghost"
+            className="mobile-inbox-selection__action"
+            disabled={pending || !entries.length}
+            onClick={updatePins}
+          >
+            <span>
+              <PinGlyph />
+              <span>{allPinned ? 'Unpin' : 'Pin'}</span>
+            </span>
+          </Button>
+        )}
       </div>
       <div className="mobile-inbox-selection__meta">
         <small role="status">
@@ -192,15 +227,34 @@ export function MobileInboxSelection({
                 ? 'Some of these are already done.'
                 : '')}
         </small>
-        {entries.length === 1 && (
-          <Button
-            variant="ghost"
-            disabled={pending}
-            onClick={() => details(entries[0].item)}
-          >
-            Details
-          </Button>
-        )}
+        <div className="mobile-inbox-selection__identity">
+          {copyActions.length === 1 && (
+            <Button
+              variant="ghost"
+              disabled={pending}
+              onClick={copyActions[0].onSelect}
+            >
+              {copyActions[0].label}
+            </Button>
+          )}
+          {copyActions.length > 1 && (
+            <ActionOverflowMenu
+              label="Copy ID"
+              disabled={pending}
+              triggerGlyph={<span>Copy ID</span>}
+              actions={copyActions}
+            />
+          )}
+          {entries.length === 1 && (
+            <Button
+              variant="ghost"
+              disabled={pending}
+              onClick={() => details(entries[0].item)}
+            >
+              Details
+            </Button>
+          )}
+        </div>
       </div>
     </section>
   );

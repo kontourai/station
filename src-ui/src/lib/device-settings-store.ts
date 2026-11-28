@@ -269,6 +269,7 @@ const COMPOSITE_BOOLEAN_FIELDS: Readonly<Record<string, readonly string[]>> = {
     'autoFloatAgentBrowserSessions',
   ],
   inboxSections: [
+    'pinned',
     'snoozed',
     'earlier',
     'needsYou',

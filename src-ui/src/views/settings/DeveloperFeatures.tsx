@@ -13,6 +13,7 @@ const FEATURES = [
   ['experimentalTrustEnabled', 'experimental-trust'],
   ['experimentalStationRoutesEnabled', 'experimental-station-routes'],
   ['experimentalSheetGesturesEnabled', 'experimental-sheet-gestures'],
+  ['experimentalInboxRowActionsEnabled', 'experimental-inbox-row-actions'],
 ] as const;
 
 export function DeveloperFeatures() {

@@ -333,6 +333,13 @@ const SETTINGS_CATALOG_SOURCE = [
     configKeys: ['experimentalSheetGesturesEnabled'],
   },
   {
+    id: 'experimental-inbox-row-actions',
+    title: 'Inbox row actions preview',
+    section: 'developer-tools',
+    conditional: 'developer',
+    configKeys: ['experimentalInboxRowActionsEnabled'],
+  },
+  {
     id: 'shared-answers',
     title: 'Shared answers',
     section: 'answer-shares',
