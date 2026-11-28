@@ -9567,13 +9567,13 @@ describe('lifecycle build + restart ergonomics', () => {
           STATION_LOG_FILE: canonicalLogFile,
         }),
       );
-      const { createRequire } = await import('node:module');
       const { runInNewContext } = await import('node:vm');
-      const moduleRequire = createRequire(import.meta.url);
       const uiServer = Object.assign(new EventEmitter(), { listen: vi.fn() });
       await runInNewContext(String(uiStdinEnd.mock.calls[0]?.[0]), {
         require: (id: string) =>
-          id === 'http' ? { createServer: () => uiServer } : moduleRequire(id),
+          id === 'http'
+            ? { createServer: () => uiServer }
+            : process.getBuiltinModule(id),
         process: {
           platform: 'linux',
           env: {},
