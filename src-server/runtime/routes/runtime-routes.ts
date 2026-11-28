@@ -900,6 +900,7 @@ import {
   createDelegationResultSteerPort,
   DELEGATION_RESULT_CLIENT_ORIGIN,
   DelegationResultDelivery,
+  openDelegationRequests,
 } from '../../services/orchestration/delegation-result-delivery.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
 import type { EventStore } from '../../services/orchestration/event-store.js';
@@ -916,7 +917,10 @@ import {
   ACTIVE_TURN_FOLD_METHODS,
   projectSessionLifecycle,
 } from '../../services/orchestration/session-lifecycle-service.js';
-import { notificationChatTitle } from '../../services/orchestration/session-sender-identity.js';
+import {
+  notificationChatTitle,
+  sessionSenderIdentity,
+} from '../../services/orchestration/session-sender-identity.js';
 import { createSessionWorkItemModule } from '../../services/orchestration/session-work-item-module.js';
 import {
   createTaskLeadReader,
@@ -7453,6 +7457,67 @@ export function configureRuntimeRoutes(
     return new DelegationResultDelivery({
       ...conversationDeliveryPorts(eventStore),
       store: eventStore.delegationResultStore(),
+      senderIdentity: (threadId) => sessionSenderIdentity(eventStore, threadId),
+      mayReadPullRequestWatch: (owner, authorization) => {
+        const inProject = (conversationId: string) => {
+          const threadId =
+            context.orchestrationService.currentConversationSessionId(
+              conversationId,
+            );
+          const target = stationControlDispatchScope.target(
+            { kind: 'thread', threadId, remote: false },
+            'view',
+          );
+          return (
+            target?.scope.kind === 'project' &&
+            target.scope.id === authorization.projectId &&
+            !target.host &&
+            context.orchestrationService.canUserReadSession(
+              threadId,
+              readAuthorityForExecution(owner.actor.userId),
+            )
+          );
+        };
+        return (
+          inProject(owner.parentConversationId) &&
+          inProject(authorization.sourceConversationId) &&
+          pullRequestFeedback?.mayReadStatusWatch(
+            authorization.sourceConversationId,
+            owner.taskId,
+          ) === true
+        );
+      },
+      inspectWatchStart: (conversationId, deliveryId) => {
+        const receipt = context.orchestrationService.inspectTurnDelivery(
+          conversationId,
+          deliveryId,
+          INTERNAL_SESSION_READ_SCOPE,
+        );
+        return receipt?.outcome === 'started' ? receipt : undefined;
+      },
+      blockedEvents: (threadId) => {
+        const last = eventStore
+          .listEventsByMethods(threadId, [
+            'session.state-changed',
+            'turn.started',
+            'turn.completed',
+            'turn.aborted',
+            'runtime.error',
+            'session.exited',
+          ])
+          .at(-1);
+        return last?.payload.method === 'session.state-changed' &&
+          last.payload.sessionState === 'blocked'
+          ? [{ event: last.payload, sequence: last.sequence }]
+          : [];
+      },
+      requestEvents: (threadId) =>
+        openDelegationRequests(
+          eventStore.listEventsByMethods(threadId, [
+            'request.opened',
+            'request.resolved',
+          ]),
+        ),
       // Opt-in resolution: a delegation result reports the exact reply,
       // even one EventStore stored out of line (event-content-spill).
       turnEvents: (threadId, turnId, methods, limit, invocationId) =>
@@ -7857,6 +7922,9 @@ export function configureRuntimeRoutes(
           eventStore: context.orchestrationEventStore,
           store: coordinatorStore,
           enabled: coordinatorSessionEnabled,
+          handlesApprovalWake: (parent, session, itemKey) =>
+            delegationResults?.handlesApprovalWake(parent, session, itemKey) ===
+            true,
           pictureEnabled: () =>
             picturePreview?.select({
               enabled: () => true,
@@ -8414,6 +8482,9 @@ export function configureRuntimeRoutes(
     context.app.route(
       '/api/orchestration/session-control',
       createSessionAgentControlRoutes({
+        delegationResults,
+        watchPullRequest: (source, projectId, ref, owner) =>
+          pullRequestFeedback?.subscribeStatus(source, projectId, ref, owner),
         waiter: sessionTurnWaiter,
         orchestrationService: context.orchestrationService,
         eventStore: context.orchestrationEventStore,
@@ -11458,6 +11529,7 @@ export function configureRuntimeRoutes(
     );
   const sessionDiffStatSnapshots = new SessionDiffStatSnapshots();
   pullRequestFeedback = composePullRequestFeedbackRuntime({
+    coordination: delegationResults,
     homeDir: context.configLoader.getProjectHomeDir(),
     hosted: hostedTenantRegistry !== undefined,
     featurePreviews: context.featurePreviews,

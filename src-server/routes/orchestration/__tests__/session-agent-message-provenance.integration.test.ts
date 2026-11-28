@@ -238,6 +238,10 @@ describe('#3419 an agent message carries who sent it', () => {
       orchestrationService: service,
       eventStore,
       eventBus,
+      delegationResults: {
+        watchSession: (owner, watch) =>
+          eventStore.delegationResultStore().armSessionWatch(owner, watch),
+      },
       // Both Sessions are the owner's, in the global space.
       stationControlDispatchScope: {
         target: () => ({
@@ -300,6 +304,48 @@ describe('#3419 an agent message carries who sent it', () => {
 
   afterEach(() => {
     eventStore.close();
+  });
+
+  test('a send subscription is bound to the verified sender and dispatched turn', async () => {
+    const request = {
+      sessionId: 'recipient-session',
+      text: 'Please rebase onto main.',
+      mode: 'start',
+      requestKey: 'request-key-subscription',
+      notifyOnSettle: true,
+      notifyOnAttention: true,
+    };
+    const redirected = await call({
+      ...request,
+      parentConversationId: 'unrelated-conversation',
+    });
+    expect(redirected.status).toBe(400);
+
+    const sent = await call(request);
+    expect(sent).toMatchObject({
+      status: 200,
+      body: { success: true, data: { subscription: { status: 'armed' } } },
+    });
+    const { subscription, turnId } = sent.body.data;
+    const watches = eventStore.delegationResultStore();
+    expect(watches.owner(subscription.id)).toMatchObject({
+      parentConversationId: 'sender-session',
+      actor: { userId: OWNER, attribution: 'verified-bound' },
+    });
+    expect(watches.sessionWatch(subscription.id)).toMatchObject({
+      sessionId: 'recipient-session',
+      turnId,
+      attention: true,
+    });
+
+    const replay = await call(request);
+    expect(replay.body.data).toMatchObject({
+      replayed: true,
+      subscription: { id: subscription.id, status: 'already-armed' },
+    });
+    expect(watches.watchesForSession('recipient-session')).toEqual([
+      subscription.id,
+    ]);
   });
 
   test('a start is framed for the engine and recorded with its sender, and projects as that agent’s message', async () => {

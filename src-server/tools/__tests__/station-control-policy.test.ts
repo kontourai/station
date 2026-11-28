@@ -1185,6 +1185,8 @@ describe('#4769: the tools a restricted session keeps', () => {
     'respond_to_task_request',
     'interrupt_task',
     'send_to_session',
+    'watch_pull_request_status',
+    'cancel_coordination_subscription',
     'interrupt_session',
     'create_ssh_environment',
     'get_ssh_environment',

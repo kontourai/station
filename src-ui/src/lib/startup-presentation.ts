@@ -16,6 +16,7 @@ let leaving = false;
 let fadeTimer: number | undefined;
 let stopAnimation: (() => void) | undefined;
 let recoveryObserver: MutationObserver | undefined;
+let motionObserver: MutationObserver | undefined;
 
 function finish() {
   if (!surface?.isConnected) return;
@@ -31,6 +32,7 @@ function finish() {
   }
   document.removeEventListener('visibilitychange', reconsider);
   motion?.removeEventListener('change', reconsider);
+  motionObserver?.disconnect();
   recoveryObserver?.disconnect();
   for (const listener of completionListeners) listener();
   completionListeners.clear();
@@ -42,7 +44,13 @@ const motion = surface
 
 function reconsider() {
   if (!surface?.isConnected || !mounted || pending.size > 0) return;
-  if (!painted || !visible || document.hidden || motion?.matches) {
+  if (
+    !painted ||
+    !visible ||
+    document.hidden ||
+    motion?.matches ||
+    document.documentElement.dataset.motion === 'reduce'
+  ) {
     finish();
     return;
   }
@@ -155,6 +163,11 @@ if (surface && root) {
   } else {
     document.addEventListener('visibilitychange', reconsider);
     motion?.addEventListener('change', reconsider);
+    motionObserver = new MutationObserver(reconsider);
+    motionObserver.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['data-motion'],
+    });
     recoveryObserver = new MutationObserver(() => {
       if (root.querySelector('[role="alert"]')) finish();
     });

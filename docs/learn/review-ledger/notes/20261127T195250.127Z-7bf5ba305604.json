@@ -1,0 +1,151 @@
+{
+  "revision": "8f6ee8fb71a8b6ab198c62835cdc41447ab3b7da",
+
+  "notes": [
+    {"path":"docs/adr/0017-browser-preview-host.md","note":"Reviewed runtime coordination composition after dropping the Session summary preview. The wake and route composition remains; existing operator sign-in capture paths and browser/device composition are outside this change.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Reviewed runtime coordination composition after dropping the Session summary preview. The wake and route composition remains; existing operator sign-in capture paths and browser/device composition are outside this change.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","note":"Reviewed runtime coordination composition after dropping the Session summary preview. The wake and route composition remains; existing operator sign-in capture paths and browser/device composition are outside this change.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture.md","note":"Reviewed runtime coordination composition after dropping the Session summary preview. The wake and route composition remains; existing operator sign-in capture paths and browser/device composition are outside this change.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed runtime coordination composition after dropping the Session summary preview. The wake and route composition remains; existing operator sign-in capture paths and browser/device composition are outside this change.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Reviewed runtime coordination composition after dropping the Session summary preview. The wake and route composition remains; existing operator sign-in capture paths and browser/device composition are outside this change.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"Reviewed runtime coordination composition after dropping the Session summary preview. The wake and route composition remains; existing operator sign-in capture paths and browser/device composition are outside this change.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-host-spike.md","note":"Reviewed runtime coordination composition after dropping the Session summary preview. The wake and route composition remains; existing operator sign-in capture paths and browser/device composition are outside this change.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-pane-mvp.md","note":"Reviewed runtime coordination composition after dropping the Session summary preview. The wake and route composition remains; existing operator sign-in capture paths and browser/device composition are outside this change.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Reviewed runtime coordination composition after dropping the Session summary preview. The wake and route composition remains; existing operator sign-in capture paths and browser/device composition are outside this change.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/local-bootstrap-token.md","note":"Reviewed runtime coordination composition after dropping the Session summary preview. The wake and route composition remains; existing operator sign-in capture paths and browser/device composition are outside this change.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"Reviewed runtime coordination composition after dropping the Session summary preview. The wake and route composition remains; existing operator sign-in capture paths and browser/device composition are outside this change.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/project-membership.md","note":"Reviewed runtime coordination composition after dropping the Session summary preview. The wake and route composition remains; existing operator sign-in capture paths and browser/device composition are outside this change.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/survey-flow-review.md","note":"Reviewed runtime coordination composition after dropping the Session summary preview. The wake and route composition remains; existing operator sign-in capture paths and browser/device composition are outside this change.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Reviewed runtime coordination composition after dropping the Session summary preview. The wake and route composition remains; existing operator sign-in capture paths and browser/device composition are outside this change.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"Reviewed runtime coordination composition after dropping the Session summary preview. The wake and route composition remains; existing operator sign-in capture paths and browser/device composition are outside this change.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/glossary.md","note":"Reviewed runtime coordination composition after dropping the Session summary preview. The wake and route composition remains; existing operator sign-in capture paths and browser/device composition are outside this change.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/browser-workspace.md","note":"Reviewed runtime coordination composition after dropping the Session summary preview. The wake and route composition remains; existing operator sign-in capture paths and browser/device composition are outside this change.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Reviewed runtime coordination composition after dropping the Session summary preview. The wake and route composition remains; existing operator sign-in capture paths and browser/device composition are outside this change.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"Reviewed runtime coordination composition after dropping the Session summary preview. The wake and route composition remains; existing operator sign-in capture paths and browser/device composition are outside this change.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"Reviewed runtime coordination composition after dropping the Session summary preview. The wake and route composition remains; existing operator sign-in capture paths and browser/device composition are outside this change.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Reviewed runtime coordination composition after dropping the Session summary preview. The wake and route composition remains; existing operator sign-in capture paths and browser/device composition are outside this change.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Reviewed runtime coordination composition after dropping the Session summary preview. The wake and route composition remains; existing operator sign-in capture paths and browser/device composition are outside this change.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Reviewed runtime coordination composition after dropping the Session summary preview. The wake and route composition remains; existing operator sign-in capture paths and browser/device composition are outside this change.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/mobile-device-workspace.md","note":"Reviewed runtime coordination composition after dropping the Session summary preview. The wake and route composition remains; existing operator sign-in capture paths and browser/device composition are outside this change.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"Reviewed runtime coordination composition after dropping the Session summary preview. The wake and route composition remains; existing operator sign-in capture paths and browser/device composition are outside this change.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Reviewed runtime coordination composition after dropping the Session summary preview. The wake and route composition remains; existing operator sign-in capture paths and browser/device composition are outside this change.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/walkthroughs.md","note":"Reviewed runtime coordination composition after dropping the Session summary preview. The wake and route composition remains; existing operator sign-in capture paths and browser/device composition are outside this change.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Reviewed runtime coordination composition after dropping the Session summary preview. The wake and route composition remains; existing operator sign-in capture paths and browser/device composition are outside this change.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Reviewed runtime coordination composition after dropping the Session summary preview. The wake and route composition remains; existing operator sign-in capture paths and browser/device composition are outside this change.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-sign-in.png","note":"Reviewed runtime coordination composition after dropping the Session summary preview. The wake and route composition remains; existing operator sign-in capture paths and browser/device composition are outside this change.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"Reviewed runtime coordination composition after dropping the Session summary preview. The wake and route composition remains; existing operator sign-in capture paths and browser/device composition are outside this change.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"Reviewed runtime coordination composition after dropping the Session summary preview. The wake and route composition remains; existing operator sign-in capture paths and browser/device composition are outside this change.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-review.png","note":"Reviewed runtime coordination composition after dropping the Session summary preview. The wake and route composition remains; existing operator sign-in capture paths and browser/device composition are outside this change.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed runtime coordination composition after dropping the Session summary preview. The wake and route composition remains; existing operator sign-in capture paths and browser/device composition are outside this change.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed runtime coordination composition after dropping the Session summary preview. The wake and route composition remains; existing operator sign-in capture paths and browser/device composition are outside this change.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Reviewed runtime coordination composition after dropping the Session summary preview. The wake and route composition remains; existing operator sign-in capture paths and browser/device composition are outside this change.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed runtime coordination composition after dropping the Session summary preview. The wake and route composition remains; existing operator sign-in capture paths and browser/device composition are outside this change.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Reviewed runtime coordination composition after dropping the Session summary preview. The wake and route composition remains; existing operator sign-in capture paths and browser/device composition are outside this change.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed runtime coordination composition after dropping the Session summary preview. The wake and route composition remains; existing operator sign-in capture paths and browser/device composition are outside this change.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed runtime coordination composition after dropping the Session summary preview. The wake and route composition remains; existing operator sign-in capture paths and browser/device composition are outside this change.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Reviewed runtime coordination composition after dropping the Session summary preview. The wake and route composition remains; existing operator sign-in capture paths and browser/device composition are outside this change.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Reviewed runtime coordination composition after dropping the Session summary preview. The wake and route composition remains; existing operator sign-in capture paths and browser/device composition are outside this change.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/pull-request-guides.md","note":"Reviewed runtime coordination composition after dropping the Session summary preview. The wake and route composition remains; existing operator sign-in capture paths and browser/device composition are outside this change.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Reviewed runtime coordination composition after dropping the Session summary preview. The wake and route composition remains; existing operator sign-in capture paths and browser/device composition are outside this change.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/mcp-ui-demo/README.md","note":"Reviewed runtime coordination composition after dropping the Session summary preview. The wake and route composition remains; existing operator sign-in capture paths and browser/device composition are outside this change.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/station-sessions-mcp/README.md","note":"Reviewed runtime coordination composition after dropping the Session summary preview. The wake and route composition remains; existing operator sign-in capture paths and browser/device composition are outside this change.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the two coordination POST routes in the existing Session-control scope. Both still require the verified Station Control caller in the route handler. Pairing, sign-in, relay, and remote read paths retain their existing authority.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"Reviewed the two coordination POST routes in the existing Session-control scope. Both still require the verified Station Control caller in the route handler. Pairing, sign-in, relay, and remote read paths retain their existing authority.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/connection-broker.md","note":"Reviewed the two coordination POST routes in the existing Session-control scope. Both still require the verified Station Control caller in the route handler. Pairing, sign-in, relay, and remote read paths retain their existing authority.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/inference-fleet.md","note":"Reviewed the two coordination POST routes in the existing Session-control scope. Both still require the verified Station Control caller in the route handler. Pairing, sign-in, relay, and remote read paths retain their existing authority.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/native-capabilities.md","note":"Reviewed the two coordination POST routes in the existing Session-control scope. Both still require the verified Station Control caller in the route handler. Pairing, sign-in, relay, and remote read paths retain their existing authority.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/native-relay-enrollment.md","note":"Reviewed the two coordination POST routes in the existing Session-control scope. Both still require the verified Station Control caller in the route handler. Pairing, sign-in, relay, and remote read paths retain their existing authority.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed the two coordination POST routes in the existing Session-control scope. Both still require the verified Station Control caller in the route handler. Pairing, sign-in, relay, and remote read paths retain their existing authority.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"Reviewed the two coordination POST routes in the existing Session-control scope. Both still require the verified Station Control caller in the route handler. Pairing, sign-in, relay, and remote read paths retain their existing authority.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Reviewed the two coordination POST routes in the existing Session-control scope. Both still require the verified Station Control caller in the route handler. Pairing, sign-in, relay, and remote read paths retain their existing authority.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Reviewed the two coordination POST routes in the existing Session-control scope. Both still require the verified Station Control caller in the route handler. Pairing, sign-in, relay, and remote read paths retain their existing authority.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"Reviewed the two coordination POST routes in the existing Session-control scope. Both still require the verified Station Control caller in the route handler. Pairing, sign-in, relay, and remote read paths retain their existing authority.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"Reviewed the two coordination POST routes in the existing Session-control scope. Both still require the verified Station Control caller in the route handler. Pairing, sign-in, relay, and remote read paths retain their existing authority.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the two coordination POST routes in the existing Session-control scope. Both still require the verified Station Control caller in the route handler. Pairing, sign-in, relay, and remote read paths retain their existing authority.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed the two coordination POST routes in the existing Session-control scope. Both still require the verified Station Control caller in the route handler. Pairing, sign-in, relay, and remote read paths retain their existing authority.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Reviewed the two coordination POST routes in the existing Session-control scope. Both still require the verified Station Control caller in the route handler. Pairing, sign-in, relay, and remote read paths retain their existing authority.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the two coordination POST routes in the existing Session-control scope. Both still require the verified Station Control caller in the route handler. Pairing, sign-in, relay, and remote read paths retain their existing authority.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/outside-agent-oauth.md","note":"Reviewed the two coordination POST routes in the existing Session-control scope. Both still require the verified Station Control caller in the route handler. Pairing, sign-in, relay, and remote read paths retain their existing authority.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the two coordination POST routes in the existing Session-control scope. Both still require the verified Station Control caller in the route handler. Pairing, sign-in, relay, and remote read paths retain their existing authority.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Reviewed the two coordination POST routes in the existing Session-control scope. Both still require the verified Station Control caller in the route handler. Pairing, sign-in, relay, and remote read paths retain their existing authority.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"packages/connect/README.md","note":"Reviewed the two coordination POST routes in the existing Session-control scope. Both still require the verified Station Control caller in the route handler. Pairing, sign-in, relay, and remote read paths retain their existing authority.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"tests/tauri-shell/native-fresh-relay-fixture.md","note":"Reviewed the two coordination POST routes in the existing Session-control scope. Both still require the verified Station Control caller in the route handler. Pairing, sign-in, relay, and remote read paths retain their existing authority.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"The wake harness now validates the Session and turn IDs returned by the send route before exercising approval and engine error wake delivery.","inputs":["src-server/routes/orchestration/__tests__/thread-inbox.routes.test.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"The wake harness now validates the Session and turn IDs returned by the send route before exercising approval and engine error wake delivery.","inputs":["src-server/routes/orchestration/__tests__/thread-inbox.routes.test.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed removal of the unread subscription projection. Durable transitions, caller checks, cancellation, and queued PR recovery remain covered by the integration suite.","inputs":["src-server/services/orchestration/delegation-result-delivery.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed removal of the unread subscription projection. Durable transitions, caller checks, cancellation, and queued PR recovery remain covered by the integration suite.","inputs":["src-server/services/orchestration/delegation-result-delivery.ts"]},
+
+    {"path":"packages/monument/CONTEXT.md","note":"Reviewed removal of the unread subscription projection. Durable transitions, caller checks, cancellation, and queued PR recovery remain covered by the integration suite.","inputs":["src-server/services/orchestration/delegation-result-delivery.ts"]}
+  ]
+}
