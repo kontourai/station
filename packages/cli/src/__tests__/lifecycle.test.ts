@@ -9881,6 +9881,49 @@ describe('lifecycle build + restart ergonomics', () => {
     }
   });
 
+  it.skipIf(process.platform !== 'win32')(
+    'refuses an unsafe Windows explicit log directory before creating a log',
+    async () => {
+      ensureDir(TEST_CWD);
+      writeBuildManifest('unsafe-log-parent');
+      const directory = join(TEST_ROOT, 'unsafe-log-parent');
+      const logFile = join(directory, 'station.log');
+      ensureDir(directory);
+      hardenWindowsPathsTrusted(runFixtureWindowsTrust, [
+        { kind: 'directory', path: directory },
+      ]);
+      realExecFileSync('icacls', [directory, '/grant', '*S-1-1-0:(M)'], {
+        encoding: 'utf8',
+        windowsHide: true,
+      });
+      const originalAcl = realExecFileSync('icacls', [directory], {
+        encoding: 'utf8',
+        windowsHide: true,
+      });
+      const spawn = vi.fn();
+      const { lifecycle } = await loadLifecycleModule({
+        childProcessMock: { execSync: vi.fn(() => ''), spawn },
+      });
+      await expect(
+        lifecycle.start({
+          instanceName: 'unsafe-log-parent',
+          baseDir: TEST_ALT_HOME,
+          logFile,
+          serverPort: 3266,
+          uiPort: 5298,
+        }),
+      ).rejects.toThrow(/Windows current-user ACL verification failed/);
+      expect(spawn).not.toHaveBeenCalled();
+      expect(existsSync(logFile)).toBe(false);
+      expect(
+        realExecFileSync('icacls', [directory], {
+          encoding: 'utf8',
+          windowsHide: true,
+        }),
+      ).toBe(originalAcl);
+    },
+  );
+
   it('rejects a relative explicit log path without mutating the working directory', async () => {
     ensureDir(TEST_CWD);
     chmodSync(TEST_CWD, 0o755);
