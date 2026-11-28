@@ -1333,6 +1333,9 @@ During a running turn with steering available, tap the trailing segment of Send
 to switch between **Queue** and **Steer** in one step. When steering is unavailable,
 the segment opens the reason and leaves Queue selected. Queue is the default
 and the selection lasts for that conversation while the composer is mounted.
+After tapping Send, the composer shows **Queueing…** or **Sending steer…**
+while the request is pending. If the conversation advances before Station
+accepts a steer, the composer explains the change so the person can retry.
 Stop remains with the Working status when that status is visible.
 
 In the reply composer, tapping Send, clearing the draft, or removing an

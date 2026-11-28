@@ -770,6 +770,8 @@ export function useSendMessage(
         }
         updateChat(sessionId, { queueSendNowPending: true });
         let liveSteer: LiveOutboundDispatch | undefined;
+        let failureMessage =
+          'Check your Station connection, then try steering again.';
         try {
           const usableInboxScope =
             inboxRequestScope?.isCurrent() &&
@@ -813,6 +815,8 @@ export function useSendMessage(
           }
           if (!authorityIsCurrent())
             throw new Error('Station authority changed.');
+          failureMessage =
+            'Station could not save the steer on this device. Try again.';
           const { outboundDispatch } = await import('../lib/outboundQueue');
           const durable = outboundDispatch.beginLive({
             clientTurnId: clientInputId,
@@ -841,6 +845,8 @@ export function useSendMessage(
             throw new Error('Could not save this steer before sending.');
           }
           if (!authorityIsCurrent()) {
+            failureMessage =
+              'The Station connection changed. Try steering again.';
             await liveSteer.refused();
             liveSteer = undefined;
             throw new Error('Station authority changed.');
@@ -879,11 +885,15 @@ export function useSendMessage(
           return true;
         } catch (error) {
           if (liveSteer) {
+            const code = errorCodeOf(error);
             if (
-              (errorCodeOf(error) === 'inbox_stale_head' ||
-                isSteerConflictCode(errorCodeOf(error))) &&
+              (code === 'inbox_stale_head' || isSteerConflictCode(code)) &&
               stationAnswered(error)
             ) {
+              failureMessage =
+                code === 'inbox_stale_head'
+                  ? 'The conversation changed before Station could accept the steer. Try again.'
+                  : 'This steer conflicted with an earlier message. Review the conversation.';
               await liveSteer.refused();
               if (
                 (activeChatsStore.getSnapshot()[sessionId]?.input ?? '') === ''
@@ -903,8 +913,7 @@ export function useSendMessage(
           addEphemeralMessage(sessionId, {
             role: 'system',
             sendFailure: true,
-            content:
-              'The steer was not sent. Review the conversation and try again.',
+            content: failureMessage,
           });
           options?.onAdmission?.('not-invoked');
           return false;
