@@ -1009,7 +1009,7 @@ describe('ExistingAgentSetupImportModule', () => {
     writeFileSync(join(codex, 'prompts', 'review.md'), 'review prompt');
     const created = new Set<string>();
     const skillService = {
-      hasSkill: () => false,
+      hasSkillNamedLike: () => false,
       createLocalSkillIfAbsent: async (input: { name: string }) => {
         created.add(input.name);
         return { success: true };

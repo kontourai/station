@@ -4,7 +4,7 @@
  *
  * Two consumers used to answer "how many computers are there?" independently:
  * `ComputersSection` folded manual + paired + SSH records into one row per
- * identity (archive#1096's merge), while the section rail added
+ * identity (archive#1096's merge), while the old section rail added
  * `savedStations.length + sshComputers.length`. Those disagree in both
  * directions — the rail omitted every locally-registered manual entry, and
  * double-counted a paired device that is also an SSH computer, which the

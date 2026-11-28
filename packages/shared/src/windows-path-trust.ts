@@ -97,10 +97,9 @@ interface WindowsTrustResult {
  * SID, then proves that exact boundary again. We do not rely on localized
  * `icacls` output or PowerShell's ambiguous post-`-Command` argv handling.
  */
-const WINDOWS_TRUST_SCRIPT = String.raw`
+const WINDOWS_TRUST_FUNCTIONS = String.raw`
 $ErrorActionPreference = 'Stop'
 $sid = [Security.Principal.WindowsIdentity]::GetCurrent().User
-$request = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('__STATION_TRUST_PAYLOAD__')) | ConvertFrom-Json
 function Assert-NoReparse([string]$Path) {
   $full = [IO.Path]::GetFullPath($Path)
   $root = [IO.Path]::GetPathRoot($full)
@@ -151,12 +150,21 @@ function Assert-CurrentUserDacl([string]$Path, [bool]$Directory, [bool]$Executio
     }
     return
   }
+  Assert-PrivateSecurity $acl $Path
+}
+function Assert-PrivateSecurity($acl, [string]$Path) {
+  $ownerSid = $acl.GetOwner([Security.Principal.SecurityIdentifier]).Value
   if (-not $acl.AreAccessRulesProtected -or $ownerSid -ne $sid.Value) { throw "Station trust ACL is not current-user protected: $Path" }
   $rules = @($acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]))
   if ($rules.Count -ne 1) { throw "Station trust ACL has unrelated entries: $Path" }
   $rule = $rules[0]
   if ($rule.IdentityReference.Value -ne $sid.Value -or $rule.AccessControlType -ne [Security.AccessControl.AccessControlType]::Allow -or (($rule.FileSystemRights -band [Security.AccessControl.FileSystemRights]::FullControl) -ne [Security.AccessControl.FileSystemRights]::FullControl)) { throw "Station trust ACL permits an unrelated principal or lacks current-user control: $Path" }
 }
+`;
+
+const WINDOWS_TRUST_SCRIPT = `
+${WINDOWS_TRUST_FUNCTIONS}
+$request = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('__STATION_TRUST_PAYLOAD__')) | ConvertFrom-Json
 $operation = [string]$request.operation
 foreach ($target in @($request.targets)) {
   $kind = [string]$target.kind
@@ -191,6 +199,67 @@ if ($operation -eq 'ensure') {
 
 export function encodePowerShellCommand(program: string): string {
   return Buffer.from(program, 'utf16le').toString('base64');
+}
+
+export function buildWindowsPrivateFileReadCommand(file: string): string[] {
+  const encodedPath = Buffer.from(file, 'utf8').toString('base64');
+  const program = String.raw`
+${WINDOWS_TRUST_FUNCTIONS}
+$ProgressPreference = 'SilentlyContinue'
+[Console]::OutputEncoding = New-Object Text.UTF8Encoding($false)
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
+public static class StationReadinessFileIdentity {
+  [StructLayout(LayoutKind.Sequential)]
+  private struct Information {
+    public uint Attributes;
+    public System.Runtime.InteropServices.ComTypes.FILETIME Creation, Access, Write;
+    public uint Volume, SizeHigh, SizeLow, Links, IndexHigh, IndexLow;
+  }
+  [DllImport("kernel32.dll", SetLastError = true)]
+  private static extern bool GetFileInformationByHandle(SafeFileHandle handle, out Information information);
+  public static string Read(SafeFileHandle handle) {
+    Information information;
+    if (!GetFileInformationByHandle(handle, out information)) throw new System.ComponentModel.Win32Exception();
+    return information.Volume.ToString() + ":" + (((ulong)information.IndexHigh << 32) | information.IndexLow).ToString();
+  }
+}
+'@
+$file = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${encodedPath}'))
+while ($null -ne ($sequence = [Console]::In.ReadLine())) {
+  if ($sequence -notmatch '^\d{1,15}$') { throw 'Invalid private-file read sequence' }
+  try {
+    Assert-NoReparse $file
+    $stream = [IO.File]::Open($file, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+    try {
+      Assert-NoReparse $file
+      Assert-PrivateSecurity ($stream.GetAccessControl()) $file
+      if ($stream.Length -gt 65536) { throw 'Readiness file exceeds its bound' }
+      $generation = [StationReadinessFileIdentity]::Read($stream.SafeFileHandle)
+      $reader = New-Object IO.StreamReader($stream, [Text.Encoding]::UTF8, $true, 1024, $true)
+      try { $content = $reader.ReadToEnd() } finally { $reader.Dispose() }
+      Assert-PrivateSecurity ($stream.GetAccessControl()) $file
+      Assert-NoReparse $file
+      $current = [IO.File]::Open($file, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+      try {
+        if ([StationReadinessFileIdentity]::Read($current.SafeFileHandle) -ne $generation) { throw 'Readiness file generation changed' }
+      } finally { $current.Dispose() }
+      $result = @{ sequence = $sequence; trusted = $true; content = $content }
+    } finally { $stream.Dispose() }
+  } catch {
+    $result = @{ sequence = $sequence; trusted = $false }
+  }
+  [Console]::Out.WriteLine(($result | ConvertTo-Json -Compress))
+}
+`;
+  return [
+    '-NoProfile',
+    '-NonInteractive',
+    '-EncodedCommand',
+    encodePowerShellCommand(program),
+  ];
 }
 
 export function buildWindowsTrustCommand(

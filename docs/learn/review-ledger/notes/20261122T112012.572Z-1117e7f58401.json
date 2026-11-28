@@ -1,0 +1,7 @@
+{
+  "revision": "c0eeea5ee41188c63199ea4c8fd702db3aa30408",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"vitest-resource-manifest change only removes the deleted stepper test from the Chromium-launching list; the new dialog test is plain jsdom and needs no classification. No testing-guide claim changes.","inputs":["docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

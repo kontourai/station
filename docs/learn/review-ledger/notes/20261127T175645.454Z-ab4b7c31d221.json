@@ -1,0 +1,9 @@
+{
+  "revision": "afdf33f62c4a73469aeb7778ec09b26869819d05",
+
+  "notes": [
+    {"path":"docs/design/pnpm-workspace-installation.md","note":"Reviewed the same installer recovery/security/design contracts against afdf33f62c: pending async installation retains exclusive guard and held receipt identity, rejection records failed state, and only successful guarded verification publishes the exact receipt and attempts existing conservative cleanup. Root, directory/receipt identity, hostile-entry refusals and manual fresh-tree recovery are unchanged. The async guard admission/rejection controls and existing retirement controls pass in the 41-test Linux file. Linux real timeout descendant/control evidence and intended old-launcher mutation are preserved; Windows parent-loss and hosted qualification remain pending. No prose change or security relaxation is justified.","inputs":["scripts/lib/dependency-install-retirement.mjs"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"Reviewed the same installer recovery/security/design contracts against afdf33f62c: pending async installation retains exclusive guard and held receipt identity, rejection records failed state, and only successful guarded verification publishes the exact receipt and attempts existing conservative cleanup. Root, directory/receipt identity, hostile-entry refusals and manual fresh-tree recovery are unchanged. The async guard admission/rejection controls and existing retirement controls pass in the 41-test Linux file. Linux real timeout descendant/control evidence and intended old-launcher mutation are preserved; Windows parent-loss and hosted qualification remain pending. No prose change or security relaxation is justified.","inputs":["scripts/lib/dependency-install-retirement.mjs"]}
+  ]
+}

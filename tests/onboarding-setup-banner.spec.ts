@@ -57,7 +57,7 @@ test.describe('Onboarding Setup Launcher', () => {
           recommendation: {
             code: 'unconfigured',
             type: 'connections',
-            actionLabel: 'Open Connections',
+            actionLabel: 'Open Customize',
             title: 'No usable AI path is configured yet',
             detail:
               'Start Ollama locally or add a provider/runtime connection to make Station ready for first-run chat.',
@@ -124,7 +124,7 @@ test.describe('Onboarding Setup Launcher', () => {
       ),
     ).toBeVisible();
     await expect(
-      page.getByRole('button', { name: 'Review Connections' }),
+      page.getByRole('button', { name: 'Review Providers' }),
     ).toBeVisible();
   });
 
@@ -335,8 +335,8 @@ test.describe('Onboarding Setup Launcher', () => {
     });
     await expect(page.getByText('Ollama is available')).toBeVisible();
 
-    await page.getByRole('button', { name: 'Review Connections' }).click();
-    await expect(page).toHaveURL(/\/connections\/models/);
+    await page.getByRole('button', { name: 'Review Providers' }).click();
+    await expect(page).toHaveURL(/\/customize\/providers/);
     await expect(page.getByTestId('setup-launcher')).toHaveCount(0);
 
     chatReady = true;
@@ -413,7 +413,7 @@ test.describe('Onboarding Setup Launcher', () => {
           recommendation: {
             code: 'unconfigured',
             type: 'connections',
-            actionLabel: 'Open Connections',
+            actionLabel: 'Open Customize',
             title: 'No usable AI path is configured yet',
             detail:
               'Start Ollama locally or add a provider/runtime connection to make Station ready for first-run chat.',
@@ -468,7 +468,7 @@ test.describe('Onboarding Setup Launcher', () => {
           recommendation: {
             code: 'unconfigured',
             type: 'connections',
-            actionLabel: 'Open Connections',
+            actionLabel: 'Open Customize',
             title: 'No usable AI path is configured yet',
             detail:
               'Start Ollama locally or add a provider/runtime connection to make Station ready for first-run chat.',

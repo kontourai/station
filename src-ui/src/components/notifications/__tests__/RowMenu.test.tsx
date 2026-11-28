@@ -42,3 +42,29 @@ test('Escape closes the menu back to its trigger', () => {
   expect(screen.queryByRole('menu')).toBeNull();
   expect(document.activeElement).toBe(trigger);
 });
+
+test('deferred items stay current while open and stop resolving when closed', () => {
+  const initialSelect = vi.fn();
+  const updatedSelect = vi.fn();
+  const initialItems = vi.fn(() => [
+    { id: 'action', label: 'Initial action', onSelect: initialSelect },
+  ]);
+  const updatedItems = vi.fn(() => [
+    { id: 'action', label: 'Updated action', onSelect: updatedSelect },
+  ]);
+  const { rerender } = render(<RowMenu items={initialItems} />);
+  expect(initialItems).not.toHaveBeenCalled();
+  const trigger = screen.getByRole('button', { name: 'More actions' });
+  fireEvent.click(trigger);
+  expect(screen.getByRole('menuitem', { name: 'Initial action' })).toBeTruthy();
+  rerender(<RowMenu items={updatedItems} />);
+  expect(screen.queryByRole('menuitem', { name: 'Initial action' })).toBeNull();
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Updated action' }));
+  expect(updatedSelect).toHaveBeenCalledWith(trigger);
+  expect(initialSelect).not.toHaveBeenCalled();
+  expect(document.activeElement).toBe(trigger);
+  expect(screen.queryByRole('menu')).toBeNull();
+  initialItems.mockClear();
+  rerender(<RowMenu items={initialItems} />);
+  expect(initialItems).not.toHaveBeenCalled();
+});

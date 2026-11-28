@@ -162,7 +162,7 @@ consent-needing permission, or any declared `entrypoint`, `layout`,
 contributes browser code is now refused there rather than installed on one
 click; giving the Registry view the same preview-then-approve flow the Plugins
 view has is its own change. The MCP `install_plugin` tool is another: it has no
-person in its loop, so it refuses and names the Plugins page instead of echoing
+person in its loop, so it refuses and names Apps › Library instead of echoing
 a preview back into an install. And the update route still replaces code
 without re-deriving or re-prompting (point 3 below).
 

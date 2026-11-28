@@ -1,0 +1,7 @@
+{
+  "revision": "f5c5b850666bdfd5328b58f29ff07e80fd441486",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"The Customize journey now switches tabs instead of pressing a removed button; the e2e matrix row is unchanged.","inputs":["tests/registry.spec.ts"]}
+  ]
+}

@@ -21,10 +21,13 @@
  * Which Tasks: a `workItemRef` that is a github.com issue or pull request
  * the Project's board offered (`workItemProvenance: 'project-board'`, the
  * same rule every other tracker read follows), and either live or ended
- * (`done` or `canceled`) at most `TASK_FOLLOW_UP_ENDED_WINDOW_MS` ago.
- * TaskRecord keeps no end time; an ended Task's `updatedAt` is its end or a
- * later edit, so an edit after the end can keep an ended Task followed past
- * 14 days of its end, never shorter. Nothing here writes the Task record.
+ * (`done` or `canceled`) at most `TASK_FOLLOW_UP_ENDED_WINDOW_MS` ago,
+ * measured from `TaskRecord.endedAt` (#4554), which edits never move. A
+ * Task that ended before Station recorded end times has none; for it alone
+ * `updatedAt` stands in, so an edit after its end can keep it followed past
+ * 14 days of its end, never shorter. This fallback decides only what is
+ * observed; resume refuses a Task without `endedAt`. Nothing here writes
+ * the Task record.
  *
  * Which items: the primary work item, then each github.com pull request a
  * person kept on the Task (`listKeptDeclaredPullRequests`, the existing keep
@@ -120,7 +123,7 @@ function isTaskFollowable(task: TaskRecord, now: number): boolean {
   )
     return false;
   if (!isEnded(task)) return true;
-  const endedAt = Date.parse(task.updatedAt);
+  const endedAt = Date.parse(task.endedAt ?? task.updatedAt);
   return (
     !Number.isNaN(endedAt) && now - endedAt <= TASK_FOLLOW_UP_ENDED_WINDOW_MS
   );

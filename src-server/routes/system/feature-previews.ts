@@ -1,5 +1,9 @@
 import { Hono } from 'hono';
 import {
+  FeaturePreviewDisabledError,
+  requireFeaturePreview,
+} from '../../services/feature-previews/feature-preview-refusal.js';
+import {
   FeaturePreviewNotOfferedError,
   type FeaturePreviewRegistry,
 } from '../../services/feature-previews/feature-preview-registry.js';
@@ -18,6 +22,27 @@ export function createFeaturePreviewRoutes(
   logger: Logger,
 ) {
   const app = new Hono();
+  const desktopNearby = previews.bind({
+    id: 'desktop-nearby',
+    label: 'Desktop Nearby discovery',
+    description:
+      'Allow a connected Windows desktop to browse local-network Station advertisements for a bounded foreground request. Results still require explicit pairing.',
+  });
+
+  app.get('/desktop-nearby/admission', (c) => {
+    try {
+      requireFeaturePreview(
+        desktopNearby,
+        'desktop-nearby',
+        'Desktop Nearby discovery',
+      );
+      return c.json({ success: true, data: { enabled: true } });
+    } catch (error) {
+      if (error instanceof FeaturePreviewDisabledError)
+        return c.json(error.refusal, 404);
+      throw error;
+    }
+  });
 
   app.get('/', (c) => {
     try {

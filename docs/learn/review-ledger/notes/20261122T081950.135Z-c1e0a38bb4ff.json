@@ -1,0 +1,7 @@
+{
+  "revision": "fe3aafb9d61f45ec7e5403f36f84041486ac96cc",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Links to the API, SDK, contracts and plugins references remain accurate; no claim here depends on registry item fields.","inputs":["docs/guides/integrating-station.md","docs/guides/plugins.md","docs/reference/api.md","docs/reference/contracts.md"]}
+  ]
+}

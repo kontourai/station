@@ -202,8 +202,8 @@ export function resolveManagedModelIdentity(
     const label = providerConnection.name || providerConnection.id;
     throw new ManagedModelUnavailableError(
       gatingFault === 'unreachable'
-        ? `Model connection '${label}' could not be reached at its last check. Check that the provider is running and reachable, then test it again in Connections.`
-        : `Model connection '${label}' was refused by its provider at its last check. Fix its settings and test it again in Connections.`,
+        ? `Model connection '${label}' could not be reached at its last check. Check that the provider is running and reachable, then test it again in Customize › Providers.`
+        : `Model connection '${label}' was refused by its provider at its last check. Fix its settings and test it again in Customize › Providers.`,
     );
   }
   const modelId = firstDefinedString(

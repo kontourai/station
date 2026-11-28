@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import {
   chmodSync,
   copyFileSync,
+  existsSync,
   mkdirSync,
   readFileSync,
   writeFileSync,
@@ -81,7 +82,13 @@ const LEDGER_SCRIPTS = [
   'scripts/verify-npm-registry-provenance.mjs',
 ];
 
-type Step = { name?: string; run?: string; env?: Record<string, string> };
+type Step = {
+  id?: string;
+  if?: string;
+  name?: string;
+  run?: string;
+  env?: Record<string, string>;
+};
 type Job = {
   if?: string;
   needs?: string[];
@@ -1070,6 +1077,189 @@ describe.skipIf(process.platform === 'win32')(
       ).toEqual([BATCH_SUBJECT]);
       await checks(g);
     }, 120_000);
+  },
+);
+
+describe.skipIf(process.platform === 'win32')(
+  'Nightly CLI receipt recovery for its original run',
+  () => {
+    it.each([
+      {
+        registryHead: 'a'.repeat(40),
+        publishedRunId: RUN_ID,
+        expectedReceipt: true,
+      },
+      { registryHead: null, publishedRunId: RUN_ID, expectedReceipt: false },
+      {
+        registryHead: 'b'.repeat(40),
+        publishedRunId: RUN_ID,
+        expectedReceipt: false,
+      },
+      {
+        registryHead: 'a'.repeat(40),
+        publishedRunId: `${RUN_ID}1`,
+        expectedReceipt: false,
+      },
+    ])(
+      'recovers only exact published provenance: $registryHead from run $publishedRunId',
+      ({ registryHead, publishedRunId, expectedReceipt }) => {
+        const directory = makeTempDir('nightly-cli-receipt-');
+        const bin = join(directory, 'bin');
+        mkdirSync(bin);
+        for (const file of [
+          ...LEDGER_SCRIPTS,
+          'scripts/lib/nightly-build-identity.mjs',
+          'scripts/channel-platform-matrix.mjs',
+          'scripts/product-version.mjs',
+          'scripts/lib/native-release-config.mjs',
+          'scripts/lib/release-tag.mjs',
+          'packages/cli/package.json',
+        ]) {
+          const destination = join(directory, file);
+          mkdirSync(dirname(destination), { recursive: true });
+          copyFileSync(join(root, file), destination);
+        }
+        const packageVersion = JSON.parse(
+          readFileSync(join(directory, 'packages/cli/package.json'), 'utf8'),
+        ).version;
+        const version = `${packageVersion}-nightly.20261114.${RUN_ID}`;
+        const publishedVersion = `${packageVersion}-nightly.20261114.${publishedRunId}`;
+        writeFileSync(
+          join(bin, 'gh'),
+          `#!/bin/sh
+case "$*" in
+  'api repos/kontourai/station/actions/runs/${RUN_ID} --jq .created_at') printf '2026-11-14T12:00:00Z\\n' ;;
+  *) printf 'unexpected gh invocation: %s\\n' "$*" >&2; exit 92 ;;
+esac
+`,
+        );
+        writeFileSync(
+          join(bin, 'npm'),
+          `#!/bin/sh
+case "$*" in
+  'view @kontourai/station-cli@nightly gitHead --json') printf '"${'a'.repeat(40)}"\\n' ;;
+  'view @kontourai/station-cli@${publishedVersion} gitHead --json'|'view --prefer-online @kontourai/station-cli@${publishedVersion} gitHead --json') ${registryHead === null ? 'printf \'{"code":"E404"}\\n\'; exit 1' : `printf '"${registryHead}"\\n'`} ;;
+  'view @kontourai/station-cli@${version} gitHead --json') printf '{"code":"E404"}\\n'; exit 1 ;;
+  *) printf 'unexpected npm invocation: %s\\n' "$*" >&2; exit 91 ;;
+esac
+`,
+        );
+        for (const executable of ['gh', 'npm'])
+          chmodSync(join(bin, executable), 0o755);
+        const cli = workflow('nightly.yml').jobs['nightly-cli'];
+        const steps: Record<
+          string,
+          { outcome: string; outputs: Record<string, string> }
+        > = {};
+        for (const id of [
+          'cli_source_decide',
+          'identity',
+          'npm_idempotency',
+          'cli_registry_provenance',
+        ]) {
+          const step = cli.steps?.find((candidate) => candidate.id === id);
+          expect(step?.run, id).toBeTruthy();
+          steps.cli_npm_publish = { outcome: 'skipped', outputs: {} };
+          const priorSuccess = Object.values(steps).every(
+            (result) => result.outcome !== 'failure',
+          );
+          if (!evaluateIf(step?.if ?? 'success()', { steps, priorSuccess })) {
+            steps[id] = { outcome: 'skipped', outputs: {} };
+            continue;
+          }
+          const outputPath = join(directory, `${id}.output`);
+          writeFileSync(outputPath, '');
+          const bindings: Record<string, string> = {
+            'needs.test-gate.outputs.source_sha': 'a'.repeat(40),
+            'github.token': 'fixture-token',
+          };
+          for (const [stepId, result] of Object.entries(steps)) {
+            for (const [name, value] of Object.entries(result.outputs))
+              bindings[`steps.${stepId}.outputs.${name}`] = value;
+          }
+          const environment = Object.fromEntries(
+            Object.entries(step?.env ?? {}).map(([name, value]) => [
+              name,
+              value.replace(
+                /\$\{\{\s*([^}]+?)\s*\}\}/g,
+                (_, expression: string) => {
+                  expect(
+                    bindings[expression],
+                    `${id}: ${expression}`,
+                  ).toBeDefined();
+                  return bindings[expression];
+                },
+              ),
+            ]),
+          );
+          if (id === 'npm_idempotency' || id === 'cli_registry_provenance')
+            expect(environment.CLI_VERSION, `${id}: original run version`).toBe(
+              steps.identity.outputs.version,
+            );
+          const result = spawnSync(
+            'bash',
+            ['-e', '-o', 'pipefail', '-c', step?.run ?? ''],
+            {
+              cwd: directory,
+              encoding: 'utf8',
+              windowsHide: true,
+              timeout: 15_000,
+              env: {
+                ...process.env,
+                PATH: `${bin}:${process.env.PATH}`,
+                GITHUB_OUTPUT: outputPath,
+                GITHUB_RUN_ID: RUN_ID,
+                GITHUB_REPOSITORY: 'kontourai/station',
+                SOURCE_SHA: '',
+                BUILD_CLI: '',
+                CLI_VERSION: '',
+                RUNNER_TEMP: directory,
+                ...environment,
+              },
+            },
+          );
+          if (id !== 'npm_idempotency' || registryHead !== 'b'.repeat(40))
+            expect(result.status, `${id}: ${result.stderr}`).toBe(0);
+          else {
+            expect(result.status).not.toBe(0);
+            expect(result.stderr).toContain(
+              'already published from a different source',
+            );
+          }
+          steps[id] = {
+            outcome: result.status === 0 ? 'success' : 'failure',
+            outputs: Object.fromEntries(
+              readFileSync(outputPath, 'utf8')
+                .trim()
+                .split('\n')
+                .filter(Boolean)
+                .map((line) => line.split('=')),
+            ),
+          };
+        }
+        expect(steps.cli_registry_provenance.outcome).toBe(
+          expectedReceipt ? 'success' : 'skipped',
+        );
+        expect(steps.identity.outputs.version).toBe(version);
+        expect(
+          existsSync(join(directory, 'provider-receipts/nightly-cli.json')),
+        ).toBe(expectedReceipt);
+        if (expectedReceipt) {
+          const receipt = JSON.parse(
+            readFileSync(
+              join(directory, 'provider-receipts/nightly-cli.json'),
+              'utf8',
+            ),
+          );
+          expect(receipt).toMatchObject({
+            sourceSha: 'a'.repeat(40),
+            registryGitHead: 'a'.repeat(40),
+            version,
+            artifactBuiltAt: null,
+          });
+        }
+      },
+    );
   },
 );
 

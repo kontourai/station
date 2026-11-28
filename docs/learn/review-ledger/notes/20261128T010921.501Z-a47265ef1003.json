@@ -1,0 +1,9 @@
+{
+  "revision": "e35639ec1844215696f5ce1ce550d72cceefa306",
+
+  "notes": [
+    {"path":"docs/design/outside-agent-mcp-r3-evidence.md","note":"Re-reviewed the incremental VM fixture repair e35639ec1: generated UI listen arguments are still asserted by executing the real serialized script; built-in modules now use process.getBuiltinModule rather than an unnecessary module-relative createRequire anchor. No product, OAuth, tenant authorization, loopback, proxy, or readiness contract changes. The existing pin scanner reproduced the introduced unresolved-suite failure before repair, then all 44 owner cases and the full Linux lifecycle owner (256 pass, 2 platform skips) passed. Windows exact-head hosted qualification and actual repaired CodeQL execution remain pending; this note does not claim either.","inputs":["packages/cli/src/__tests__/lifecycle.test.ts"]},
+
+    {"path":"docs/reference/outside-agent-oauth.md","note":"Re-reviewed the incremental VM fixture repair e35639ec1: generated UI listen arguments are still asserted by executing the real serialized script; built-in modules now use process.getBuiltinModule rather than an unnecessary module-relative createRequire anchor. No product, OAuth, tenant authorization, loopback, proxy, or readiness contract changes. The existing pin scanner reproduced the introduced unresolved-suite failure before repair, then all 44 owner cases and the full Linux lifecycle owner (256 pass, 2 platform skips) passed. Windows exact-head hosted qualification and actual repaired CodeQL execution remain pending; this note does not claim either.","inputs":["packages/cli/src/__tests__/lifecycle.test.ts"]}
+  ]
+}

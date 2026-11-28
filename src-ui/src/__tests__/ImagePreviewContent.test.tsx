@@ -30,22 +30,31 @@ afterEach(() => {
 });
 
 describe('ImagePreviewContent', () => {
-  test('offers the image for download at the end of the zoom toolbar', () => {
+  test('offers the original image for download', () => {
     const item = { url: 'blob:shot', mediaType: 'image/png', name: 'shot.png' };
     render(
-      <ImagePreviewContent current={item} items={[item]} onSelect={() => {}} />,
+      <ImagePreviewContent
+        current={item}
+        items={[item]}
+        onSelect={() => {}}
+        onClose={() => {}}
+      />,
     );
 
     const download = screen.getByRole('link', { name: 'Download shot.png' });
     expect(download.getAttribute('href')).toBe('blob:shot');
     expect(download.getAttribute('download')).toBe('shot.png');
-    expect(download.closest('.image-inspector__toolbar')).not.toBeNull();
   });
 
   test('an unnamed image downloads with an extension', () => {
     const item = { url: 'blob:unnamed', mediaType: 'image/jpeg' };
     render(
-      <ImagePreviewContent current={item} items={[item]} onSelect={() => {}} />,
+      <ImagePreviewContent
+        current={item}
+        items={[item]}
+        onSelect={() => {}}
+        onClose={() => {}}
+      />,
     );
 
     expect(
@@ -67,6 +76,7 @@ describe('ImagePreviewContent', () => {
         current={items[0]}
         items={items}
         onSelect={() => {}}
+        onClose={() => {}}
       />,
     );
 

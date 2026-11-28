@@ -1,0 +1,7 @@
+{
+  "revision": "fe3aafb9d61f45ec7e5403f36f84041486ac96cc",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Its link to the plugins guide is still accurate; nothing user-facing changed.","inputs":["docs/user/getting-started.md","docs/guides/plugins.md"]}
+  ]
+}

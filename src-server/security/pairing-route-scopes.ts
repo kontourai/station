@@ -4072,6 +4072,13 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // merge. It mutates only that Task's own record, so the task family's
     // operate tier is the intended scope; no station-control tool reaches it.
     { method: 'PUT', path: '/api/tasks/:taskId/close-on-merge' },
+    // #4554 resume an ended Task. The task family's operate tier (read for
+    // the confirmation's GET) is necessary, never sufficient: the handler
+    // also requires the operator in person and not an agent
+    // (`isOperatorInPersonNotAgent`) and current Task read and execution
+    // authority. No station-control tool names either leaf.
+    { method: 'GET', path: '/api/tasks/:taskId/resume' },
+    { method: 'POST', path: '/api/tasks/:taskId/resume' },
     // #5064 a person reopens a Task the Project Overview auto-resolved. It
     // writes one timestamp (`overviewReopenedAt`) on that Task's own record:
     // no status transition, no dispatch, no external or provider effect, and
@@ -5747,6 +5754,7 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // read the policy file itself.
     { method: 'GET', path: '/api/settings/managed-policy' },
     { method: 'GET', path: '/api/feature-previews' },
+    { method: 'GET', path: '/api/feature-previews/desktop-nearby/admission' },
     { method: 'PUT', path: '/api/feature-previews/:id' },
     { method: 'GET', path: '/bedrock/models' },
     { method: 'GET', path: '/bedrock/models/:modelId' },
@@ -5757,6 +5765,7 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/config/app/log-level' },
     { method: 'PUT', path: '/config/app/log-level' },
     { method: 'POST', path: '/config/first-run' },
+    { method: 'POST', path: '/config/new-chat-default' },
     { method: 'GET', path: '/events' },
     { method: 'POST', path: '/invoke' },
     { method: 'GET', path: '/monitoring/events' },

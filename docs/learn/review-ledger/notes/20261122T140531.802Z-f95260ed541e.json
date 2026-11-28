@@ -1,0 +1,17 @@
+{
+  "revision": "1d9b1843d2314edf604ce49de0917602b1fc909e",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"The plugins destination now opens /apps as Apps and the Registry has no palette entry. Checked each citing page: none lists Registry or Plugins as a palette or Customize row in a way that this contradicts.","inputs":["src-ui/src/app-shell/destination-registry.ts"]},
+
+    {"path":"docs/design/pane-or-shell.md","note":"The plugins destination now opens /apps as Apps and the Registry has no palette entry. Checked each citing page: none lists Registry or Plugins as a palette or Customize row in a way that this contradicts.","inputs":["src-ui/src/app-shell/destination-registry.ts"]},
+
+    {"path":"docs/design/placement.md","note":"The plugins destination now opens /apps as Apps and the Registry has no palette entry. Checked each citing page: none lists Registry or Plugins as a palette or Customize row in a way that this contradicts.","inputs":["src-ui/src/app-shell/destination-registry.ts"]},
+
+    {"path":"docs/glossary.md","note":"The plugins destination now opens /apps as Apps and the Registry has no palette entry. Checked each citing page: none lists Registry or Plugins as a palette or Customize row in a way that this contradicts.","inputs":["src-ui/src/app-shell/destination-registry.ts"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"The plugins destination now opens /apps as Apps and the Registry has no palette entry. Checked each citing page: none lists Registry or Plugins as a palette or Customize row in a way that this contradicts.","inputs":["src-ui/src/app-shell/destination-registry.ts"]},
+
+    {"path":"docs/plans/whole-app-ux-campaign.md","note":"The plugins destination now opens /apps as Apps and the Registry has no palette entry. Checked each citing page: none lists Registry or Plugins as a palette or Customize row in a way that this contradicts.","inputs":["src-ui/src/app-shell/destination-registry.ts"]}
+  ]
+}

@@ -1,3 +1,4 @@
+import '../components/ImageInspector.css';
 import {
   createContext,
   type ReactNode,
@@ -62,17 +63,18 @@ export function PreviewProvider({ children }: { children: ReactNode }) {
           onClose={closePreview}
           ariaLabel="Preview"
           layer="dialog"
-          overlayClassName="image-preview-overlay"
-          panelClassName="image-preview-panel"
+          overlayClassName={
+            isImage(current)
+              ? 'image-preview-overlay image-preview-overlay--gallery'
+              : 'image-preview-overlay'
+          }
+          panelClassName={
+            isImage(current)
+              ? 'image-preview-panel image-preview-panel--gallery'
+              : 'image-preview-panel'
+          }
+          sheetGesture={!isImage(current)}
         >
-          <ResponsiveDialogHeader
-            title={
-              current.name ||
-              (isImage(current) ? 'Image preview' : 'File preview')
-            }
-            closeLabel="Close preview"
-            onClose={closePreview}
-          />
           {isImage(current) ? (
             <LazyBoundary
               load={loadImagePreviewContent}
@@ -80,17 +82,34 @@ export function PreviewProvider({ children }: { children: ReactNode }) {
                 current,
                 items,
                 onSelect: setCurrent,
+                onClose: closePreview,
               }}
               pending={
-                <SkeletonBlock count={1} label="Loading image preview" />
+                <>
+                  <ResponsiveDialogHeader
+                    title={current.name || 'Image preview'}
+                    closeLabel="Close preview"
+                    onClose={closePreview}
+                  />
+                  <SkeletonBlock count={1} label="Loading image preview" />
+                </>
               }
             />
           ) : (
-            <LazyBoundary
-              load={loadFilePreviewContent}
-              componentProps={{ current }}
-              pending={<SkeletonBlock count={1} label="Loading file preview" />}
-            />
+            <>
+              <ResponsiveDialogHeader
+                title={current.name || 'File preview'}
+                closeLabel="Close preview"
+                onClose={closePreview}
+              />
+              <LazyBoundary
+                load={loadFilePreviewContent}
+                componentProps={{ current }}
+                pending={
+                  <SkeletonBlock count={1} label="Loading file preview" />
+                }
+              />
+            </>
           )}
         </ResponsiveDialogSurface>
       )}

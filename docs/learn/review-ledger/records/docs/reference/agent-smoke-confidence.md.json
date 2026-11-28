@@ -36,8 +36,6 @@
 
     "src-ui/src/views/AgentConnectionView.tsx",
 
-    "src-ui/src/views/ConnectionsSectionFrame.tsx",
-
     "src-ui/src/views/page-layout.css",
 
     "src-ui/src/views/provider-settings/ProviderConnectionForm.tsx",
@@ -130,7 +128,9 @@
 
     "src-server/providers/__tests__/claude-adapter-events.test.ts",
 
-    "src-server/providers/__tests__/claude-adapter.test.ts"
+    "src-server/providers/__tests__/claude-adapter.test.ts",
+
+    "src-ui/src/views/CustomizeSectionFrame.tsx"
   ],
 
   "checks": [

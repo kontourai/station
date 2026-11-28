@@ -1,0 +1,23 @@
+{
+  "revision": "bd1ef6423957f897bf6954a4b290dda985b7806e",
+
+  "notes": [
+    {"path":"docs/adr/0020-distribution-two-trains-channels-as-pointers.md","note":"Checked: only an optional newChatDefault capability flag was added to StationCapabilityFlags. Handshake shape, other flags and pairing semantics are unchanged.","inputs":["packages/contracts/src/environment-security.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"Checked: only an optional newChatDefault capability flag was added to StationCapabilityFlags. Handshake shape, other flags and pairing semantics are unchanged.","inputs":["packages/contracts/src/environment-security.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Checked: only an optional newChatDefault capability flag was added to StationCapabilityFlags. Handshake shape, other flags and pairing semantics are unchanged.","inputs":["packages/contracts/src/environment-security.ts"]},
+
+    {"path":"docs/design/station-peer-pairing.md","note":"Checked: only an optional newChatDefault capability flag was added to StationCapabilityFlags. Handshake shape, other flags and pairing semantics are unchanged.","inputs":["packages/contracts/src/environment-security.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Checked: only an optional newChatDefault capability flag was added to StationCapabilityFlags. Handshake shape, other flags and pairing semantics are unchanged.","inputs":["packages/contracts/src/environment-security.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked: only an optional newChatDefault capability flag was added to StationCapabilityFlags. Handshake shape, other flags and pairing semantics are unchanged.","inputs":["packages/contracts/src/environment-security.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Checked: only an optional newChatDefault capability flag was added to StationCapabilityFlags. Handshake shape, other flags and pairing semantics are unchanged.","inputs":["packages/contracts/src/environment-security.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked: only an optional newChatDefault capability flag was added to StationCapabilityFlags. Handshake shape, other flags and pairing semantics are unchanged.","inputs":["packages/contracts/src/environment-security.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Checked: only an optional newChatDefault capability flag was added to StationCapabilityFlags. Handshake shape, other flags and pairing semantics are unchanged.","inputs":["packages/contracts/src/environment-security.ts"]}
+  ]
+}

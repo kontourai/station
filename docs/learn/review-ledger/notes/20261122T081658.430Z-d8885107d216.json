@@ -1,0 +1,7 @@
+{
+  "revision": "fe3aafb9d61f45ec7e5403f36f84041486ac96cc",
+
+  "notes": [
+    {"path":"examples/registry/integrations/README.md","note":"Integration (tools) entries are untouched; facts are read for plugin entries only.","inputs":["examples/registry/integrations/README.md","src-server/providers/registries/json-manifest-registry.ts","src-server/providers/registries/registry-source-configuration.ts"]}
+  ]
+}

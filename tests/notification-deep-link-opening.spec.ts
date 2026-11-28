@@ -622,27 +622,11 @@ async function openFirstChat(page: Page) {
   ).toContainText('The first chat stays readable.');
 }
 
-async function openFromNotifications(
-  page: Page,
-  title: string,
-  phone: boolean,
-) {
+async function openFromNotifications(page: Page, title: string) {
   await page.getByRole('button', { name: /^Notifications/ }).click();
-  await page
-    .locator('.notification-history__item')
-    .filter({ hasText: title })
-    .getByRole('button', { name: 'Open' })
-    .click();
-  // The panel stays open after Open; close it the way a person does, by
-  // pressing outside it, so it covers nothing in the captures. On a phone
-  // that is the backdrop's top strip: a taller sheet covers its centre.
-  if (phone)
-    await page
-      .getByTestId('notification-history-backdrop')
-      .click({ position: { x: 195, y: 24 } });
-  else
-    await page.getByRole('heading', { name: 'Continue', exact: true }).click();
-  await expect(page.locator('.notification-history')).toHaveCount(0);
+  const notifications = page.locator('.notification-history');
+  await notifications.getByRole('link', { name: title, exact: true }).click();
+  await expect(notifications).toHaveCount(0);
 }
 
 async function tabTo(page: Page, target: Locator) {
@@ -713,7 +697,7 @@ for (const [width, viewport] of [
         const hold = await holdLookup(page);
         try {
           await openFirstChat(page);
-          await openFromNotifications(page, 'Finished: Release notes', phone);
+          await openFromNotifications(page, 'Finished: Release notes');
           await hold.reached;
           await expect(openingStatus(page)).toBeVisible();
           await expect(headerTitle(page, phone)).toHaveText(
@@ -739,7 +723,7 @@ for (const [width, viewport] of [
           await refusal.install(page);
           const refused = await refuseLookup(page);
           await openFirstChat(page);
-          await openFromNotifications(page, refusal.row, phone);
+          await openFromNotifications(page, refusal.row);
           await refused.reached;
           const notice = page
             .getByRole('alert')
@@ -815,7 +799,7 @@ for (const [width, viewport] of [
                 .locator('.chat-dock__header-action')
                 .getByRole('button', { name: 'Continue in Station' }),
             ).toBeVisible();
-          await openFromNotifications(page, 'Finished: Release notes', phone);
+          await openFromNotifications(page, 'Finished: Release notes');
           await hold.reached;
           await expect(continueAction).toBeVisible();
           await expect(headerTitle(page, phone)).toHaveText(IMPORTED_TITLE);

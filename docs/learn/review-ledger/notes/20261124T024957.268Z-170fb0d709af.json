@@ -1,0 +1,7 @@
+{
+  "revision": "32c2bcd30e4c5809d189cb03cb43a9180295bef9",
+
+  "notes": [
+    {"path":"docs/design/shell-skeletons.md","note":"Re-read against this change: the Customize landing adds a note linking to Apps beside the Computers note; the item list and Computers claims here still hold. The page-frame registry change is a comment naming the catalogues that remain pages; no frame title or width changed.","inputs":["docs/design/shell-skeletons.md","src-ui/src/app-shell/page-frame-registry.ts","src-ui/src/views/customize/CustomizeLanding.tsx"]}
+  ]
+}

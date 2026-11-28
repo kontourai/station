@@ -77,7 +77,7 @@ export function installDeclinedMessage(pluginName: string) {
 
 /**
  * #2323 S5: the proposal a Needs attention row linked to
- * (`/plugins?proposal=<id>`), read once from the URL the view opened on.
+ * (`/apps/library?proposal=<id>`), read once from the URL the view opened on.
  */
 function readRequestedProposalId(): string | null {
   try {
@@ -102,7 +102,7 @@ export function usePluginManagementViewModel() {
     selectedId: selectedPlugin,
     select: selectPlugin,
     deselect: deselectPlugin,
-  } = useUrlSelection('/plugins');
+  } = useUrlSelection('/apps/library');
   const selectedPluginRef = useRef(selectedPlugin);
   selectedPluginRef.current = selectedPlugin;
 
@@ -588,7 +588,7 @@ export function usePluginManagementViewModel() {
           if (!installedPlugin) {
             setMessage({
               type: 'error',
-              text: 'Station did not return installed plugin details. Refresh Plugins before continuing.',
+              text: 'Station did not return installed plugin details. Refresh Apps › Library before continuing.',
             });
             await reloadPluginsMutation.mutateAsync().catch(() => {});
             await reloadClientPluginRegistry();
@@ -623,7 +623,7 @@ export function usePluginManagementViewModel() {
           ) {
             setMessage({
               type: 'error',
-              text: `${pluginName} is installed, but Station did not report current dependency approval status. Check Plugins on the Station host.`,
+              text: `${pluginName} is installed, but Station did not report current dependency approval status. Check Apps › Library on the Station host.`,
             });
             await reloadPluginsMutation.mutateAsync().catch(() => {});
             await reloadClientPluginRegistry();

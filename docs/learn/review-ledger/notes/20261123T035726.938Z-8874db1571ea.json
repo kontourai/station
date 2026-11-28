@@ -1,0 +1,7 @@
+{
+  "revision": "732047bdc164c30d27041d2a531f70734e1bda76",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Settings / Customize row now says what settings.spec and registry.spec check after the merge: 44px Customize landing items at 390px, the Customize list holding its six items and no Apps row, and the command palette reaching Apps.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/settings.spec.ts"]}
+  ]
+}

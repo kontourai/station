@@ -1,0 +1,9 @@
+{
+  "revision": "1d9b1843d2314edf604ce49de0917602b1fc909e",
+
+  "notes": [
+    {"path":"docs/guides/distribution-profiles.md","note":"The install flow moved to a shared hook and the page lost its Plugins tab; distribution-profiles still correctly points at Registry › Layouts, and the plugins guide was updated.","inputs":["src-ui/src/views/RegistryView.tsx"]},
+
+    {"path":"docs/guides/plugins.md","note":"The install flow moved to a shared hook and the page lost its Plugins tab; distribution-profiles still correctly points at Registry › Layouts, and the plugins guide was updated.","inputs":["src-ui/src/views/RegistryView.tsx"]}
+  ]
+}

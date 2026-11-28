@@ -1,0 +1,7 @@
+{
+  "revision": "a4691e78a0af212a6721245ebf7a7543b4e8840f",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed delivery-failure, uncertain retry and native acknowledgement coverage. The integration tests open Queue from the actual composer and select the intended message in the reorderable list before exercising the same delivery contracts.","inputs":["src-ui/src/__tests__/ChatDockBody.sessionFailureBanner.test.tsx"]}
+  ]
+}

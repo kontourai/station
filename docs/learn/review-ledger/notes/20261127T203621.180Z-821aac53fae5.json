@@ -1,0 +1,7 @@
+{
+  "revision": "3017561b092ddd7ca44a3cd0155bb2560f6ad36d",
+
+  "notes": [
+    {"path":"docs/design/survey-flow-review.md","note":"Checked the runtime route changes from the ended Task preview against the survey review aggregate and per-Project flow registration. The survey service still lists configured Projects, uses the same workspace resolver and exposes the same bounded error response. The added resume routes are registered under the Task family. Source review.","inputs":["docs/design/survey-flow-review.md","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

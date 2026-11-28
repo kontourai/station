@@ -1,0 +1,7 @@
+{
+  "revision": "1d9b1843d2314edf604ce49de0917602b1fc909e",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Browse marketplaces and loading plugin packages now point at Apps › Discover, checked against NewChatModal and the redirects.","inputs":["docs/user/getting-started.md"]}
+  ]
+}

@@ -59,19 +59,19 @@ On a phone: The drawer, and a bottom sheet for the row menu.
 
 On a phone: The same list in one column.
 
-1. **Facets: Works with (Tasks, Chats and agents, Knowledge, Files and code, Pull requests), Opens as, and From.** They are derived from the app's manifest. The counts need a backend check. _(layout, backend check first; slice 1.4)_
-2. **A card answers four questions at a glance: what it is for, its screens (its tab labels), what it brings and needs, and trust.** _(layout; slice 1.4)_
-3. **Trust is honest. In-process apps say "Runs in Station's window", and only the MCP pane says Sandboxed.** The trust tier does not change how an app renders yet. _(copy; slice 1.4)_
+1. **Facets: Works with (Tasks, Chats and agents, Knowledge, Files and code), Opens as, and From.** They and their counts are derived from each app's manifest when the catalogue is listed, and a value no app declares is not offered. Pull requests is not a facet: no manifest field declares it. _(layout; slice 1.4)_
+2. **A card answers four questions at a glance: what it is for, its screens (its tab labels), what it brings and needs, and trust.** An entry that has no screen, or whose manifest Station could not read, says so and appears only while no facet is chosen. _(layout; slice 1.4)_
+3. **Trust is honest. In-process apps say "Runs in Station's window", and only an app with no screen code of its own, whose views are MCP tool UIs, says Sandboxed.** The trust tier does not change how an app renders yet. _(copy; slice 1.4)_
 4. **Skills and tool servers stay in their own in-place browsers (Skills › Browse, Customize › Tools).** Skills and tool servers are browsed where they are used, so each kind of thing has one catalogue. _(layout; slice 1.4)_
-5. **The standard installed set (Release desk, Knowledge Docs, Enterprise, Daily brief) shows "Added · Open". Coding and Session activity show "Review".** Release desk's screens read "Open · Shipped · Settings", matching its open screen. _(layout; slice 1.4)_
-6. **Knowledge Docs, Enterprise, Coding and Session activity are real examples. Daily brief is today's Board template.** Release desk is an invented first-party example (pull requests, Tasks, checks, an agent). _(copy; slice 1.4)_
+5. **An app shows "Added" only when it is installed, with Manage (in Library) and Remove; one not installed shows "Review".** There is no pre-added set: a fresh install has no apps (`apps-01` change 1). _(layout; slice 1.4)_
+6. **The cards are the catalogue's real entries, named as the catalogue names them.** Invented examples are not listed, and Daily brief, an arranged app, is not a catalogue entry. _(copy; slice 1.4)_
 
 ### `apps-04` App detail (Enterprise)
 
 On a phone: The same page in one column.
 
 1. **"What it puts in your sidebar": one Apps row, plus its 4 real tab names.** This is from the real Enterprise manifest and layout. _(layout; slice 5.9)_
-2. **What it brings: an agent, 3 prompts (the real prompt actions on its tabs), the Meeting notes collection, and sample data providers.** _(layout; slice 5.9)_
+2. **What it brings: an agent, 4 prompts (the distinct prompts its actions send), the Meeting notes collection, and sample data providers.** Its tab actions and package actions name the same four prompt files, so they are counted once each. _(layout; slice 5.9)_
 3. **Permission tiers, each with its plain meaning.** The tiers are the real ones. _(copy; slice 5.9)_
 4. **"Its screen runs inside Station's window, as you."** In-process code has no isolation today. _(copy; slice 5.9)_
 5. **"What it uses from Station": the app's SDK hooks named in plain words (send to chat, its agent, current project, toasts).** _(copy; slice 5.9)_
@@ -153,12 +153,12 @@ On a phone: The same transcript with a bottom sheet for the review.
 | Today's fixed Boards | Simplify | Kept as one built-in app kind, "arranged apps", made with chat or the section editor. Daily brief is the default one. "+ New Board" becomes "Make one with chat". |
 | Apps library (preview) | Remove | Apps › Library replaces it. |
 | Plugins as a destination | Remove | Replaced by Apps (Discover, Library, Updates). "Plugin" stays the packaging word. |
-| Registry tabs: Plugins and Layouts | Simplify | Become Apps › Discover. |
+| Registry tab: Plugins | Simplify | Becomes Apps › Discover. |
 | Registry tab: Skills | Simplify | Becomes Skills › Browse. |
 | Registry tab: Integrations | Simplify | Becomes Customize › Tools › From the list. |
-| Registry tab: Agents | Remove | Empty. Agents arrive inside apps. |
-| Layouts tab | Remove | The tab goes and the concept stays: a Layout is how an app's screen is built, a developer word. |
-| Kits | Hide for the first release | Still hidden for v1. A read-only view from a portable package would appear as an app with a project view when one ships. |
+| Registry tab: Agents | Remove | Empty on a fresh install; agents arrive inside apps. Its address opens Agents. A source that lists `type: "agent"` entries in a Station manifest has them no longer browsed: such an agent is still added by installing its package from its source (Apps › Library › Install plugin, or `station plugin install`). Apps › Discover › Manage sources lists every source, whatever it supplies, so such a source can still be seen and removed. |
+| Layouts tab | Simplify | The tab goes and the concept stays: a Layout is how an app's screen is built, a developer word. The ready-made layouts stay a page of their own with no navigation entry, opened from a project's Add Layout, until adding apps as views from the project's plus replaces it (`apps-09`). |
+| Kits | Hide for the first release | Hidden for v1: the kit catalogue keeps its address with no entry. A read-only view from a portable package would appear as an app with a project view when one ships. |
 | Starter layout (New Project) | Simplify | Becomes an optional "Add apps as views", per the Projects design. |
 
 ## New work
@@ -170,7 +170,7 @@ On a phone: The same transcript with a bottom sheet for the review.
 | App as a project view | copy | Exists today (project layouts). Relabel. |
 | Arranged app (today's Board) | copy | Exists today. Rename only. |
 | Discover, Library and Updates | layout | Plugins and Registry exist. A regroup plus routing. |
-| Facets "Works with" and "Opens as" | backend check first | Derivable from the manifest. The counts need a backend check. |
+| Facets "Works with" and "Opens as" | server work | Derived from each catalogue entry's manifest when the catalogue is listed. |
 | App badge or attention item | server work | Planned after v1. New server data and an SDK hook. |
 | Reorder apps | server work | Planned for v1. New UI plus a stored order. |
 | "Sent from <app>" chat label | new screen state | Planned for v1. UI only: the origin on the chat. |

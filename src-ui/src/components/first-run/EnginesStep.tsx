@@ -316,7 +316,7 @@ export function EnginesStep({
                   "Station found no agent CLIs on this machine" would be a
                   claim the data does not support. */}
               Station has no agent engines to offer here yet — you can connect
-              one any time from Connections.
+              one any time from Customize.
             </p>
           ) : (
             <ul className="first-run-engines__list">

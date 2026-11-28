@@ -400,7 +400,9 @@ describe('mounted composer inbox handoff (test-scoped caller)', () => {
       </QueryClientProvider>
     );
     const mounted = render(tree());
-    fireEvent.click(await screen.findByRole('button', { name: 'Send' }));
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Queue for next turn' }),
+    );
     await waitFor(async () =>
       expect(await outboundDispatch.snapshot()).toEqual(
         expect.arrayContaining([
@@ -619,7 +621,7 @@ describe('mounted composer inbox handoff (test-scoped caller)', () => {
       await waitFor(() => expect(heldRead).toBeDefined());
       fireEvent.keyDown(textbox, { key: 'Enter', ctrlKey: true });
       fireEvent.click(
-        await screen.findByRole('button', { name: '1 pending message' }),
+        await screen.findByRole('button', { name: 'Queue · 1 pending' }),
       );
       expect(screen.getByText('then summarize')).toBeTruthy();
       expect(textbox).toHaveProperty('value', '');
@@ -642,7 +644,9 @@ describe('mounted composer inbox handoff (test-scoped caller)', () => {
     );
     refuseInboxReads = false;
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
-    expect(await screen.findByText('1 pending')).toBeTruthy();
+    expect(
+      await screen.findByRole('button', { name: 'Queue · 1 pending' }),
+    ).toBeTruthy();
     await waitFor(async () => {
       const response = await world.listInbox(READER);
       const body = await response.json();

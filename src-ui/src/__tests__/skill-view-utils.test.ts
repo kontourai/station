@@ -148,7 +148,7 @@ describe('the skills list', () => {
     expect(skillSourceLabel('package')).toBe('Built in');
     expect(skillSourceLabel('user')).toBe('This machine');
     expect(skillSourceLabel('project')).toBe('This workspace');
-    expect(skillSourceLabel('registry')).toBe('Registry');
+    expect(skillSourceLabel('registry')).toBe('From a source');
     expect(skillSourceLabel('plugin')).toBe('Plugin');
     expect(skillSourceLabel('migrated-playbook')).toBe('Migrated playbook');
     expect(skillSourceLabel(undefined)).toBe('Source unrecorded');

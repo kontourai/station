@@ -680,7 +680,7 @@ describe('usePluginManagementViewModel', () => {
         { tier: 'active' },
       ]),
     ).toBe(
-      'Provider Kit is active, but its server features stay off until you approve its trusted permissions. Review its request under Plugins.',
+      'Provider Kit is active, but its server features stay off until you approve its trusted permissions. Review its request in Apps › Library.',
     );
     expect(consentFailureMessage('Network Kit', [{ tier: 'active' }])).toBe(
       'Network Kit was installed, but required permissions were not approved.',
@@ -1295,7 +1295,7 @@ describe('usePluginManagementViewModel', () => {
     await waitFor(() => {
       expect(result.current.message).toEqual({
         type: 'error',
-        text: 'Network Kit is active, but its server features stay off until you approve its trusted permissions. Review its request under Plugins.',
+        text: 'Network Kit is active, but its server features stay off until you approve its trusted permissions. Review its request in Apps › Library.',
       });
     });
     expect(mocks.requestConsent).toHaveBeenCalledWith(

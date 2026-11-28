@@ -207,6 +207,29 @@ handoff. A private LAN peer does not become a local operator: internal lifecycle
 credentials still require a loopback socket. If either bind fails, startup
 fails rather than falling back to a wildcard listener.
 
+When a launcher supplies a readiness file, the UI also requires a private
+snapshot declaring the expected SHA ready before authenticating the backend's
+boot identity. POSIX files must belong to the current user with no group or
+other permissions. On Windows, synthetic mode bits are not ACL evidence: a
+bounded [asynchronous verifier](../../packages/cli/src/commands/windows-readiness-reader.ts)
+checks the [shared current-user-only DACL policy](../../packages/shared/src/windows-path-trust.ts)
+on the same open handle used to read the snapshot, rejects reparse paths, and
+compares the final path's file identity. It checks each new observation rather
+than caching an ACL verdict by `ctime` or `mtime`. Concurrent requests share
+the next pending observation, not an earlier result. The verifier is owned by
+the UI listener inside the existing [parent-bound Windows Job guard](../../packages/shared/src/windows-command-guard.ts).
+Stop waits for the guard's empty-Job acknowledgment and process closure before
+allowing a replacement; unconfirmed cleanup fences further verification.
+Parent loss closes the owned Job without a PID-based tree kill. Startup warms
+the verifier before binding so a cold PowerShell launch does not consume the
+HTTP identity budget. Installed Windows runtimes use their digest-verified
+staged guard; source checkouts compile the existing guard when needed. The
+verifier's startup deadline cancels pending compilation and owner-identity
+lookup, and a cancelled lookup cannot subsequently start a worker. Failed or
+timed-out file verification leaves the original file unchanged and reports unavailable;
+a connected backend that misses its identity deadline remains degraded, not
+ready. A private file alone never substitutes for the authenticated matching boot.
+
 ### Handing a running instance to the operator
 
 Starting the app is not the whole handoff. The UI signs in through a
@@ -285,7 +308,7 @@ Ollama-compatible server whose models are scripted scenarios:
 `scripted-showcase` (Markdown with a list, table and code block),
 `scripted-echo`, `scripted-long`, `scripted-truncated` (finish reason
 `length`) and `scripted-error` (fails mid-stream). In the dev instance, add an
-Ollama connection under Connections with base URL `http://127.0.0.1:4417` and
+Ollama connection under Customize › Providers with base URL `http://127.0.0.1:4417` and
 pick a scenario as the model. The turn then runs through the real Ollama
 adapter, orchestration, persistence and live stream; only the model is
 replaced. It offers no tools, so a scripted turn never asks Station to run

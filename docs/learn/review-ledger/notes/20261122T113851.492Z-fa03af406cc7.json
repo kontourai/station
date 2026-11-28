@@ -1,0 +1,7 @@
+{
+  "revision": "f59331fd1f2dceb0e4fbac6fc6021d045e34168e",
+
+  "notes": [
+    {"path":"docs/reference/shared.md","note":"The abbreviated RegistryItem sketch is unaffected by the fix round (exported list bound and parse leniency for none).","inputs":["docs/reference/shared.md","packages/contracts/src/catalog.ts"]}
+  ]
+}

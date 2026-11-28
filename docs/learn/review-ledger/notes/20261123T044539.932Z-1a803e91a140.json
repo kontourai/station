@@ -1,0 +1,7 @@
+{
+  "revision": "bd1ef6423957f897bf6954a4b290dda985b7806e",
+
+  "notes": [
+    {"path":"docs/design/remote-execution-preparation.md","note":"Checked: adds the newChatDefault flag, served in every deployment mode. No other flag or withdrawal changed.","inputs":["src-server/capabilities/station-capability-flags.ts"]}
+  ]
+}

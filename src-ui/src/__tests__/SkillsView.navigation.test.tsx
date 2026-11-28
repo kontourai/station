@@ -171,7 +171,18 @@ beforeEach(() => {
   });
   _setApiBase('http://localhost');
   deleteRequestMock.mockReset();
-  vi.stubGlobal('fetch', deleteRequestMock);
+  // The page's setup-import sources check goes through the real hook; answer
+  // it with the route's shape so `deleteRequestMock` sees only the removal.
+  const fetchStub: typeof fetch = (input, init) =>
+    String(input) === 'http://localhost/api/setup-imports/sources'
+      ? Promise.resolve(
+          Response.json({
+            success: true,
+            data: [{ id: 'codex-prompts', available: false }],
+          }),
+        )
+      : deleteRequestMock(input, init);
+  vi.stubGlobal('fetch', fetchStub);
   createSkillMock.mockReset().mockImplementation(async (payload) => {
     createdSkill = { ...payload, writable: true, origin: 'user' };
   });

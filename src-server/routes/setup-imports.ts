@@ -31,6 +31,12 @@ export function createSetupImportRoutes(
     const code = error instanceof SetupImportError ? error.code : undefined;
     if (code === 'STORE_UNAVAILABLE' || code === 'SOURCE_UNAVAILABLE')
       return { status: 503, error: 'Setup import is temporarily unavailable.' };
+    if (code === 'TOO_MANY_FILES')
+      return {
+        status: 422,
+        error: 'The Codex prompts folder has too many files to import.',
+        code,
+      };
     if (code === 'RECEIPT_NOT_FOUND')
       return { status: 404, error: 'Setup import receipt not found.' };
     if (code === 'INVALID_SOURCE' || code === 'INVALID_APPLY')
@@ -67,7 +73,13 @@ export function createSetupImportRoutes(
         'Setup import preview could not be created.',
       );
       return c.json(
-        { success: false, error: mapped.error },
+        {
+          success: false,
+          error: mapped.error,
+          // Branchable: a full folder is not a passing fault, so the dialog
+          // explains it instead of offering a retry.
+          ...('code' in mapped ? { code: mapped.code } : {}),
+        },
         mapped.status as 400,
       );
     }

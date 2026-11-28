@@ -1,0 +1,7 @@
+{
+  "revision": "3f5ff346657865efdea1e60812bb7fc2a804fc0c",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Checked: the command palette's plugin-command group is Plugins again, as before this branch; this reference does not restate the group name.","inputs":["docs/reference/sdk.md","src-ui/src/components/CommandPalette.tsx"]}
+  ]
+}

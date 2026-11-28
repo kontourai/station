@@ -101,7 +101,7 @@ export function ChatEmptyState({
             id: content.engineConnectionId,
           }
         : content.actionTarget === 'connections'
-          ? { type: 'connections' }
+          ? { type: 'customize' }
           : { type: 'connections-models' };
 
     return (

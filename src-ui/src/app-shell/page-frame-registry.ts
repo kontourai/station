@@ -1,5 +1,6 @@
 import type { PageFrameSpec } from '../components/page-frame';
 import type { NavigationView } from '../types';
+import { CUSTOMIZE_EYEBROW } from './CustomizeShell';
 import { APP_DESTINATION_REGISTRY } from './destination-registry';
 
 /**
@@ -43,10 +44,9 @@ const FRAMES: Record<NavigationView['type'], PageFrameSpec | null> = {
   // an ancestor and duplicated the title instead.
   guidance: SPLIT_PANE,
 
-  connections: {
-    title: 'Connections',
-    subtitle: 'Where work runs and what powers it',
-    width: 'narrow',
+  customize: {
+    title: 'Customize',
+    subtitle: 'The agents you run, what they run on, and what they can reach.',
   },
   'connections-models': SPLIT_PANE,
   'connections-model-edit': SPLIT_PANE,
@@ -60,16 +60,24 @@ const FRAMES: Record<NavigationView['type'], PageFrameSpec | null> = {
   'connections-tools': SPLIT_PANE,
   'connections-tool-edit': SPLIT_PANE,
   'connections-knowledge': {
-    eyebrow: 'Connections',
     title: 'Knowledge',
     subtitle: 'What agents can look up',
     width: 'narrow',
   },
-  'connections-computers': { width: 'full', body: 'flow', flush: true },
+  // Not a Customize item: devices and other Stations move to the Station
+  // page. Until then this keeps today's Computers screen at its address.
+  'connections-computers': {
+    width: 'full',
+    body: 'flow',
+    flush: true,
+  },
 
-  plugins: SPLIT_PANE,
+  apps: SPLIT_PANE,
+  // Each remaining catalogue (skills, tool servers, layouts, kits) is a
+  // page of its own, entered from where its kind is used; the view
+  // publishes its title ("Browse skills"). This is only the loading word.
   registry: {
-    title: 'Registry',
+    title: 'Browse',
     width: 'full',
     body: 'fill',
   },
@@ -187,7 +195,7 @@ const RESOLVED_FRAMES = ((): Record<
   for (const [type, spec] of Object.entries(FRAMES) as Array<
     [NavigationView['type'], PageFrameSpec | null]
   >) {
-    if (!spec || spec.title !== undefined) {
+    if (!spec) {
       resolved[type] = spec;
       continue;
     }
@@ -197,8 +205,17 @@ const RESOLVED_FRAMES = ((): Record<
     const destination = APP_DESTINATION_REGISTRY.getDestinationForView({
       type,
     } as NavigationView);
-    const title = destination?.label() ?? UNSURFACED_FALLBACK_TITLES[type];
-    resolved[type] = title ? { ...spec, title } : spec;
+    const title =
+      spec.title ?? destination?.label() ?? UNSURFACED_FALLBACK_TITLES[type];
+    // A page a Customize item hosts names Customize above its title: on a
+    // phone, where the list is hidden, that eyebrow is the way back.
+    const eyebrow = destination?.customizeNav
+      ? CUSTOMIZE_EYEBROW
+      : spec.eyebrow;
+    resolved[type] =
+      title === spec.title && eyebrow === spec.eyebrow
+        ? spec
+        : { ...spec, title, eyebrow };
   }
   return resolved;
 })();

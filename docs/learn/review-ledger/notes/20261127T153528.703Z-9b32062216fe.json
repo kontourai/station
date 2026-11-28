@@ -1,0 +1,7 @@
+{
+  "revision": "cbfd73fe70d96e9092beb6765a9daa6acc60704d",
+
+  "notes": [
+    {"path":"docs/guides/nightly.md","note":"Final review at committed source: actual YAML env bindings consume captured identity outputs; strict exact-version provider stubs and same-SHA/different-run negative control pass. Baseline18/18; clean-tree cross-run receipt-version mutation fails original-run authority assertion (17 unaffected pass); byte-exact restoration and five owner suites132/132 pass. Initial unbounded mutation was cancelled, not counted. Existing registry delay cause remains unknown; this change repairs receipt recovery only.","inputs":["docs/guides/nightly.md"]}
+  ]
+}

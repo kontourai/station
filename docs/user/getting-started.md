@@ -11,7 +11,7 @@ and keeping Station updated. To share a Project with someone, read the
    Open the app or use the single-use sign-in link printed by the installer.
 2. On Home, open the Agent control beside **Start** and choose an Agent that is
    ready. If Home offers **Set up an agent engine**, use that action to open
-   Connections. For an existing Codex account, follow
+   **Customize → Engines**. For an existing Codex account, follow
    [First chat with Codex](#first-chat-with-codex).
 3. Try a small request such as “Give me three questions to check before I
    review a documentation change. Use no tools.” Choose **Start** to open a
@@ -49,11 +49,11 @@ without adding a model API key:
    the [README commands](https://github.com/kontourai/station/blob/main/README.md#run-from-source-macos-linux) and open
    the single-use sign-in link printed by `./station start`.
 2. Open **Customize** (the sparkle icon at the bottom of the sidebar) →
-   **Connections** → **Engines** → **Codex**. Confirm the account is signed in.
+   **Engines** → **Codex**. Confirm the account is signed in.
    **Check connection** sends a short message using your model allowance.
 3. An empty Home guides you through choosing an agent and optionally adding
    files. **View available agents** opens the agent list; **Set up an agent
-   engine** opens Connections when no agent is runnable. On Home, open the Agent/model control beside **Start**. Choose
+   engine** opens **Customize → Engines** when no agent is runnable. On Home, open the Agent/model control beside **Start**. Choose
    **Agent**, then **Codex**, write a request, and choose **Start**. You can start without a Project. The detected Codex Agent is
    enough; creating a custom Agent is optional.
 4. Choose **New Project** on Home. **Blank workspace** creates an empty
@@ -469,9 +469,9 @@ or hosted model service that Station's own engine runs inference on. An
 **Engine** is an installed agent CLI, or a custom engine you connected, that
 runs its own agent loop.
 
-1. Open **Customize → Connections**.
-2. On the **Models** tab choose a detected service or **Add model connection**;
-   on the **Engines** tab choose a detected engine or **Add engine**. During
+1. Open **Customize**.
+2. Under **Providers** choose a detected service or **Add model connection**;
+   under **Engines** choose a detected engine or **Add engine**. During
    first run, a detected Engine can be ticked to connect it and create its
    External agent in the same confirmed action. An engine that is starting for
    the first time can be reported as still starting rather than failed: its
@@ -487,11 +487,11 @@ model. Correct a refused check before expecting the connection to run work.
 
 Read the accompanying evidence too. A saved connection or a live model catalog
 does not prove that a chat turn completed. An explicit one-turn smoke supplies
-that narrower proof and can incur provider charges; opening Connections or
+that narrower proof and can incur provider charges; opening Customize or
 New Chat does not run it.
 
 For a credential-free first path, use a supported local model service and then
-return to Connections. Startup can register detected Claude Code, Codex, and
+return to **Customize → Providers**. Startup can register detected Claude Code, Codex, and
 Muse engines and their default Agents; with the `copilot-sdk-engine` Feature
 Preview on, it also registers GitHub Copilot (SDK) when `copilot` is on `PATH`,
 from the next start. An engine you explicitly removed is
@@ -600,8 +600,8 @@ draft or a short catch-up request. Files are not copied: the picker lists uncomm
 commits that stay on this machine, so commit and push first if you need them.
 The original chat stays here. If Station can't confirm the move, **Retry
 safely** reuses the same request and never creates a second chat. A Station
-you added with a device sign-in can't take a chat: pair it as a Station in
-**Connections** first.
+you added with a device sign-in can't take a chat: pair it as a Station from
+the Station menu first.
 
 Full access, choosing a folder, mentions, offline copies and local skill or
 workspace integrations are unavailable on a relayed chat. Turning the preview
@@ -808,7 +808,12 @@ next navigation; answers that already saved remain saved.
 Opening the composer or changing a chip starts no conversation or engine;
 **Start** opens the conversation and submits the message once. With no
 remembered Agent, the composer uses the project’s **Default agent**, then the
-current layout default or Station’s runnable suggestion. Any of these that
+current layout default, then this Station’s **Default for new chats**. Station
+records that default once: the first engine whose sign-in it has checked, in
+the order Claude Code, Codex, then other engines. An engine signed in later does
+not change it, and the agent menu tags it. On a Station upgraded from an earlier
+release, a new chat with no remembered Agent moves from Station’s assistant to
+that engine. Any of these that
 is not set up is skipped for the next one that is, so a new chat never opens on
 an Agent that cannot start. An Agent you pick from the menu in this tab stays
 visible with its setup action.
@@ -996,7 +1001,7 @@ never queues it for automatic replay. A changed source requires a new review.
 Use **Remove unsent visual skill** to deliberately return to ordinary chat.
 **Prepare another stage in this conversation** binds a new unsent preparation
 to the current recorded stage; sending still requires the same source to be
-available. **Browse marketplaces** opens Registry while retaining the picker
+available. **Browse apps** opens Apps › Discover while retaining the picker
 inputs and choices. Return or browser Back refetches the inventory and setup;
 it never installs a plugin or starts the skill automatically.
 
@@ -1044,8 +1049,8 @@ the computer running Station, including when using Station from a phone.
 Claude, Codex and Muse account management opens their existing in-UI sign-in flow;
 other integrations retain their own authorization instructions.
 
-If New Chat offers **Connect**, **Set up**, **Edit agent**, or **Set up
-Connections**, use that action to open the owning setup page. The picker steps
+If New Chat offers **Connect**, **Set up**, **Edit agent**, or **Open
+Customize**, use that action to open the owning setup page in Customize. The picker steps
 aside and collapses the chat dock while keeping your chosen workspace, Agent,
 Model, and selected context.
 Use **Return to New Chat** in the inline setup notice when finished, **Cancel
@@ -1114,16 +1119,18 @@ When the engine transcript is open, sent instructions are collapsed in the
 Station list; open one to read its attributed copy. Unconfirmed instructions
 remain visible, and the engine's prompts remain available in its transcript.
 
-Keep typing during a turn. **Send** defaults to **Queue**. Station holds the
-message and delivers it after the turn finishes. The message appears in the
-pending list as soon as Station accepts it. The dropdown switches between the
-available modes. For an ACP engine without native steering, choosing **Steer**
-stops its current step and continues the task with your instruction once cancellation
-finishes. Station-owned steering waits for the next safe boundary. A Muse chat
-on `muse exec` supports Queue only. Each pending row shows its mode.
-For a locally queued message, **Send now** stops the active turn and sends the
-selected message after Station confirms the stop. Messages held by Station can
-be removed when permitted, but cannot be edited or sent now from the list. **Stop** remains separate.
+Keep typing during a turn. The amber **Queue** button holds your message until
+the turn finishes. Use the chevron to switch to the green **Steer** button
+when the engine supports it. A Station-managed turn takes the steer at its
+next safe boundary. An ACP engine with interrupting steering stops the running
+step before continuing with your instruction. A steer appears with an outline
+while waiting for acknowledgement.
+
+Open the Queue count to review waiting messages. Use the grip to move a
+message, tap its text to edit it, or swipe left to reveal the trash icon. The
+More button reveals the same action. On a supported running turn, the green
+arrow on a queued text message steers with that message. **Stop** remains
+separate.
 You can attach files or dictate during a turn. In the parent chat, Steer carries text only, so a
 message with files is queued: Station keeps the files with it and sends them
 when the turn ends, and the pending row names them. On a Station that cannot
@@ -1256,11 +1263,28 @@ shows the message with those values applied. **Start chat** opens a new chat
 and sends that message. This does not attach the skill to the Agent or install
 its dependencies; the Agent's configured tools and permissions still apply.
 
-To add skills, choose **Browse Registry Skills** (**Browse Registry** while the
+To add skills, choose **Browse skills** (it sits in the list while the
 library is empty) and inspect the available catalog before installing. **Import .md** accepts standalone Markdown skill
 files and reports the outcome of each file. Open an imported skill from its
 result to review and use it. Import does not copy a repository's
-scripts or supporting files. Load plugin packages through Registry.
+scripts or supporting files. Load plugin packages through Apps › Library. A
+front-matter block Station cannot read as a skill header is removed from the
+imported body; its description is kept only when it is a single line of plain
+text of at most 1,024 characters.
+
+When the Station's computer has saved Codex prompts, **Import from Codex…**
+lists them with nothing selected. Tick the ones you want and choose
+**Import**. A prompt whose name matches one of your skills, or another prompt
+in the list, asks for a new name in its row. Station copies each prompt into a
+new skill: the prompt's `description` becomes the skill's description, and the
+rest of its front matter is left out. Placeholders such as `$1`, `$ARGUMENTS`
+or `$NAME` are copied as written; Station's own inputs use `{{name}}`, so edit
+the skill if you want Station to ask for them. Station imports up to 32 prompts
+at a time and leaves the Codex files unchanged. **Undo import** removes the
+skills the import created, until you close the import window. Only the Station
+operator can import from Codex. **Import from Codex…** is not offered when the
+Codex home or its prompts folder is a symbolic link, as in some dotfiles
+setups.
 
 For a writable skill, **Edit skill** opens its definition and command settings.
 **Back to overview** asks before discarding unsaved edits. Package-owned or
@@ -1289,6 +1313,11 @@ attachments and can refuse new files if its store is full. A Project channel
 keeps a file for as long as its message stands. If a Project channel
 pauses attachments while its file store is repaired, it says so; remove the
 files and your text still sends.
+
+On a phone, tap an image to open the full-screen preview. Swipe left or right
+while the image fits the screen, or tap the chevrons below the image. Pinch to
+zoom and drag to pan. Open **⋯** for fit, actual size, and zoom controls. Use
+the download icon to save the current image.
 
 An existing chat can become a Task through **New Task from this** in its More menu.
 The **Add to Task** picker also offers **New Task from this** for an answer or input.
@@ -1412,7 +1441,7 @@ Station looks in four places:
   database; its earlier messages stay in history.
 
 With `STATION_EXTERNAL_ACP_SESSIONS=1` set before Station starts, the inbox
-also lists the sessions an ACP engine you added under Connections reports
+also lists the sessions an ACP engine you added under **Customize → Engines** reports
 itself, for an engine that offers a session list (Antigravity, Factory Droid,
 Hermes and Cursor do; Kiro does not). This is off by default. Station asks for
 the list when it checks the engine, about every five minutes, so it starts no
@@ -1760,11 +1789,19 @@ permission has recorded request evidence, its row offers **Approve once** and
 **Deny**; **Details** shows the full request first. Both answer that exact
 request version, once. A review request with recorded evidence offers
 **Inspect request** instead, where **Request identity** shows its exact record.
-A row's ⋯ menu holds **Mark done**, and **Snooze** (the same choices as the
-chat list) when the Attention snooze preview is on. Mark done there waits behind its notice's **Undo** (or **⌘Z**) and is sent
-when the notice closes; reload, close the tab or switch Station before then and the
-item is not marked done (a background tab keeps the notice open). A failed run shows once:
-its row stands for the failed message too, and Mark done marks both done.
+On the Notifications page, use **Mark done** for attention items and
+**Dismiss** for Activity notifications. **Undo** (or **⌘Z**) cancels the write
+while the notice is open. Reloading, closing the tab or switching Stations
+during that window also cancels it. A failed run represents its related
+failure notification, so Mark done on the page clears both.
+
+In the bell panel, tap a notification to open its destination. **Mark done**
+is visible on failed sessions. Use **⋯** to find **Snooze** and **Dismiss**
+where available. Snooze uses the same time choices as Chats and is available
+with the Attention snooze preview. On phones with the Sheet gestures preview,
+drag the handle to resize and swipe a row to reveal its available actions.
+Snoozing or dismissing a notification keeps the panel open. A dismissal
+offers **Undo** in the list.
 
 A conversation’s Chats row also shows the request and **Approve once** or
 **Deny** when Station can inspect one exact request and you can answer it.

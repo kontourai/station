@@ -1,0 +1,7 @@
+{
+  "revision": "f5c5b850666bdfd5328b58f29ff07e80fd441486",
+
+  "notes": [
+    {"path":"docs/design/plugin-authority-model.md","note":"The install_plugin refusal now names Apps › Library, matching plugin-install-consent.ts.","inputs":["docs/design/plugin-authority-model.md"]}
+  ]
+}

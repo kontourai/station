@@ -1,0 +1,13 @@
+{
+  "revision": "839af0280dbb6592e219a7bea1b47630dcff0559",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed the updated attachment-gallery row against the responsive dialog, image inspector, and Chromium coverage. The viewer retains the shared focus and viewport behavior. Its zoom disclosure and chevrons meet the 44px target, and the zoom controls fit on one row at 320 and 402 pixels. The workspace pane continues to show inline controls. The responsive ownership, theme token, and backend contracts on the citing pages still apply.","inputs":["docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/guides/theming.md","note":"Reviewed the updated attachment-gallery row against the responsive dialog, image inspector, and Chromium coverage. The viewer retains the shared focus and viewport behavior. Its zoom disclosure and chevrons meet the 44px target, and the zoom controls fit on one row at 320 and 402 pixels. The workspace pane continues to show inline controls. The responsive ownership, theme token, and backend contracts on the citing pages still apply.","inputs":["docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/backend.md","note":"Reviewed the updated attachment-gallery row against the responsive dialog, image inspector, and Chromium coverage. The viewer retains the shared focus and viewport behavior. Its zoom disclosure and chevrons meet the 44px target, and the zoom controls fit on one row at 320 and 402 pixels. The workspace pane continues to show inline controls. The responsive ownership, theme token, and backend contracts on the citing pages still apply.","inputs":["docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Reviewed the updated attachment-gallery row against the responsive dialog, image inspector, and Chromium coverage. The viewer retains the shared focus and viewport behavior. Its zoom disclosure and chevrons meet the 44px target, and the zoom controls fit on one row at 320 and 402 pixels. The workspace pane continues to show inline controls. The responsive ownership, theme token, and backend contracts on the citing pages still apply.","inputs":["docs/ui/responsive-action-surfaces.txt"]}
+  ]
+}

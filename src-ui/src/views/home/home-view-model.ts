@@ -439,11 +439,8 @@ function buildSessionWorkItem(
     lifecycleLabel === 'Failed' || lifecycleLabel === 'Stopped'
       ? session.terminalAttribution?.detail
       : undefined;
-  return {
+  const item: HomeWorkItem = {
     id,
-    ...(session.conversationId
-      ? { conversationId: session.conversationId }
-      : {}),
     kind: provenance ? 'remote-session' : 'orchestration',
     kindLabel: provenance
       ? 'Remote session'
@@ -457,9 +454,6 @@ function buildSessionWorkItem(
     // "Worker task · delegated review") and fell back to `${agentLabel} task`
     // so one attached Claude session read "Claude Code task" on Home and
     // "Claude Code session" one click away in the list.
-    ...(clientOriginSender(session.turnOrigin?.latest)
-      ? { receivedAgentMessage: true as const }
-      : {}),
     title: sessionTitle(session),
     // archive#3227 A3: `session.projectSlug || 'No project'` DROPPED
     // `delegation.projectSlug` entirely and, worse, rendered the literal
@@ -482,7 +476,6 @@ function buildSessionWorkItem(
       session.reportedModel ?? session.effectiveModel ?? session.model,
     ),
     model: session.reportedModel ?? session.effectiveModel ?? session.model,
-    ...(cwdLabel ? { cwdLabel } : {}),
     turnProgress: activeTurnProgress(session),
     nextWakeUpAt: session.nextWakeUpAt,
     // #2312 review: a Draft's own clocks move without anyone touching it — a
@@ -495,24 +488,6 @@ function buildSessionWorkItem(
         ? Date.parse(session.createdAt) || sessionRecency(session)
         : sessionRecency(session),
     lifecycleLabel,
-    ...(isTerminalLifecycle(lifecycleLabel) &&
-    Number.isFinite(Date.parse(session.lifecycleChangedAt ?? ''))
-      ? { terminalAt: Date.parse(session.lifecycleChangedAt!) }
-      : {}),
-    // The basis behind an `'Unanswerable'` chip. Carried on the item rather
-    // than recomputed at render so the row and the label come from one read
-    // of one decoration.
-    ...(unanswerableNotice ? { unanswerableNotice } : {}),
-    ...(failureNotice ? { failureNotice } : {}),
-    ...(lifecycleLabel === 'Running'
-      ? {
-          activeReason: session.conversationActivity?.openTurn
-            ? ('turn' as const)
-            : session.conversationActivity?.runningChildWork
-              ? ('background' as const)
-              : ('turn' as const),
-        }
-      : {}),
     // Deliberately NOT set for a remote item: `orchestrationThreadId` here
     // is the same raw `session.threadId` a LOCAL orchestration item also
     // uses as an identity key (see `home-lane-model.ts`'s
@@ -526,21 +501,36 @@ function buildSessionWorkItem(
     // rehydrate branch without `orchestrationThreadId` — but are still
     // carried for a local item so it can be rehydrated (archive#1297).
     agentSlug: session.assignedAgentSlug,
-    ...(parseEngineId(session.provider)
-      ? { provider: parseEngineId(session.provider) }
-      : {}),
     projectSlug: session.projectSlug,
     controlMode: session.controlMode,
-    ...(isPeerDelegationRecord(session)
-      ? { delegationEnvironmentKind: 'peer' as const }
-      : {}),
-    ...(provenance
-      ? {
-          environmentId: provenance.environmentId,
-          environmentLabel: provenance.environmentLabel,
-        }
-      : { orchestrationThreadId: session.threadId }),
   };
+  if (session.conversationId) item.conversationId = session.conversationId;
+  if (clientOriginSender(session.turnOrigin?.latest))
+    item.receivedAgentMessage = true;
+  if (cwdLabel) item.cwdLabel = cwdLabel;
+  if (isTerminalLifecycle(lifecycleLabel)) {
+    const terminalAt = Date.parse(session.lifecycleChangedAt ?? '');
+    if (Number.isFinite(terminalAt)) item.terminalAt = terminalAt;
+  }
+  // The basis behind an `'Unanswerable'` chip. Carried on the item rather
+  // than recomputed at render so the row and the label come from one read
+  // of one decoration.
+  if (unanswerableNotice) item.unanswerableNotice = unanswerableNotice;
+  if (failureNotice) item.failureNotice = failureNotice;
+  if (lifecycleLabel === 'Running')
+    item.activeReason = session.conversationActivity?.openTurn
+      ? 'turn'
+      : session.conversationActivity?.runningChildWork
+        ? 'background'
+        : 'turn';
+  const provider = parseEngineId(session.provider);
+  if (provider) item.provider = provider;
+  if (isPeerDelegationRecord(session)) item.delegationEnvironmentKind = 'peer';
+  if (provenance) {
+    item.environmentId = provenance.environmentId;
+    item.environmentLabel = provenance.environmentLabel;
+  } else item.orchestrationThreadId = session.threadId;
+  return item;
 }
 
 /**

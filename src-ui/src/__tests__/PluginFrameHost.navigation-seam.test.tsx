@@ -136,10 +136,12 @@ describe('plugin navigation against the real navigation seam', () => {
 
     postNavigate('/agents');
     expect(window.location.pathname).toBe('/agents');
+    // A retired address a plugin may still send is honoured: `/plugins`
+    // lands on Apps.
     postNavigate('/plugins');
-    expect(window.location.pathname).toBe('/plugins');
+    expect(window.location.pathname).toBe('/apps');
     // Third request in the same interval: the shell must stay where it is.
     postNavigate('/agents');
-    expect(window.location.pathname).toBe('/plugins');
+    expect(window.location.pathname).toBe('/apps');
   });
 });

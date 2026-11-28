@@ -1,5 +1,6 @@
 import { DatabaseSync } from 'node:sqlite';
 import type { KernelCommand, KernelResult } from './commands.js';
+import { RETIRED_INBOX_INPUT_OUTCOME } from './decisions/inbox.js';
 import {
   assertInvocationTerminalFact,
   assertInvocationTerminalQuery,
@@ -1976,9 +1977,10 @@ function sqliteTransaction(
           `DELETE FROM monument_inbox_entries
             WHERE inbox_id = ? AND updated_at < ? AND kind IN ('follow-up', 'display')
               AND (state IN ('placed', 'refused')
-                OR (state = 'cancelled' AND placement IS NULL))`,
+                OR (state = 'cancelled' AND placement IS NULL AND outcome IS NOT ?))`,
           inboxId,
           cutoff,
+          RETIRED_INBOX_INPUT_OUTCOME,
         );
       },
       deleteInbox: (inboxId) =>

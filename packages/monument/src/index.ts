@@ -19,6 +19,7 @@ export {
   decideInboxSettle,
   decideInboxSubmit,
   inboxHead,
+  inboxInputIsRetired,
 } from './decisions/inbox.js';
 export { decideTurnBoundaryAcceptInvocation } from './decisions/invocation-terminal.js';
 export {

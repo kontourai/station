@@ -1,0 +1,7 @@
+{
+  "revision": "1d9b1843d2314edf604ce49de0917602b1fc909e",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Added App (Apps › Discover / Library, not the Project Library) and Tool server rows; Plugin stays the packaging word and Registry the catalogue infrastructure. Checked against the UI strings and destination.","inputs":["docs/glossary.md"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "bd1ef6423957f897bf6954a4b290dda985b7806e",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Added the Default for new chats section (POST /config/new-chat-default: body, 409 when one stands, chosen replaces, PUT refuses) and checked it against config.ts and the route tests.","inputs":["docs/reference/api.md"]}
+  ]
+}

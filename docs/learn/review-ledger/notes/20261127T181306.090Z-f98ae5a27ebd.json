@@ -1,0 +1,35 @@
+{
+  "revision": "331064bc83b928451d4ae23e3fc2995bc87675ff",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Checked exact approvals in the bell. The title now opens the target, while ExactRequestInline still owns the decision and the accepted-action path still opens the approval conversation.","inputs":["docs/conformance/tool-policy-delivery.md","src-ui/src/components/notifications/NotificationHistory.tsx"]},
+
+    {"path":"docs/design/automations.md","note":"Checked the referenced notification delivery guidance. The new bell controls manage displayed rows. The automation runtime, notification production and repair workflow are unchanged.","inputs":["docs/design/automations.md","docs/design/notification-delivery.md"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked the Inbox row action model. Snooze now shares its label with notifications. The Inbox order, preset times, dismissal and Undo handlers are unchanged.","inputs":["docs/design/chat-composer.md","src-ui/src/components/inbox-row/inbox-row-actions.ts"]},
+
+    {"path":"docs/design/motion.md","note":"Checked the bell row exit and its Undo dwell. The row shrinks and fades before the action, respects reduced motion, and the existing four-second Undo dwell still uses its documented exception.","inputs":["docs/design/motion.md","src-ui/src/components/notifications/NotificationHistory.css"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"Checked the new bell guidance against the shared phone sheet, management actions, and title links. Confirmed in the live phone-width app that dismiss and snooze leave the sheet open and Undo restores a dismissed row.","inputs":["docs/design/notification-delivery.md","src-ui/src/components/notifications/NotificationHistoryRow.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Checked the responsive action inventory entry for the shared notification row. The bell adopts ResponsiveDialogSurface with shared focus and resize. Its action buttons use NoticeAction.","inputs":["docs/guides/responsive-ui.md","docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Checked operational review and approval entry points on the Notifications page. Only Activity dismissal feedback changed there, outside the request inspection workflow.","inputs":["docs/guides/starter-work.md","src-ui/src/pages/NotificationsPage.tsx"]},
+
+    {"path":"docs/guides/theming.md","note":"Checked the new responsive action inventory entry. It refers to the shared notification UI and keeps colors on existing theme tokens. The theme and preference contracts are unchanged.","inputs":["docs/guides/theming.md","docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Checked the Inspect request walkthrough against the Notifications page change. Its action, request sheet and exact-request content are unchanged. Only Activity dismissal feedback changed on this page.","inputs":["docs/learn/walkthroughs.md","src-ui/src/pages/NotificationsPage.tsx"]},
+
+    {"path":"docs/patterns/backend.md","note":"Checked the cited responsive action inventory change. It adds a UI row coverage entry and does not alter notification persistence, authorization or backend action contracts.","inputs":["docs/patterns/backend.md","docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Checked the shared notification row inventory and its use of NoticeAction, RowMenu and the shared swipe hook. The documented shell ownership and touch-target recipes still apply.","inputs":["docs/patterns/frontend.md","docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/reference/shared.md","note":"Checked the envelope UI reader. It still uses the shared parser for attribution and preserves unknown kinds with valid targets. The title link reads the same envelope and uses the same activation and read-marker path.","inputs":["docs/reference/shared.md","src-ui/src/components/notifications/NotificationEnvelopeControls.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the new bell instructions and page labels. The page keeps its deferred write and Undo, and the bell offers row-local Undo. Verified Snooze and Dismiss in the running app. Existing Chats snooze presets and approval inspection are unchanged.","inputs":["docs/user/getting-started.md","src-ui/src/components/inbox-row/inbox-row-actions.ts","src-ui/src/pages/NotificationsPage.tsx"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"Reviewed the Notifications page diff against the captured Inspect request state. The only page change is Activity dismissal feedback, which the request inspection does not trigger. Existing pixels still represent this journey.","inputs":["docs/learn/media/inspect-request.png","src-ui/src/pages/NotificationsPage.tsx"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"Reviewed the Notifications page diff against the Inspect request walkthrough. It changes feedback for dismissing Activity notifications. The clip opens and inspects an exact request and does not trigger that action.","inputs":["docs/learn/media/inspect-request.webm","src-ui/src/pages/NotificationsPage.tsx"]}
+  ]
+}

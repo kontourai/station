@@ -1,0 +1,7 @@
+{
+  "revision": "1d9b1843d2314edf604ce49de0917602b1fc909e",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Rechecked: the RegistrySourceManager paragraph and app-shell entries do not name the Plugins or Registry routes.","inputs":["docs/architecture/module-map.md"]}
+  ]
+}

@@ -51,3 +51,16 @@ export function notificationBody(
     return 'Open the chat for details.';
   return body;
 }
+
+export function notificationSessionTitle(
+  notification: Pick<Notification, 'category' | 'metadata'>,
+): string | undefined {
+  if (
+    !['turn-completed', 'turn-failed', 'turn-stopped'].includes(
+      notification.category,
+    )
+  )
+    return;
+  const title = notification.metadata?.chatTitle;
+  return typeof title === 'string' && title.trim() ? title : undefined;
+}

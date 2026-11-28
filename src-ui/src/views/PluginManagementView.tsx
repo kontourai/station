@@ -3,12 +3,12 @@ import { useState } from 'react';
 import { Button } from '../components/Button';
 import { PlugGlyph } from '../components/icons/Glyph';
 import { SplitPaneLayout } from '../components/SplitPaneLayout';
-import type { NavigationView } from '../types';
 import './PluginManagementView.css';
 import './page-layout.css';
 import './editor-layout.css';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
 import { describePermission } from '../core/permission-vocabulary';
+import { APPS_SUBTITLE } from './apps/appsCopy';
 import { NewPluginModal } from './plugin-management/NewPluginModal';
 import { PluginDetailPanel } from './plugin-management/PluginDetailPanel';
 import { PluginEmptyState } from './plugin-management/PluginEmptyState';
@@ -18,11 +18,7 @@ import { usePluginManagementViewModel } from './plugin-management/usePluginManag
 import { soleLayoutTargetProject } from './plugin-management/view-utils';
 
 /* ── Main View ── */
-export function PluginManagementView({
-  onNavigate,
-}: {
-  onNavigate: (view: NavigationView) => void;
-}) {
+export function PluginManagementView() {
   const {
     activeProposal,
     cancelProposedUpdate,
@@ -120,10 +116,10 @@ export function PluginManagementView({
   return (
     <>
       <SplitPaneLayout
-        label="plugins"
+        label="apps"
         listClassName="plugins__list"
-        title="Plugins"
-        subtitle="Manage installed plugins"
+        title="Apps"
+        subtitle={APPS_SUBTITLE}
         items={items}
         loading={isLoading}
         error={pluginsError}
@@ -143,7 +139,7 @@ export function PluginManagementView({
         }}
         addLabel="Install plugin"
         listEmptyTitle="No plugins installed yet"
-        listEmptyDescription="Install one from a folder or Git URL, or browse Registry."
+        listEmptyDescription="Find apps in Discover, or install a plugin from a folder or Git URL."
         headerActions={
           <>
             {/* Beside Install plugin: someone looking to add a plugin is
@@ -155,14 +151,6 @@ export function PluginManagementView({
               onClick={() => setShowNewPlugin(true)}
             >
               New plugin
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              className="plugins__registry-btn"
-              onClick={() => onNavigate({ type: 'registry', tab: 'plugins' })}
-            >
-              Browse Registry
             </Button>
           </>
         }

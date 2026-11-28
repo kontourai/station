@@ -288,6 +288,46 @@ describe('the frame adapter implements the contract, with the shell keeping its 
   });
 });
 
+// A published plugin may still name the places Apps and Customize replaced.
+// Each lands where a person typing the old address lands (or, below a page's
+// root, on that root); nothing else widens.
+describe('retired destination names a plugin may still send', () => {
+  test.each([
+    [
+      'surface id registry',
+      '/apps',
+      { kind: 'app-surface', surfaceId: 'registry' },
+    ],
+    [
+      'surface id connections',
+      '/customize',
+      { kind: 'app-surface', surfaceId: 'connections' },
+    ],
+    ['path /plugins', '/apps', '/plugins'],
+    ['path /registry', '/apps', '/registry'],
+    ['path /registry/plugins', '/apps', '/registry/plugins'],
+    ['path /connections', '/customize', '/connections'],
+  ] as const)('%s lands on %s', (_name, landing, target) => {
+    render(<Harness />);
+    act(() => {
+      adapter().receive({ method: 'pane-host/navigate', params: { target } });
+    });
+    expect(navigateMock).toHaveBeenCalledWith(landing, {});
+    expect(refusals()).toHaveLength(0);
+  });
+
+  test('a path no redirect touches still has to name a page root', () => {
+    render(<Harness />);
+    act(() => {
+      adapter().receive({
+        method: 'pane-host/navigate',
+        params: { target: '/agents/demo' },
+      });
+    });
+    expect(navigateMock).not.toHaveBeenCalled();
+  });
+});
+
 describe('a message the frame adapter cannot serve is refused, never dropped', () => {
   test('a method outside the contract is not this adapter’s to answer', () => {
     render(<Harness />);

@@ -10,7 +10,7 @@ const sections = ['models', 'agents', 'knowledge'] as const;
 
 describe('useSectionNavigation', () => {
   beforeEach(() => {
-    window.history.replaceState({}, '', '/connections?keep=1');
+    window.history.replaceState({}, '', '/customize/knowledge?keep=1');
     vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
       callback(0);
       return 1;
@@ -18,7 +18,11 @@ describe('useSectionNavigation', () => {
   });
 
   test('accepts a supported query on initial load', () => {
-    window.history.replaceState({}, '', '/connections?keep=1&section=agents');
+    window.history.replaceState(
+      {},
+      '',
+      '/customize/knowledge?keep=1&section=agents',
+    );
 
     const { result } = renderHook(() =>
       useSectionNavigation(sections, 'models'),
@@ -28,7 +32,11 @@ describe('useSectionNavigation', () => {
   });
 
   test('reveals a deep-linked section that renders after the hook mounts', async () => {
-    window.history.replaceState({}, '', '/connections?section=knowledge');
+    window.history.replaceState(
+      {},
+      '',
+      '/customize/knowledge?section=knowledge',
+    );
     const scrollIntoView = vi.fn();
 
     renderHook(() => useSectionNavigation(sections, 'models'));
@@ -42,7 +50,11 @@ describe('useSectionNavigation', () => {
   });
 
   test('removes an invalid section without dropping unrelated query state', async () => {
-    window.history.replaceState({}, '', '/connections?keep=1&section=unknown');
+    window.history.replaceState(
+      {},
+      '',
+      '/customize/knowledge?keep=1&section=unknown',
+    );
 
     const { result } = renderHook(() =>
       useSectionNavigation(sections, 'models'),
@@ -62,7 +74,7 @@ describe('useSectionNavigation', () => {
     expect(result.current.activeSection).toBe('knowledge');
     expect(window.location.search).toBe('?keep=1&section=knowledge');
     expect(result.current.hrefForSection('agents')).toBe(
-      '/connections?keep=1&section=agents',
+      '/customize/knowledge?keep=1&section=agents',
     );
   });
 
@@ -114,7 +126,11 @@ describe('useSectionNavigation', () => {
     );
 
     act(() => {
-      window.history.pushState({}, '', '/connections?keep=1&section=agents');
+      window.history.pushState(
+        {},
+        '',
+        '/customize/knowledge?keep=1&section=agents',
+      );
       window.dispatchEvent(new PopStateEvent('popstate'));
     });
 
@@ -143,7 +159,11 @@ describe('useSectionNavigation', () => {
   test.each(['aria-modal', 'native-startup'])(
     'section navigation preserves focus owned by a %s dialog',
     (kind) => {
-      window.history.replaceState({}, '', '/connections?section=knowledge');
+      window.history.replaceState(
+        {},
+        '',
+        '/customize/knowledge?section=knowledge',
+      );
       const section = document.createElement('section');
       section.id = 'section-knowledge';
       section.tabIndex = -1;

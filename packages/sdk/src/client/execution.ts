@@ -508,7 +508,11 @@ export async function queueExecutionMessage(
 export async function listConversationInbox(
   apiBase: string,
   conversationId: string,
-  opts?: ClientRequestOptions & { onHead?: (head: string) => void },
+  opts?: ClientRequestOptions & {
+    onHead?: (head: string) => void;
+    onSteerHead?: (head: string | null) => void;
+    onQueueControls?: (supported: boolean, steerTarget?: string) => void;
+  },
 ): Promise<ConversationInboxEntry[]> {
   const response = await getJson(
     `${apiBase}/api/orchestration/conversations/${encodeURIComponent(conversationId)}/inbox`,
@@ -516,7 +520,13 @@ export async function listConversationInbox(
   );
   const result = (await readExecutionBody(response)) as {
     success?: boolean;
-    data?: { entries?: ConversationInboxEntry[]; currentHead?: unknown };
+    data?: {
+      entries?: ConversationInboxEntry[];
+      currentHead?: unknown;
+      steerHead?: unknown;
+      queueControls?: unknown;
+      queueSteerTarget?: unknown;
+    };
     error?: string;
     code?: string;
   };
@@ -533,6 +543,21 @@ export async function listConversationInbox(
     result.data.currentHead.length <= 4096
   )
     opts?.onHead?.(result.data.currentHead);
+  const steerHead = result.data.steerHead;
+  if (steerHead === null) opts?.onSteerHead?.(null);
+  else if (
+    typeof steerHead === 'string' &&
+    steerHead.length > 0 &&
+    steerHead.length <= 4096
+  )
+    opts?.onSteerHead?.(steerHead);
+  const target = result.data.queueSteerTarget;
+  opts?.onQueueControls?.(
+    result.data.queueControls === true,
+    typeof target === 'string' && target.length > 0 && target.length <= 4096
+      ? target
+      : undefined,
+  );
   return result.data.entries;
 }
 
@@ -546,11 +571,12 @@ export async function readConversationInboxHead(
   const read = await getJson(url, opts);
   const snapshot = (await readExecutionBody(read)) as {
     success?: boolean;
-    data?: { currentHead?: unknown };
+    data?: { currentHead?: unknown; steerHead?: unknown };
     error?: string;
     code?: string;
   };
-  const head = snapshot.data?.currentHead;
+  const steerHead = snapshot.data?.steerHead;
+  const head = steerHead === undefined ? snapshot.data?.currentHead : steerHead;
   if (
     !read.ok ||
     !snapshot.success ||
@@ -565,6 +591,38 @@ export async function readConversationInboxHead(
       { apiBase, opts },
     );
   return head;
+}
+
+export type ConversationQueueAction =
+  | { kind: 'edit'; key: string; previous: string; message: string }
+  | { kind: 'move'; key: string; neighbor: string; direction: 'up' | 'down' }
+  | {
+      kind: 'promote';
+      key: string;
+      source: string;
+      message: string;
+      expectedTurn: string;
+    };
+
+export async function updateConversationQueue(
+  apiBase: string,
+  conversationId: string,
+  action: ConversationQueueAction,
+  opts?: ClientRequestOptions,
+): Promise<void> {
+  opts = snapshotExecutionOptions(opts);
+  const url = `${apiBase}/api/orchestration/conversations/${encodeURIComponent(conversationId)}/inbox`;
+  const response = await mutateJson(url, 'POST', opts, action);
+  const result = (await readExecutionBody(response)) as {
+    success?: boolean;
+    error?: string;
+    code?: string;
+  };
+  if (!response.ok || !result.success)
+    throw chatRefusal(response, result, 'Could not update the queue.', {
+      apiBase,
+      opts,
+    });
 }
 
 /** Submit a steer against the original observed head. */

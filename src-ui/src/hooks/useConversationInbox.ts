@@ -1,13 +1,17 @@
 import type { ConversationInboxEntry } from '@kontourai/station-contracts/orchestration';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import {
+  type ConversationQueueAction,
   cancelConversationInboxEntry,
   DEFAULT_CLIENT_REQUEST_TIMEOUT_MS,
   listConversationInbox,
   StationHttpError,
+  updateConversationQueue,
 } from '@kontourai/station-sdk/client';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import {
   type QueryClient,
+  skipToken,
   useMutation,
   useQuery,
   useQueryClient,
@@ -76,6 +80,12 @@ export function useConversationInbox(
   const client = useQueryClient();
   const enabled = Boolean(conversationId && scope?.isCurrent());
   const queryKey = inboxQueryKey(scope, conversationId, apiBase);
+  const controlsKey = [...queryKey, 'queue-controls'];
+  const queueControls = useQuery<{ supported: boolean; steerTarget?: string }>({
+    queryKey: controlsKey,
+    queryFn: skipToken,
+    gcTime: 0,
+  });
   const query = useQuery<ConversationInboxEntry[]>({
     queryKey,
     enabled,
@@ -110,7 +120,15 @@ export function useConversationInbox(
         requireCredential: scope.requiresEnrolledCredential !== false,
         signal,
         timeoutMs: DEFAULT_CLIENT_REQUEST_TIMEOUT_MS,
+        onQueueControls: (supported, steerTarget) => {
+          if (!signal.aborted && scope.isCurrent())
+            client.setQueryData(controlsKey, { supported, steerTarget });
+        },
         onHead: (head) => {
+          if (!signal.aborted && scope.isCurrent())
+            client.setQueryData([...queryKey, 'head'], head);
+        },
+        onSteerHead: (head) => {
           if (!signal.aborted && scope.isCurrent())
             client.setQueryData([...queryKey, 'head'], head);
         },
@@ -221,6 +239,34 @@ export function useConversationInbox(
     },
   });
 
+  const queueUpdate = useMutation({
+    mutationKey: [...queryKey, 'update-queue'],
+    retry: false,
+    mutationFn: async (
+      request: Cancellation & { action: ConversationQueueAction },
+    ) => {
+      if (!request.scope.isCurrent())
+        throw new Error('The Station connection changed.');
+      await updateConversationQueue(
+        request.apiBase,
+        request.conversationId,
+        request.action,
+        {
+          requestScope: request.scope,
+          requireCredential: request.scope.requiresEnrolledCredential !== false,
+          timeoutMs: DEFAULT_CLIENT_REQUEST_TIMEOUT_MS,
+        },
+      );
+    },
+    onSettled: async (_result, _error, request) => {
+      if (request.scope.isCurrent())
+        await request.client.invalidateQueries({
+          queryKey: request.queryKey,
+          exact: true,
+        });
+    },
+  });
+
   return {
     availability,
     entries,
@@ -228,6 +274,39 @@ export function useConversationInbox(
     refresh: () => {
       if (enabled && scope?.isCurrent())
         void query.refetch({ cancelRefetch: false });
+    },
+    supportsQueueControls:
+      availability === 'available' && queueControls.data?.supported === true,
+    queueSteerTarget:
+      availability === 'available'
+        ? queueControls.data?.steerTarget
+        : undefined,
+    updating: queueUpdate.isPending,
+    updateError: queueUpdate.isError,
+    updateQueue: async (
+      action:
+        | Exclude<ConversationQueueAction, { kind: 'promote' }>
+        | Omit<Extract<ConversationQueueAction, { kind: 'promote' }>, 'key'>,
+    ) => {
+      if (!scope?.isCurrent())
+        throw new Error('The Station connection changed.');
+      if (!queueControls.data?.supported)
+        throw new Error('Queue controls are unavailable on this Station.');
+      return queueUpdate.mutateAsync({
+        apiBase: apiBase!,
+        scope,
+        client,
+        queryKey,
+        conversationId,
+        key: action.kind === 'promote' ? action.source : action.key,
+        action:
+          action.kind !== 'promote'
+            ? action
+            : {
+                ...action,
+                key: randomCorrelationId(),
+              },
+      });
     },
     removing: cancellation.isPending,
     removalError: cancellation.isError,
