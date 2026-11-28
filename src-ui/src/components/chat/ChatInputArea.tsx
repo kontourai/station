@@ -1319,6 +1319,7 @@ export function ChatInputArea({
     observeRows();
     const mutations = new MutationObserver((records) => {
       if (
+        draftUnsizedRef.current &&
         records.length > 0 &&
         records.every((record) => {
           if (record.type !== 'childList') return false;
