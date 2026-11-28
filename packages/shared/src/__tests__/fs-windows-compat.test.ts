@@ -4,6 +4,7 @@ import {
   mkdirSync,
   readFileSync,
   renameSync,
+  statSync,
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
@@ -16,16 +17,35 @@ import {
   renamePathSyncRetrying,
   rmDirSyncRetrying,
 } from '../fs-windows-compat.js';
+import {
+  encodePowerShellCommand,
+  runWindowsTrustCommand,
+  windowsSystemUtilityPath,
+} from '../windows-path-trust.js';
 
 const makeTempDir = trackTempDirs();
 
+function setWindowsDataDenial(file: string, denied: boolean): void {
+  const encodedPath = Buffer.from(file).toString('base64');
+  const command = encodePowerShellCommand(
+    `$ErrorActionPreference='Stop'; $file=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${encodedPath}')); $acl=[IO.File]::GetAccessControl($file); $sid=[Security.Principal.WindowsIdentity]::GetCurrent().User; $rights=[Security.AccessControl.FileSystemRights]::ReadData -bor [Security.AccessControl.FileSystemRights]::WriteData; $rule=New-Object Security.AccessControl.FileSystemAccessRule($sid,$rights,[Security.AccessControl.AccessControlType]::Deny); ${denied ? '$acl.AddAccessRule($rule)' : '$acl.RemoveAccessRuleSpecific($rule)'}; [IO.File]::SetAccessControl($file,$acl)`,
+  );
+  const result = runWindowsTrustCommand(
+    windowsSystemUtilityPath('powershell'),
+    ['-NoProfile', '-NonInteractive', '-EncodedCommand', command],
+  );
+  expect(result.error).toBeUndefined();
+  expect(result.status, result.stderr).toBe(0);
+}
+
 describe('fsyncFileSync (#2675 W3)', () => {
-  test('flushes a writable file on every platform rule', () => {
+  test('flushes a writable file with host-supported platform rules', () => {
     const dir = makeTempDir('station-fsync-file-');
     const file = join(dir, 'data');
     writeFileSync(file, 'x');
-    expect(() => fsyncFileSync(file, 'win32')).not.toThrow();
-    expect(() => fsyncFileSync(file, 'linux')).not.toThrow();
+    expect(() => fsyncFileSync(file)).not.toThrow();
+    if (process.platform !== 'win32')
+      expect(() => fsyncFileSync(file, 'win32')).not.toThrow();
   });
 
   test('the Windows rule opens for writing, and leaves a read-only file unflushed', () => {
@@ -33,17 +53,19 @@ describe('fsyncFileSync (#2675 W3)', () => {
     const file = join(dir, 'data');
     writeFileSync(file, 'x');
     chmodSync(file, 0o444);
-    // Read-only: POSIX flushes it through a read-only handle; the Windows
-    // rule, which needs a writable handle, cannot open one, skips it and
-    // says so.
-    expect(() => fsyncFileSync(file, 'linux')).not.toThrow();
-    const reported: string[] = [];
-    expect(() =>
-      fsyncFileSync(file, 'win32', (message) => reported.push(message)),
-    ).not.toThrow();
-    expect(reported).toEqual([
-      `${file} is read-only, so it was not flushed to disk (Windows flushes only through a writable handle)`,
-    ]);
+    try {
+      if (process.platform !== 'win32')
+        expect(() => fsyncFileSync(file, 'linux')).not.toThrow();
+      const reported: string[] = [];
+      expect(() =>
+        fsyncFileSync(file, 'win32', (message) => reported.push(message)),
+      ).not.toThrow();
+      expect(reported).toEqual([
+        `${file} is read-only, so it was not flushed to disk (Windows flushes only through a writable handle)`,
+      ]);
+    } finally {
+      chmodSync(file, 0o600);
+    }
     // A missing file is still an error under both.
     expect(() => fsyncFileSync(join(dir, 'missing'), 'win32')).toThrow(
       /ENOENT/,
@@ -56,18 +78,25 @@ describe('fsyncFileSync (#2675 W3)', () => {
     mkdirSync(locked);
     const file = join(locked, 'data');
     writeFileSync(file, 'x');
-    // A writable file behind a directory that cannot be searched: the open
-    // is refused (EACCES), and the file is not read-only, so it throws.
-    chmodSync(locked, 0o000);
     const reported: string[] = [];
     try {
+      if (process.platform === 'win32') {
+        setWindowsDataDenial(file, true);
+        expect(statSync(file).mode & 0o200).not.toBe(0);
+        expect(() => readFileSync(file)).toThrow(/EPERM/);
+      } else {
+        chmodSync(locked, 0o000);
+      }
       expect(() =>
         fsyncFileSync(file, 'win32', (message) => reported.push(message)),
-      ).toThrow(/EACCES/);
+      ).toThrow(process.platform === 'win32' ? /EPERM/ : /EACCES/);
       expect(reported).toEqual([]);
     } finally {
-      chmodSync(locked, 0o700);
+      if (process.platform === 'win32') setWindowsDataDenial(file, false);
+      else chmodSync(locked, 0o700);
     }
+    expect(readFileSync(file, 'utf8')).toBe('x');
+    expect(() => fsyncFileSync(file)).not.toThrow();
   });
 });
 
