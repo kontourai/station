@@ -1,0 +1,13 @@
+{
+  "revision": "c3376b8ebdaca6a2a996aeeec555c02c438eebde",
+
+  "notes": [
+    {"path":"docs/user/settings.md","note":"Reviewed the merged Settings page against the account send-mode settings on main and the chat device-access preview and setup link in this branch.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the merge with main's shared predicate for standalone tool rows. Device access proposals use that predicate for both initial grouping and turn folding. Checked the existing composer contract for which rows stay visible.","inputs":["src-ui/src/components/chat/tool-call-runs.ts"]},
+
+    {"path":"docs/guides/agent-efficiency.md","note":"Reviewed the merged Settings page against the linked Feature Preview and Agent Efficiency guides. The chat device-access preview and account send-mode setting each retain their Settings path.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Reviewed the merged Settings page against the linked Feature Preview and Agent Efficiency guides. The chat device-access preview and account send-mode setting each retain their Settings path.","inputs":["docs/user/settings.md"]}
+  ]
+}
