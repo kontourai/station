@@ -60,6 +60,8 @@ export function startStartupAnimation(
   const surface = parent;
 
   const motion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const reducedMotion = () =>
+    motion.matches || document.documentElement.dataset.motion === 'reduce';
   const guide = document.createElementNS('http://www.w3.org/2000/svg', 'path');
   guide.setAttribute('d', STARTUP_MARK_RIVER);
   const length = guide.getTotalLength();
@@ -146,6 +148,7 @@ export function startStartupAnimation(
   }
 
   function draw(time: number) {
+    const reduced = reducedMotion();
     const width = canvas.clientWidth;
     const height = canvas.clientHeight;
     if (width === 0 || height === 0) return;
@@ -171,15 +174,13 @@ export function startStartupAnimation(
     const gap = 7 * fit;
     const totalWidth = size + gap + wordWidth;
     const destination = (width - totalWidth) / 2;
-    const moving = motion.matches ? 1 : ease((time - 0.25) / 0.5);
+    const moving = reduced ? 1 : ease((time - 0.25) / 0.5);
     const x = (width - size) / 2 + (destination - (width - size) / 2) * moving;
     const y = (height - size) / 2;
     context.drawImage(image, x, y, size, size);
     const textX = x + size + gap;
     for (let index = 0; index < word.length; index++) {
-      const visible = motion.matches
-        ? 1
-        : ease((time - 0.45 - index * 0.05) / 0.25);
+      const visible = reduced ? 1 : ease((time - 0.45 - index * 0.05) / 0.25);
       const left =
         index === 0 ? 0 : context.measureText(word.slice(0, index)).width;
       const right =
@@ -203,9 +204,9 @@ export function startStartupAnimation(
     const trackX = destination + 18 * fit;
     const trackWidth = totalWidth - 32 * fit;
     const trackHeight = 7 * fit;
-    const activity = motion.matches ? 1 : ease((time - 1.05) / 0.2);
-    const falling = motion.matches ? 1 : ease((time - 1.05) / 0.55);
-    const spread = motion.matches ? 1 : fraction((time - 1.6) / 1.15);
+    const activity = reduced ? 1 : ease((time - 1.05) / 0.2);
+    const falling = reduced ? 1 : ease((time - 1.05) / 0.55);
+    const spread = reduced ? 1 : fraction((time - 1.6) / 1.15);
     surface.style.setProperty('--startup-stage-top', `${trackY + 28 * fit}px`);
     if (activity === 0) return;
 
@@ -214,7 +215,7 @@ export function startStartupAnimation(
     context.fillStyle = track;
     trackPath(context, trackX, trackY, trackWidth, trackHeight);
     context.fill();
-    if (!motion.matches) {
+    if (!reduced) {
       context.save();
       context.beginPath();
       context.rect(dropX - 20, lipY - 3, 40, (trackY - lipY + 3) * falling);
@@ -235,7 +236,7 @@ export function startStartupAnimation(
       context.stroke();
       context.restore();
     }
-    const landed = motion.matches ? 1 : fraction((time - 1.6) / 0.18);
+    const landed = reduced ? 1 : fraction((time - 1.6) / 0.18);
     const impactX = dropX - 2 * scale;
     const rightEdge = trackX + trackWidth;
     const reach = impactX + (rightEdge - impactX) * spread;
@@ -245,7 +246,7 @@ export function startStartupAnimation(
     context.fillStyle = waterPaint(water, 0.2);
     context.globalAlpha = activity * landed;
     context.fillRect(trackX, trackY, Math.max(0, reach - trackX), trackHeight);
-    if (!motion.matches && landed > 0) {
+    if (!reduced && landed > 0) {
       const waveX =
         spread < 1
           ? reach
@@ -273,7 +274,7 @@ export function startStartupAnimation(
     context.fill();
     context.restore();
 
-    if (!motion.matches) {
+    if (!reduced) {
       flowContext.globalCompositeOperation = 'source-over';
       flowContext.clearRect(0, 0, MARK, MARK);
       flowContext.strokeStyle = ink;
@@ -315,17 +316,18 @@ export function startStartupAnimation(
       dispose();
       return;
     }
+    const reduced = reducedMotion();
     if (
       ready &&
       !document.hidden &&
       isVisible() &&
       canvas.clientWidth > 0 &&
       canvas.clientHeight > 0 &&
-      (motion.matches || now - lastPaint >= 1000 / 30)
+      (reduced || now - lastPaint >= 1000 / 30)
     ) {
       if (previous !== undefined) elapsed += now - previous;
       previous = now;
-      draw(motion.matches ? 3 : elapsed / 1000);
+      draw(reduced ? 3 : elapsed / 1000);
       canvas.dataset.ready = 'true';
       lastPaint = now;
       onFrame(elapsed);
@@ -338,7 +340,7 @@ export function startStartupAnimation(
       canvas.clientHeight === 0
     )
       previous = undefined;
-    if (!document.hidden && (!ready || !motion.matches)) schedule();
+    if (!document.hidden && (!ready || !reduced)) schedule();
   }
 
   function schedule() {
