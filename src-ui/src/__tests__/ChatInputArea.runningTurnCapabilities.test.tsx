@@ -136,12 +136,15 @@ describe('ChatInputArea: one capability contract while a turn runs', () => {
   ] as const)(
     'shows %s feedback while the request is pending',
     async (mode, status) => {
-      const request = Promise.withResolvers<void>();
+      let resolveRequest!: () => void;
+      const request = new Promise<void>((resolve) => {
+        resolveRequest = resolve;
+      });
       renderComposer({
         input: 'A follow-up',
         busyFollowUp: 'steer',
-        onQueueFollowUp: () => request.promise,
-        onSend: () => request.promise,
+        onQueueFollowUp: () => request,
+        onSend: () => request,
       });
       if (mode === 'steer') {
         fireEvent.click(
@@ -152,7 +155,7 @@ describe('ChatInputArea: one capability contract while a turn runs', () => {
 
       expect(screen.getByText(status).getAttribute('role')).toBe('status');
 
-      await act(async () => request.resolve());
+      await act(async () => resolveRequest());
       expect(screen.queryByText(status)).toBeNull();
     },
   );
