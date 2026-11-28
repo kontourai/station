@@ -1,0 +1,7 @@
+{
+  "revision": "109a2ac09add1cdcd246bc6ba689cd9abca46a9f",
+
+  "notes": [
+    {"path":"docs/guides/development.md","note":"Reviewed native Windows lifecycle state directory/file ACL validation, inherited owner-only protection, publication/removal identity checks, append-only child stdio and external execution-safe log parent against lifecycle.ts and windows-file-security.ts. Native state and real-child log regressions passed; complete native owner qualification remains separate.","inputs":["docs/guides/development.md","packages/cli/src/commands/lifecycle.ts"]}
+  ]
+}

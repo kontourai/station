@@ -109,7 +109,8 @@ node packages/cli/dist/station.mjs --help
 The bundle inlines the Station workspace packages, so it needs neither `tsx`
 nor a checkout at runtime. The package declares `@napi-rs/keyring`, `koffi` and
 `qrcode` dependencies; `koffi` reads the Windows registry and access lists for
-`station policy show` and is loaded only on Windows. `esbuild` is an optional peer loaded for plugin-authoring builds;
+`station policy show`, and enforces native Windows lifecycle state and log
+privacy. It is loaded only on Windows. `esbuild` is an optional peer loaded for plugin-authoring builds;
 client-only use does not require it. See the [package manifest](../../packages/cli/package.json)
 and [bundle externals](../../packages/cli/bundle-externals.mjs).
 
@@ -4746,12 +4747,20 @@ During rollout, Station still recognizes the prior `<cwd>/.station.pids` file wh
 
 A prebuilt server archive keeps this state outside itself, in `<root>/state/<channel>/instances/` of the Station root the instance's home belongs to. The root follows from the path of the home the command resolved, however it was given (`--home`, `--base`, `STATION_HOME` or the default), and from nothing else: a home at `<root>/instances/...` belongs to `<root>`, which makes the default `~/.station` (`%USERPROFILE%\.station` on Windows); any other home, including a `--temp-home`, is its own root and holds its state, which goes when the home is removed. `STATION_ROOT` does not move it. So `STATION_HOME=/srv/st station start` and `station stop --home=/srv/st` read the same records, and a start from a non-default home prints its stop command with `--home`. A bare `station stop` searches the root of the home a bare command targets (`STATION_HOME` or the default). An archive's port-conflict and shared-home checks likewise see only instances recorded in the same root; a port another root's instance holds still fails the bind. The archive can therefore be read-only, and every extracted version of one channel shares the records: the next version's `station stop` finds what the previous one started. For the same reason an archive's implicit instance id (no `--instance`, non-default home or ports) hashes the channel, home and ports rather than the archive's directory. Source checkouts are unchanged.
 
-The CLI requires the instance-state directory (`.station/instances` in a checkout, `<root>/state/<channel>/instances` for an archive) to be an owned, non-symlinked directory with mode `0700`; if it isn't (e.g. a checkout that predates this check, or a directory created with a looser umask), `station start`/`station build` fails with `Unsafe Station instance-state directory (expected owned mode 0700): <path>`. Fix it with `chmod 700` on the path the error names, for example:
+On POSIX, the CLI requires the instance-state directory (`.station/instances` in a checkout, `<root>/state/<channel>/instances` for an archive) to be an owned, non-symlinked directory with mode `0700`; if it isn't (e.g. a checkout that predates this check, or a directory created with a looser umask), `station start`/`station build` fails with `Unsafe Station instance-state directory (expected owned mode 0700): <path>`. Fix it with `chmod 700` on the path the error names, for example:
 
 ```bash
 chmod 700 .station/instances                    # checkout
 chmod 700 ~/.station/state/stable/instances     # stable archive, default home
 ```
+
+Windows checks actual current-user-only directory and record DACLs through
+retained native handles, refusing reparse paths and unrelated access. An
+inherited owner-only DACL is protected before use; a broader ACL is not
+silently repaired. `chmod` does not repair Windows ACLs. Publication verifies
+the final file identity and bytes, and removal quarantines only the record
+that was securely read. See [development](../guides/development.md) for log
+privacy and the separate execution-safe policy for existing explicit log parents.
 
 **Not the same thing as `<STATION_HOME>/instances.json`.** That is a
 separate, home-scoped (not CWD-scoped) cross-process instance registry

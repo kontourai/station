@@ -5249,7 +5249,13 @@ export async function start(opts: StartOptions = {}): Promise<void> {
     );
   }
   if (!hasExplicitLogFile || !logDirectoryExisted) {
-    chmodSync(logDirectory, 0o700);
+    if (process.platform === 'win32') {
+      hardenWindowsPathsTrusted(runWindowsTrustCommand, [
+        { kind: 'directory', path: logDirectory },
+      ]);
+    } else {
+      chmodSync(logDirectory, 0o700);
+    }
   }
   if (existsSync(logFile)) {
     const info = lstatSync(logFile);

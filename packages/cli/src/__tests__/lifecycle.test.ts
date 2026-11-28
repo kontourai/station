@@ -1122,29 +1122,15 @@ describe('a state record whose recorded home a guard now rejects (#1091)', () =>
     serverPid: number;
     uiPid: number;
   }): string {
-    ensureDir(TEST_INSTANCE_STATE_DIR);
-    chmodSync(TEST_INSTANCE_STATE_DIR, 0o700);
-    const statePath = join(TEST_INSTANCE_STATE_DIR, 'default.json');
-    writeFileSync(
-      statePath,
-      JSON.stringify({
-        instanceId: 'default',
-        serverPid: pids.serverPid,
-        uiPid: pids.uiPid,
-        // Ports nothing is listening on, so liveness rests on the pids.
-        serverPort: 64_700,
-        uiPort: 64_710,
-        // Written when the shared root was still a legal home.
-        baseDir: SHARED_ROOT,
-        homeSource: 'default',
-        host: '127.0.0.1',
-        startedAt: new Date(0).toISOString(),
-        cwd: TEST_CWD,
-      }),
-      { mode: 0o600 },
-    );
-    chmodSync(statePath, 0o600);
-    return statePath;
+    return writeInstanceState({
+      instanceId: 'default',
+      serverPid: pids.serverPid,
+      uiPid: pids.uiPid,
+      serverPort: 64_700,
+      uiPort: 64_710,
+      baseDir: SHARED_ROOT,
+      startedAt: new Date(0).toISOString(),
+    });
   }
 
   it('reclaims the dead record instead of wedging every lifecycle command', async () => {
@@ -2268,6 +2254,9 @@ describe('lifecycle instance state', () => {
     ensureDir(TEST_ALT_HOME);
     ensureDir(TEST_INSTANCE_STATE_DIR);
     chmodSync(TEST_INSTANCE_STATE_DIR, 0o700);
+    hardenWindowsPathsTrusted(runFixtureWindowsTrust, [
+      { kind: 'directory', path: TEST_INSTANCE_STATE_DIR },
+    ]);
     const statePath = getInstanceStatePath('state-orphan');
     const lock = `${statePath}.mutation`;
     writeFileSync(

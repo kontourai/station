@@ -1217,8 +1217,10 @@ with its 120-second timeout; rotation is not universally all-native or
 constant-latency. This
 does not harden arbitrary existing parent directories or defend against the
 same user or an administrator. POSIX ownership/mode checks remain unchanged.
-These journal guarantees do not establish privacy of the separate runtime log,
-instance-state files, or an installed Nightly build.
+The separate runtime log and instance-state files use the same native
+private-file owner, with different publication and append policies described
+in [development](development.md). These source guarantees do not establish
+that an installed Nightly build contains or exercises them.
 
 The terminal and voice `/__station/health` upgrades are identity-only: they
 close before registering a business client, allocating a terminal, starting a
@@ -1228,9 +1230,10 @@ Station verifies that fingerprint immediately before signaling; absent
 processes are already stopped, while reused PIDs and unrelated port owners are
 reported and never killed. Recovery stops on failed proof before rotating logs
 or starting another process. Modern instance state is an owned mode-0600 file
-inside an owned mode-0700 directory; publication fsyncs the exact record and
-directory, verifies the final inode and bytes, and guarded removal quarantines
-only the securely read record.
+inside an owned mode-0700 directory on POSIX. Windows verifies current-user-only
+DACLs on both boundaries and rejects reparse paths. Publication fsyncs the exact
+record (and its directory on supported platforms), verifies final file identity
+and bytes, and guarded removal quarantines only the securely read record.
 For dependency/build failure, `active` was never stopped. For start, local
 health, provenance, or tailnet health failure, `active` still names the prior
 release after that release has been restarted and verified. If rollback itself
