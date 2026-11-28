@@ -19,6 +19,7 @@ import { DisclosureToggle } from '../../components/DisclosureToggle';
 import { StatusSummary } from '../../components/StatusSummary';
 import { Empty, ErrorState, SkeletonBlock } from '../../components/state';
 import { useNavigationActions } from '../../contexts/NavigationContext';
+import { useBackgroundStatusReconciliation } from '../../hooks/useBackgroundStatusReconciliation';
 import { errorText } from '../../utils/errorText';
 import './TaskCodeReviewPanel.css';
 
@@ -101,6 +102,28 @@ export function TaskCodeReviewPanel({
         (request) => request.requestId === operation.requestId,
       )
     : undefined;
+  const refused =
+    mutation.error instanceof StationHttpError &&
+    (mutation.error.status === 400 ||
+      (mutation.error.status === 409 &&
+        mutation.error.code === 'review_request_conflict'));
+  const uncertain = Boolean(
+    view && operation && !mutation.isPending && !refused && !tracked,
+  );
+  const reviewReconcile = useBackgroundStatusReconciliation({
+    active: uncertain,
+    resetKey: operation?.requestId ?? '',
+    initialDelayMs: 1_500,
+    intervalsMs: [3_000, 6_000],
+    check: async () => {
+      const result = await query.refetch();
+      return result.data?.requests.some(
+        (request) => request.requestId === operation?.requestId,
+      )
+        ? 'settled'
+        : 'pending';
+    },
+  });
   useEffect(() => {
     if (tracked) {
       try {
@@ -140,14 +163,6 @@ export function TaskCodeReviewPanel({
   if (!view) return <SkeletonBlock label="Loading code review" />;
   const selectedReviewer = reviewer || view.reviewers[0]?.slug || '';
   const selectedBase = base ?? view.workspace.baseSha ?? '';
-  const refused =
-    mutation.error instanceof StationHttpError &&
-    (mutation.error.status === 400 ||
-      (mutation.error.status === 409 &&
-        mutation.error.code === 'review_request_conflict'));
-  const uncertain = Boolean(
-    operation && !mutation.isPending && !refused && !tracked,
-  );
   const blocked = !view.canRequest
     ? view.requestUnavailableReason === 'task-ended'
       ? 'This Task has ended. Its review history remains available.'
@@ -352,7 +367,11 @@ export function TaskCodeReviewPanel({
           action={refresh('Check status')}
         />
       )}
-      {(uncertain || (mutation.isError && !tracked)) && (
+      {uncertain && !reviewReconcile.exhausted && (
+        <p role="status">Confirming review request…</p>
+      )}
+      {((uncertain && reviewReconcile.exhausted) ||
+        (mutation.isError && !tracked && !uncertain)) && (
         <ErrorState
           variant="compact"
           title={

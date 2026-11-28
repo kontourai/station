@@ -382,7 +382,11 @@ state. Older authenticated receipts without the field prove archive bytes only.
 Developer → Monitoring → Companion exposes **Prepare signed archive** to an
 authorized operator when the host and retained release evidence are available.
 The SDK mutation submits one caller-generated operation ID without automatic
-retries. **Check preparation status** performs reads only. If the response is
+retries. Status checks perform reads only: when an operation lock, pending
+receipt, or unconfirmed result is active, the pane polls status on a bounded
+background schedule without collapsing loaded controls and offers **Check
+preparation status** as a fallback if background checks exhaust or status reads
+fail. If the response is
 lost, the pane looks up that same operation rather than starting another
 download. Reopening the pane reads the durable latest-operation pointer through
 `GET /api/operator/telemetry-companion/archive-preparations`. A lock, pending

@@ -802,7 +802,9 @@ An authorized operator can choose **Prepare signed archive** to download and
 verify the signed parent archive and prepare its fixed companion files in the
 selected Station's private storage. The pane distinguishes a verified archive
 from companion files prepared and verified; neither starts services.
-**Check preparation status** reads the retained receipt. After a lost response,
+Background status checks (and the fallback **Check preparation status** control
+when background checks exhaust or reads fail) read the retained receipt in place
+without collapsing the panel. After a lost response,
 the pane checks the same operation; it never automatically repeats the download.
 Reopening the pane recovers the latest recorded operation. An unconfirmed result,
 pending receipt, lock or missing receipt requires reconciliation before another

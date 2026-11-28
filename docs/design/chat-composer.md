@@ -292,8 +292,10 @@ Send starts a fresh Session with recent authorized conversation text and the
 draft as its first message. The selected connection and source Session are
 checked again at dispatch. Busy or queued work is resolved before switching.
 A refused send leaves the draft and attachments in the composer. If delivery is
-unconfirmed, **Retry Send** uses the same request. After reload, **Check status**
-looks up that attempt before offering a retry. Station retains the exact request
+unconfirmed, **Retry Send** uses the same request. After reload, Station
+automatically checks that attempt in the background before offering **Retry Send**
+or **Withdraw Send**, falling back to **Check status** only if background checks
+cannot confirm it. Station retains the exact request
 in browser storage under the verified Station and person. If the retained
 request expires before Station reserves it, **Withdraw Send** fences that request
 and leaves the draft in the composer.

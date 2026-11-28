@@ -2,6 +2,7 @@ import type { AttentionRequestReference } from '@kontourai/station-contracts/att
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import { type ReactNode, useEffect, useId, useState } from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
+import { useBackgroundStatusReconciliation } from '../../hooks/useBackgroundStatusReconciliation';
 import { openApprovalConversation } from '../../lib/openApprovalConversation';
 import { userFacingErrorMessage } from '../../utils/errorText';
 import { Button } from '../Button';
@@ -106,6 +107,13 @@ function ExactRequestDecisionRow({
     openApprovalConversation(openHref);
   }, [sent]);
   const { query, response, result } = decision;
+  const responseReconcile = useBackgroundStatusReconciliation({
+    active: response.isError && decision.current,
+    resetKey: `${authority.authorityKey}:${reference.threadId}:${reference.requestId}:${reference.requestEventId}`,
+    check: decision.recheck,
+    initialDelayMs: 1_500,
+    intervalsMs: [2_500, 5_000],
+  });
   const [expanded, setExpanded] = useState(false);
   const detailsId = useId();
   const openLink = openHref ? (
@@ -139,13 +147,15 @@ function ExactRequestDecisionRow({
         description={`${userFacingErrorMessage(response.error)} It may have gone through; check the chat first.`}
         action={
           <>
-            <Button
-              size="sm"
-              disabled={decision.checking}
-              onClick={decision.recheck}
-            >
-              Check again
-            </Button>
+            {responseReconcile.exhausted ? (
+              <Button
+                size="sm"
+                disabled={decision.checking}
+                onClick={() => void decision.recheck()}
+              >
+                Check again
+              </Button>
+            ) : null}
             {openLink}
           </>
         }

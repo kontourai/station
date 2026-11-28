@@ -1911,8 +1911,10 @@ In the [chat UI](../../src-ui/src/hooks/orchestration/queueDrain.ts), an interme
 error page during a queued send leaves the message in the queue; the page does
 not establish a Station refusal. An uncertain
 [Agent change](../../src-ui/src/components/chat-dock/ConversationHandoffDialog.tsx)
-also retains its request. Use **Check status** or the
-offered retry for that request rather than starting another handoff.
+also retains its request. The dialog automatically checks status on a bounded
+background schedule (and on visibility or online recovery), falling back to
+**Check status** or the offered retry for that request rather than starting
+another handoff.
 These endpoints establish recorded receipt state, not permission to retry:
 
 ```

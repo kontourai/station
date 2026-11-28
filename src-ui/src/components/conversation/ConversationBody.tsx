@@ -57,6 +57,7 @@ import {
 } from '../../hooks/orchestration/queueDrain';
 import { isReplayThread } from '../../hooks/orchestration/replay/replay-registry';
 import { useACPConnections } from '../../hooks/useACPConnections';
+import { useBackgroundStatusReconciliation } from '../../hooks/useBackgroundStatusReconciliation';
 import type { useChatInput } from '../../hooks/useChatInput';
 import { useFeatureSettings } from '../../hooks/useFeatureSettings';
 import { useFollowUpAttachmentsSupport } from '../../hooks/useFollowUpAttachmentsSupport';
@@ -392,6 +393,8 @@ export interface ConversationBodyProps {
     | 'send'
     | 'undo'
   > & {
+    checkingStatus?: boolean;
+    statusCheckExhausted?: boolean;
     selection?: NonNullable<
       ReturnType<
         typeof import('../chat-dock/useStagedAgentChange').useStagedAgentChange
@@ -831,6 +834,16 @@ function LiveConversationBody({
   // started it. Only a busy wait this tab sees no turn for (a missed
   // terminal) stays draft-only behind its Check again notice.
   const busyWaitBlocksSend = busyOpen && !turnInFlight;
+  const busyWaitReconcile = useBackgroundStatusReconciliation({
+    active: Boolean(busyWaitBlocksSend && onRetryConversationOpen),
+    resetKey: `${activeSession.id}:${activeSession.conversationId ?? ''}:${activeSession.openResolution?.status ?? ''}`,
+    initialDelayMs: 1_500,
+    intervalsMs: [3_000, 6_000],
+    check: async () => {
+      await onRetryConversationOpen?.();
+      return 'pending';
+    },
+  });
   const resolvingOpen = openPhase === 'resolving';
   // Whether THIS caller may send into this conversation or start a chat, as
   // the server's own boundary answered it on the open read (`callerAccess`).
@@ -3021,7 +3034,9 @@ function LiveConversationBody({
         the recovery notice owns. A genuine wait (turn in flight) keeps the
         current draft-only behavior below.
       */}
-      {busyOpen && !turnInFlight ? (
+      {busyOpen &&
+      !turnInFlight &&
+      (!onRetryConversationOpen || busyWaitReconcile.exhausted) ? (
         <div className="session-history-controls" role="status">
           <span>
             Waiting for the active turn to finish. If it already has, check
@@ -3193,29 +3208,40 @@ function LiveConversationBody({
             composerNotice={settled ? SETTLED_COMPOSER_NOTICE : undefined}
             stagedAgentNotice={
               stagedAgentChange
-                ? {
-                    label: stagedAgentChange.pending
-                      ? stagedAgentChange.pending.sending
-                        ? 'Sending Agent change…'
-                        : 'Agent change unconfirmed'
-                      : `Next message: ${stagedSelection?.agent.name} · ${stagedSelection?.executionAgent?.engineDisplayName ?? stagedSelection?.agent.engineDisplayName ?? stagedSelection?.connectionId ?? 'Station'} · ${stagedSelection?.modelId ?? 'Agent default'}`,
-                    onCheck:
-                      stagedAgentChange.pending &&
-                      !stagedAgentChange.pending.sending
-                        ? () =>
-                            void (stagedAgentChange.canWithdraw
-                              ? stagedAgentChange.withdraw()
-                              : stagedAgentChange.send())
-                        : undefined,
-                    checkLabel: stagedAgentChange.canWithdraw
-                      ? 'Withdraw Send'
-                      : stagedAgentChange.canRetry
-                        ? 'Retry Send'
-                        : 'Check status',
-                    onUndo: stagedAgentChange.pending
-                      ? undefined
-                      : stagedAgentChange.undo,
-                  }
+                ? (() => {
+                    const checkingRestored =
+                      Boolean(stagedAgentChange.pending) &&
+                      !stagedAgentChange.pending?.sending &&
+                      !stagedAgentChange.canWithdraw &&
+                      !stagedAgentChange.canRetry &&
+                      stagedAgentChange.statusCheckExhausted === false;
+                    return {
+                      label: stagedAgentChange.pending
+                        ? stagedAgentChange.pending.sending
+                          ? 'Sending Agent change…'
+                          : checkingRestored
+                            ? 'Checking Agent change…'
+                            : 'Agent change unconfirmed'
+                        : `Next message: ${stagedSelection?.agent.name} · ${stagedSelection?.executionAgent?.engineDisplayName ?? stagedSelection?.agent.engineDisplayName ?? stagedSelection?.connectionId ?? 'Station'} · ${stagedSelection?.modelId ?? 'Agent default'}`,
+                      onCheck:
+                        stagedAgentChange.pending &&
+                        !stagedAgentChange.pending.sending &&
+                        !checkingRestored
+                          ? () =>
+                              void (stagedAgentChange.canWithdraw
+                                ? stagedAgentChange.withdraw()
+                                : stagedAgentChange.send())
+                          : undefined,
+                      checkLabel: stagedAgentChange.canWithdraw
+                        ? 'Withdraw Send'
+                        : stagedAgentChange.canRetry
+                          ? 'Retry Send'
+                          : 'Check status',
+                      onUndo: stagedAgentChange.pending
+                        ? undefined
+                        : stagedAgentChange.undo,
+                    };
+                  })()
                 : undefined
             }
             queuedRetryNotice={queuedRetryNotice}

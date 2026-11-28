@@ -13,6 +13,7 @@ import {
 } from '../../contexts/ActiveChatsContext';
 import type { AgentData } from '../../contexts/AgentsContext';
 import { chatDraftsStore } from '../../contexts/chat-drafts-store';
+import { useBackgroundStatusReconciliation } from '../../hooks/useBackgroundStatusReconciliation';
 import type { useChatInput } from '../../hooks/useChatInput';
 import type { StagedHandoffAttempt } from '../../lib/staged-handoff-attempt-store';
 import { stagedHandoffRecovery } from '../../lib/staged-handoff-recovery';
@@ -121,6 +122,89 @@ export function useStagedAgentChange({
     setRetryKey(undefined);
     setWithdrawKey(undefined);
   };
+
+  /** Read-only check of a restored unconfirmed attempt after reload. Never resends. */
+  const observeRestored = async (): Promise<'settled' | 'pending'> => {
+    if (
+      !restoredKey ||
+      !chat?.conversationId ||
+      !scope ||
+      !recoveryAuthority ||
+      !scopeIsCurrent?.() ||
+      sending.current
+    )
+      return 'pending';
+    sending.current = true;
+    try {
+      const [{ createStagedHandoffTransport }, { stagedHandoffAttempts }] =
+        await Promise.all([
+          import('../conversation/conversation-transport'),
+          import('../../lib/staged-handoff-attempt-store'),
+        ]);
+      const transport = createStagedHandoffTransport(
+        apiBase,
+        scope,
+        scopeIsCurrent,
+      );
+      const observed = await transport
+        .read(chat.conversationId, restoredKey)
+        .catch((error: unknown) => {
+          if (!isStationRefusal(error, 404)) throw error;
+          return null;
+        });
+      if (!scopeIsCurrent()) return 'settled';
+      if (
+        observed?.providerTurnId &&
+        ['accepted', 'completed', 'failed'].includes(observed.status)
+      ) {
+        await clearAttempt(restoredKey);
+        setPlan(undefined);
+        onAccepted();
+        report(
+          'Station found the earlier message. Review the conversation before sending the draft again.',
+        );
+        return 'settled';
+      }
+      if (observed && observed.status !== 'reserved') return 'pending';
+      const retained = await stagedHandoffAttempts.read(storageKey);
+      if (!scopeIsCurrent()) return 'settled';
+      if (
+        !retained ||
+        retained.key !== key ||
+        retained.request.idempotencyKey !== restoredKey
+      ) {
+        if (!observed) setWithdrawKey(restoredKey);
+        return 'settled';
+      }
+      setRetryKey(restoredKey);
+      return 'settled';
+    } catch {
+      return 'pending';
+    } finally {
+      sending.current = false;
+    }
+  };
+
+  const canRetry = Boolean(
+    attempt.current?.key === key || (restoredKey && retryKey === restoredKey),
+  );
+  const canWithdraw = Boolean(restoredKey && restoredKey === withdrawKey);
+  const restoredReconcile = useBackgroundStatusReconciliation({
+    active: Boolean(
+      restoredKey &&
+        !canRetry &&
+        !canWithdraw &&
+        !pending?.sending &&
+        chat?.conversationId &&
+        scope &&
+        recoveryAuthority &&
+        scopeIsCurrent?.(),
+    ),
+    resetKey: `${key}:${restoredKey ?? ''}`,
+    initialDelayMs: 300,
+    intervalsMs: [2_000, 4_000],
+    check: observeRestored,
+  });
 
   const stage = (
     agent: AgentData,
@@ -542,11 +626,11 @@ export function useStagedAgentChange({
     ),
     selected,
     pending,
-    canWithdraw: Boolean(restoredKey && restoredKey === withdrawKey),
+    canWithdraw,
     withdraw,
-    canRetry: Boolean(
-      attempt.current?.key === key || (restoredKey && retryKey === restoredKey),
-    ),
+    canRetry,
+    checkingStatus: restoredReconcile.checking,
+    statusCheckExhausted: restoredReconcile.exhausted,
     stage,
     changeModel,
     changeOption,

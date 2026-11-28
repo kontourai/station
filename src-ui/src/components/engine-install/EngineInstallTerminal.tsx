@@ -3,6 +3,7 @@ import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useEffect, useRef, useState } from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useNavigationActions } from '../../contexts/NavigationContext';
+import { useBackgroundStatusReconciliation } from '../../hooks/useBackgroundStatusReconciliation';
 import { Button } from '../Button';
 import { TerminalPanel } from '../coding-layout/TerminalPanel';
 import { ConfirmModal } from '../modals/ConfirmModal';
@@ -82,6 +83,25 @@ function ScopedInstaller({
       onFinished();
     }
   }, [terminal, running, onFinished]);
+  const errorReconcile = useBackgroundStatusReconciliation({
+    active: Boolean(start.error || stop.error),
+    resetKey: `${scope.apiBase}:${scope.authorityKey}:${id}:${Boolean(start.error)}:${Boolean(stop.error)}`,
+    initialDelayMs: 1_500,
+    intervalsMs: [3_000],
+    check: async () => {
+      const result = await query.refetch();
+      const next = result.data?.terminal;
+      if (
+        start.error &&
+        next &&
+        next.operationId === request.current &&
+        (next.status === 'running' || next.exitCode === 0)
+      )
+        return 'settled';
+      if (stop.error && (!next || next.status === 'exited')) return 'settled';
+      return 'pending';
+    },
+  });
   if ((!offered && !terminal) || (!installNeeded && !running)) return null;
   if (query.isPending) return <SkeletonBlock />;
   if (query.isError)
@@ -186,10 +206,12 @@ function ScopedInstaller({
       )}
       {start.error || stop.error ? (
         <ErrorState
-          title="Check installation status"
+          title="Installation status unconfirmed"
           description={(start.error ?? stop.error)?.message}
           action={
-            <Button onClick={() => void query.refetch()}>Check status</Button>
+            errorReconcile.exhausted ? (
+              <Button onClick={() => void query.refetch()}>Check status</Button>
+            ) : undefined
           }
         />
       ) : null}

@@ -270,9 +270,10 @@ test.each(['recovered', 'unconfirmed'] as const)(
       expect(
         screen.getByRole('button', { name: 'Prepare signed archive' }),
       ).toHaveProperty('disabled', true);
-      fireEvent.click(
-        screen.getByRole('button', { name: 'Check preparation status' }),
-      );
+      expect(
+        screen.queryByRole('button', { name: 'Check preparation status' }),
+      ).toBeNull();
+      window.dispatchEvent(new Event('online'));
       await waitFor(() => expect(first.client.isFetching()).toBe(0));
       expect(screen.queryByText(/Archive bytes verified/)).toBeNull();
     }
@@ -415,9 +416,7 @@ test.each(['recovered', 'unconfirmed'] as const)(
     await waitFor(() => expect(h.client.isFetching()).toBe(0));
     expect(button).toHaveProperty('disabled', true);
     profileAvailable = true;
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Check companion status' }),
-    );
+    window.dispatchEvent(new Event('online'));
     await waitFor(() => expect(button).toHaveProperty('disabled', false));
     fireEvent.click(button);
     const start = await screen.findByRole('button', {
@@ -448,9 +447,7 @@ test.each(['recovered', 'unconfirmed'] as const)(
       expect(
         screen.getByText(/or stop the companion to make sure/),
       ).toBeTruthy();
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Check companion status' }),
-    );
+    window.dispatchEvent(new Event('online'));
     await waitFor(() => expect(h.client.isFetching()).toBe(0));
     expect(control).toHaveBeenCalledTimes(1);
     expect(install).toHaveBeenCalledTimes(1);

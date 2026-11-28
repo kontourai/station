@@ -331,9 +331,13 @@ describe('#2316 inline approval card', () => {
     );
     const first = renderCard();
     fireEvent.click(await screen.findByRole('button', { name: 'Allow once' }));
-    // The chosen button carries the in-flight state; no sentence repeats it.
-    await screen.findByRole('button', { name: 'Check status' });
-    expect(screen.getByRole('button', { name: 'Allowing…' })).toBeTruthy();
+    // The chosen button carries the in-flight state; no sentence or premature
+    // Check status row jumps in while the accepted decision waits to settle.
+    await screen.findByRole('button', { name: 'Allowing…' });
+    await waitFor(() =>
+      expect(calls.filter((call) => call.method === 'POST')).toHaveLength(1),
+    );
+    expect(screen.queryByRole('button', { name: 'Check status' })).toBeNull();
     first.unmount();
     const second = renderCard(
       chatSession({ answeredApprovals: ['req-claude-b'] }),
@@ -344,9 +348,10 @@ describe('#2316 inline approval card', () => {
       ),
     ).toBe(true);
     expect(screen.queryByText(/Decision sent/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Check status' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Deny' }));
     expect(calls.filter((call) => call.method === 'POST')).toHaveLength(1);
-    fireEvent.click(screen.getByRole('button', { name: 'Check status' }));
+    window.dispatchEvent(new Event('online'));
     await screen.findByText('Already answered.');
     expect(calls.filter((call) => call.method === 'GET')).toEqual([
       {
@@ -367,6 +372,45 @@ describe('#2316 inline approval card', () => {
     await waitFor(() =>
       expect(screen.queryByRole('button', { name: 'Allow once' })).toBeNull(),
     );
+  });
+
+  test('an accepted approval stays quiet until background checks exhaust, then offers Check status', async () => {
+    vi.useFakeTimers();
+    try {
+      const calls = stubFetch((call) =>
+        call.method === 'POST'
+          ? Response.json({ success: true, data: {} })
+          : Response.json(
+              { success: false, error: 'temporary outage' },
+              { status: 503 },
+            ),
+      );
+      renderCard();
+      await act(async () => {
+        await Promise.resolve();
+      });
+      const allow = screen.getByRole('button', { name: 'Allow once' });
+      await act(async () => {
+        fireEvent.click(allow);
+        await Promise.resolve();
+      });
+      expect(screen.getByRole('button', { name: 'Allowing…' })).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'Check status' })).toBeNull();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2_499);
+      });
+      expect(calls.filter((call) => call.method === 'GET')).toHaveLength(0);
+      expect(screen.queryByRole('button', { name: 'Check status' })).toBeNull();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(16_000);
+      });
+      expect(calls.filter((call) => call.method === 'GET')).toHaveLength(4);
+      expect(screen.getByRole('button', { name: 'Check status' })).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test('remounting an uncertain approval keeps decisions locked and status checking visible', async () => {

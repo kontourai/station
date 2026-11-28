@@ -13,6 +13,7 @@ import {
 import { useEffect, useRef, useState } from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useNavigationActions } from '../../contexts/NavigationContext';
+import { useBackgroundStatusReconciliation } from '../../hooks/useBackgroundStatusReconciliation';
 import { useDevicePresentation } from '../../hooks/useDevicePresentation';
 import { openExternalLink } from '../../platform/openExternalLink';
 import { describeStationFailure } from '../../utils/stationFailure';
@@ -293,6 +294,24 @@ function ScopedEngineSignInPanel({
       onSignedIn?.();
     }
   }, [current, check, onSignedIn]);
+
+  useBackgroundStatusReconciliation({
+    active: Boolean(
+      view.data &&
+        view.data.status.state !== 'authenticated' &&
+        !check.isPending &&
+        current?.state !== 'running',
+    ),
+    resetKey: `${scope.apiBase}:${scope.authorityKey}:${connectionId}`,
+    initialDelayMs: null,
+    recheckOnFocus: true,
+    recheckOnVisible: true,
+    recheckOnOnline: false,
+    eventDebounceMs: 1_500,
+    check: () => {
+      check.mutate();
+    },
+  });
 
   if (view.isLoading)
     return (

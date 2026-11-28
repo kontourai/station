@@ -1,6 +1,7 @@
 import { useEngineStationTools } from '@kontourai/station-sdk/engine-setup';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
+import { useBackgroundStatusReconciliation } from '../../hooks/useBackgroundStatusReconciliation';
 import { describeStationFailure } from '../../utils/stationFailure';
 import { Button } from '../Button';
 import { ConfirmModal } from '../modals/ConfirmModal';
@@ -30,6 +31,25 @@ function ScopedTools({
   const [confirmation, setConfirmation] = useState<NonNullable<
     NonNullable<typeof query.data>['recommended']
   > | null>(null);
+  const view = query.data;
+  useEffect(() => {
+    if (enable.error && view?.selected) enable.reset();
+    if (repair.error && view && !view.recommended) repair.reset();
+  }, [enable, repair, view]);
+  const errorReconcile = useBackgroundStatusReconciliation({
+    active: Boolean(offered && (repair.error || enable.error)),
+    resetKey: `${scope.apiBase}:${scope.authorityKey}:${connectionId}:${Boolean(repair.error)}:${Boolean(enable.error)}`,
+    initialDelayMs: 1_500,
+    intervalsMs: [3_000],
+    check: async () => {
+      const result = await query.refetch();
+      const next = result.data;
+      if (!next) return 'pending';
+      if (enable.error && next.selected) return 'settled';
+      if (repair.error && !next.recommended) return 'settled';
+      return 'pending';
+    },
+  });
   if (!offered) return null;
   if (query.isPending) return <SkeletonBlock />;
   if (query.isError)
@@ -39,7 +59,6 @@ function ScopedTools({
         action={<Button onClick={() => void query.refetch()}>Retry</Button>}
       />
     );
-  const view = query.data;
   if (!view) return null;
   return (
     <div className="editor-field">
@@ -91,7 +110,9 @@ function ScopedTools({
           title="Couldn't update engine setup"
           description={describeStationFailure(repair.error).body}
           action={
-            <Button onClick={() => void query.refetch()}>Check status</Button>
+            errorReconcile.exhausted ? (
+              <Button onClick={() => void query.refetch()}>Check status</Button>
+            ) : undefined
           }
         />
       ) : null}
@@ -100,7 +121,9 @@ function ScopedTools({
           title="Couldn't add Station tools"
           description={describeStationFailure(enable.error).body}
           action={
-            <Button onClick={() => void query.refetch()}>Check status</Button>
+            errorReconcile.exhausted ? (
+              <Button onClick={() => void query.refetch()}>Check status</Button>
+            ) : undefined
           }
         />
       ) : null}

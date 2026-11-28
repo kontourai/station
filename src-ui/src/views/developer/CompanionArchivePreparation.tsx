@@ -6,6 +6,7 @@ import {
 import { Button } from '../../components/Button';
 import { SkeletonBlock } from '../../components/state';
 import type { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
+import { useBackgroundStatusReconciliation } from '../../hooks/useBackgroundStatusReconciliation';
 import { newCompanionOperationId } from './companion-operation-id';
 
 export function CompanionArchivePreparation({
@@ -34,6 +35,50 @@ export function CompanionArchivePreparation({
       enabled: prepare.isError,
     },
   );
+  const receipt = prepare.isSuccess
+    ? prepare.data
+    : prepare.isError
+      ? !recovered.isError && recovered.data?.operationId === operationId
+        ? recovered.data
+        : null
+      : state.data?.latest?.operationId === operationId
+        ? state.data.latest
+        : null;
+  const unconfirmed =
+    prepare.isError && (!receipt || receipt.phase === 'pending');
+  const needsBackgroundCheck = Boolean(
+    state.data &&
+      !prepare.isPending &&
+      (state.data.hasOperationLock ||
+        receipt?.phase === 'pending' ||
+        unconfirmed ||
+        (state.data.latestOperationId && !state.data.latest)),
+  );
+  const reconcile = useBackgroundStatusReconciliation({
+    active: needsBackgroundCheck,
+    resetKey: `${authority.apiBase}:${authority.authorityKey}:${operationId ?? ''}:${state.data?.hasOperationLock ? '1' : '0'}:${unconfirmed ? 'u' : 'c'}`,
+    initialDelayMs: 1_500,
+    intervalsMs: [2_500, 5_000, 8_000],
+    check: async () => {
+      const next = await state.refetch();
+      const recoveredNext =
+        operationId && prepare.isError ? await recovered.refetch() : undefined;
+      const resolvedReceipt =
+        recoveredNext?.data?.operationId === operationId
+          ? recoveredNext.data
+          : next.data?.latest?.operationId === operationId
+            ? next.data.latest
+            : null;
+      if (
+        next.data &&
+        !next.data.hasOperationLock &&
+        (!operationId ||
+          (resolvedReceipt !== null && resolvedReceipt.phase !== 'pending'))
+      )
+        return 'settled';
+      return 'pending';
+    },
+  });
   if (state.isError)
     return (
       <>
@@ -50,21 +95,8 @@ export function CompanionArchivePreparation({
         </Button>
       </>
     );
-  if (!state.data || state.isFetching)
+  if (!state.data)
     return <SkeletonBlock count={1} label="Checking archive preparation" />;
-  const receipt = prepare.isSuccess
-    ? prepare.data
-    : prepare.isError
-      ? !recovered.isError &&
-        !recovered.isFetching &&
-        recovered.data?.operationId === operationId
-        ? recovered.data
-        : null
-      : state.data.latest?.operationId === operationId
-        ? state.data.latest
-        : null;
-  const unconfirmed =
-    prepare.isError && (!receipt || receipt.phase === 'pending');
   const cryptoAvailable =
     typeof globalThis.crypto?.getRandomValues === 'function';
   const canPrepare =
@@ -142,16 +174,18 @@ export function CompanionArchivePreparation({
       >
         Prepare signed archive
       </Button>
-      <Button
-        variant="secondary"
-        disabled={state.isFetching || recovered.isFetching}
-        onClick={() => {
-          void state.refetch();
-          if (operationId && prepare.isError) void recovered.refetch();
-        }}
-      >
-        Check preparation status
-      </Button>
+      {needsBackgroundCheck && reconcile.exhausted ? (
+        <Button
+          variant="secondary"
+          disabled={state.isFetching || recovered.isFetching}
+          onClick={() => {
+            void state.refetch();
+            if (operationId && prepare.isError) void recovered.refetch();
+          }}
+        >
+          Check preparation status
+        </Button>
+      ) : null}
     </section>
   );
 }
