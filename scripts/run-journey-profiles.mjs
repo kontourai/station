@@ -23,6 +23,8 @@ export const JOURNEYS = [
       'home-history-mobile',
       'home-composer-typing',
       'home-composer-typing-mobile',
+      'home-refresh',
+      'home-refresh-mobile',
     ],
   },
   {
