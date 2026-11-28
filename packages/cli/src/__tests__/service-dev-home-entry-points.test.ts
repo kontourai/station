@@ -14,7 +14,7 @@
  */
 import * as nodeFs from 'node:fs';
 import { mkdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { initializeSourceBootstrap } from '../../../../scripts/source-bootstrap.js';
@@ -85,10 +85,24 @@ function bootstrapSourceCheckout(): Bootstrapped {
   };
 }
 
+const serviceNodeDirectories = new Set(['/', '/usr', '/usr/bin']);
+const serviceNodeDirectoryInfo = nodeFs.lstatSync(dirname(process.execPath));
 const serviceFs = {
   ...nodeFs,
+  lstatSync: (path: nodeFs.PathLike) =>
+    serviceNodeDirectories.has(String(path))
+      ? Object.assign(
+          Object.create(Object.getPrototypeOf(serviceNodeDirectoryInfo)),
+          serviceNodeDirectoryInfo,
+          { uid: 0, gid: 0, mode: 0o040755 },
+        )
+      : nodeFs.lstatSync(path),
   realpathSync: (path: nodeFs.PathLike) =>
-    path === process.execPath ? '/usr/bin/node' : nodeFs.realpathSync(path),
+    path === process.execPath
+      ? '/usr/bin/node'
+      : serviceNodeDirectories.has(String(path))
+        ? String(path)
+        : nodeFs.realpathSync(path),
 } as unknown as ServiceFs;
 
 async function loadCli(options: { menuChoice?: string } = {}) {
