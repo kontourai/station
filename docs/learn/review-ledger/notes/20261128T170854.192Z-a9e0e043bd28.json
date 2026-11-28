@@ -1,0 +1,7 @@
+{
+  "revision": "05d1497fd4f598cee7be1858c44bee3f3aef305e",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Replaced invalid ByRoleOptions exact option with /^Send$/ regex in ChatInputArea.test.tsx; docs remain accurate.","inputs":["src-ui/src/__tests__/ChatInputArea.test.tsx"]}
+  ]
+}

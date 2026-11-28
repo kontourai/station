@@ -3148,28 +3148,32 @@
   gap: 0;
 }
 .chat-input__send-group:has(.chat-input__send-mode) .chat-input__send-btn {
-  border-start-end-radius: 0;
-  border-end-end-radius: 0;
+  border-start-start-radius: 0;
+  border-end-start-radius: 0;
 }
-/* Steer/Queue is the trailing segment of one split Send button: same height,
-   a hairline divider, only the outer corners rounded, and Send's accent while
-   Send is ready. It stays at full strength otherwise because it still works. */
 .chat-input .chat-input__send-mode {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: var(--k-space-1);
   height: 44px;
-  padding: 0 var(--k-space-3);
+  padding: 0 var(--k-space-4);
   border: none;
-  border-inline-start: var(--k-border-thin) solid
+  border-inline-end: var(--k-border-thin) solid
     color-mix(in srgb, currentColor 28%, transparent);
-  border-radius: 0 var(--k-radius-control) var(--k-radius-control) 0;
+  border-start-start-radius: var(--k-radius-control);
+  border-end-start-radius: var(--k-radius-control);
   background: var(--k-panel-raised);
   color: var(--k-text-muted);
   font-size: var(--k-text-sm);
   cursor: pointer;
 }
+.chat-input__send-mode svg {
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+
 .chat-input .chat-input__send-mode--active {
   background: var(--k-action);
   color: var(--k-action-contrast);

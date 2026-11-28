@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import type React from 'react';
 import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 import { ChatInputArea } from '../components/chat/ChatInputArea';
@@ -129,6 +129,36 @@ describe('ChatInputArea: one capability contract while a turn runs', () => {
       screen.getByText(/host did not report a durability profile/),
     ).toBeTruthy();
   });
+
+  test.each([
+    ['queue', 'Queueing…'],
+    ['steer', 'Sending steer…'],
+  ] as const)(
+    'shows %s feedback while the request is pending',
+    async (mode, status) => {
+      let resolveRequest!: () => void;
+      const request = new Promise<void>((resolve) => {
+        resolveRequest = resolve;
+      });
+      renderComposer({
+        input: 'A follow-up',
+        busyFollowUp: 'steer',
+        onQueueFollowUp: () => request,
+        onSend: () => request,
+      });
+      if (mode === 'steer') {
+        fireEvent.click(
+          screen.getByRole('button', { name: 'Send mode: Queue' }),
+        );
+      }
+      fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+      expect(screen.getByText(status).getAttribute('role')).toBe('status');
+
+      await act(async () => resolveRequest());
+      expect(screen.queryByText(status)).toBeNull();
+    },
+  );
 
   test('dictation and the paperclip stay usable during a running turn', async () => {
     const props = renderComposer();

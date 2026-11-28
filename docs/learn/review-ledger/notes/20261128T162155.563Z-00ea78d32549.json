@@ -1,0 +1,9 @@
+{
+  "revision": "4866ece283efc57411cb65318a95b2a2ee172521",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Added aria-pressed to Queue/Steer mode choice buttons in ChatInputArea.tsx; citing docs remain accurate.","inputs":["src-ui/src/components/chat/ChatInputArea.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Added aria-pressed to Queue/Steer mode choice buttons in ChatInputArea.tsx; citing docs remain accurate.","inputs":["src-ui/src/components/chat/ChatInputArea.tsx"]}
+  ]
+}

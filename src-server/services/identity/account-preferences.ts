@@ -109,6 +109,11 @@ const storedDocument = (shape: z.ZodRawShape) =>
     .strict();
 const mainDocument = storedDocument(mainFields);
 const appearanceDocument = storedDocument(appearanceFields);
+// Pre-color-theme servers parse the main file strictly. Keep send mode in a
+// sibling they never open. Queue is represented by the absence of Steer.
+const chatDocument = storedDocument({
+  chatDefaultSendMode: z.literal('steer'),
+});
 type StoredValues = Record<string, unknown>;
 function known(
   values: StoredValues,
@@ -135,6 +140,7 @@ const patchSchema = z
     chatFontSize: fields.chatFontSize.nullable().optional(),
     chatAnswerWidth: fields.chatAnswerWidth.nullable().optional(),
     chatDockAutoHide: fields.chatDockAutoHide.nullable().optional(),
+    chatDefaultSendMode: z.enum(['queue', 'steer']).nullable().optional(),
     confirmConversationDelete: fields.confirmConversationDelete
       .nullable()
       .optional(),
@@ -220,12 +226,17 @@ export class AccountPreferencesStore {
     return this.path(owner, '.appearance');
   }
 
-  private view(main: StoredValues, appearance: StoredValues) {
+  private view(
+    main: StoredValues,
+    appearance: StoredValues,
+    chat: StoredValues = {},
+  ) {
     return withRevision({
       schemaVersion: 1,
       values: {
         ...known(main, MAIN_KEYS),
         ...known(appearance, APPEARANCE_KEYS),
+        ...known(chat, ['chatDefaultSendMode']),
       } as AccountPreferencesView['values'],
     });
   }
@@ -237,7 +248,14 @@ export class AccountPreferencesStore {
     const appearance = appearanceDocument.parse(
       readJsonFile(this.appearancePath(owner), EMPTY, limits),
     );
-    return this.view(main.values, appearance.values);
+    const chat = this.readChat(owner);
+    return this.view(main.values, appearance.values, chat.values);
+  }
+
+  private readChat(owner: Owner) {
+    return chatDocument.parse(
+      readJsonFile(this.path(owner, '.chat'), EMPTY, limits),
+    );
   }
 
   async patch(
@@ -248,7 +266,8 @@ export class AccountPreferencesStore {
   ): Promise<AccountPreferencesView> {
     const parsed = patchSchema.safeParse(input);
     if (!parsed.success) throw new InvalidAccountPreferencesError();
-    const patch: AccountPreferencesPatch = parsed.data;
+    const { chatDefaultSendMode, ...patch }: AccountPreferencesPatch =
+      parsed.data;
     const mainPatch: Record<string, unknown> = {};
     const appearancePatch: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(patch))
@@ -297,6 +316,26 @@ export class AccountPreferencesStore {
             },
             limits,
           );
-    return this.view(main.values, appearance.values);
+    const chat =
+      chatDefaultSendMode === undefined
+        ? this.readChat(owner)
+        : await mutateJsonFile(
+            this.path(owner, '.chat'),
+            EMPTY as { schemaVersion: 1; values: StoredValues },
+            (raw) =>
+              chatDocument.parse({
+                schemaVersion: 1,
+                values: applyPatch(
+                  chatDocument.parse(raw).values,
+                  {
+                    chatDefaultSendMode:
+                      chatDefaultSendMode === 'steer' ? 'steer' : null,
+                  },
+                  onlyMissing,
+                ),
+              }),
+            limits,
+          );
+    return this.view(main.values, appearance.values, chat.values);
   }
 }
