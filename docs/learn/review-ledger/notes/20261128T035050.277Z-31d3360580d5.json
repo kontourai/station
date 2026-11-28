@@ -1,0 +1,15 @@
+{
+  "revision": "48f05ec6de45685d16e565c84f0cac9ce215bd5b",
+
+  "notes": [
+    {"path":"README.md","note":"Reviewed all citing pages against scoped Windows journal/state/log explanation and POSIX-only mode/fsync qualification. Deployment/container integration and ingress authority unchanged; synchronous trusted-directory fallback and separate installed Nightly evidence explicitly retained.","inputs":["docs/guides/deployment.md"]},
+
+    {"path":"deployment/telemetry/README.md","note":"Reviewed all citing pages against scoped Windows journal/state/log explanation and POSIX-only mode/fsync qualification. Deployment/container integration and ingress authority unchanged; synchronous trusted-directory fallback and separate installed Nightly evidence explicitly retained.","inputs":["docs/guides/deployment.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed all citing pages against scoped Windows journal/state/log explanation and POSIX-only mode/fsync qualification. Deployment/container integration and ingress authority unchanged; synchronous trusted-directory fallback and separate installed Nightly evidence explicitly retained.","inputs":["docs/guides/deployment.md"]},
+
+    {"path":"docs/design/automations.md","note":"Reviewed all citing pages against scoped Windows journal/state/log explanation and POSIX-only mode/fsync qualification. Deployment/container integration and ingress authority unchanged; synchronous trusted-directory fallback and separate installed Nightly evidence explicitly retained.","inputs":["docs/guides/deployment.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed all citing pages against scoped Windows journal/state/log explanation and POSIX-only mode/fsync qualification. Deployment/container integration and ingress authority unchanged; synchronous trusted-directory fallback and separate installed Nightly evidence explicitly retained.","inputs":["docs/guides/deployment.md"]}
+  ]
+}

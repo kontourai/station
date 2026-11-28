@@ -1,0 +1,23 @@
+{
+  "revision": "48f05ec6de45685d16e565c84f0cac9ce215bd5b",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"Reviewed all citing pages for additive ./windows-file-security export: explicit Node-only helper leaf, no root-barrel or browser API change. Existing contracts, UI/plugin/theming patterns, dependency authority and non-exhaustive shared entrypoint examples remain accurate; no browser-safety or installed artifact qualification added.","inputs":["packages/shared/package.json#/exports"]},
+
+    {"path":"docs/guides/build-your-first-plugin.md","note":"Reviewed all citing pages for additive ./windows-file-security export: explicit Node-only helper leaf, no root-barrel or browser API change. Existing contracts, UI/plugin/theming patterns, dependency authority and non-exhaustive shared entrypoint examples remain accurate; no browser-safety or installed artifact qualification added.","inputs":["packages/shared/package.json#/exports"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"Reviewed all citing pages for additive ./windows-file-security export: explicit Node-only helper leaf, no root-barrel or browser API change. Existing contracts, UI/plugin/theming patterns, dependency authority and non-exhaustive shared entrypoint examples remain accurate; no browser-safety or installed artifact qualification added.","inputs":["packages/shared/package.json#/exports"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed all citing pages for additive ./windows-file-security export: explicit Node-only helper leaf, no root-barrel or browser API change. Existing contracts, UI/plugin/theming patterns, dependency authority and non-exhaustive shared entrypoint examples remain accurate; no browser-safety or installed artifact qualification added.","inputs":["packages/shared/package.json#/exports"]},
+
+    {"path":"docs/guides/theming.md","note":"Reviewed all citing pages for additive ./windows-file-security export: explicit Node-only helper leaf, no root-barrel or browser API change. Existing contracts, UI/plugin/theming patterns, dependency authority and non-exhaustive shared entrypoint examples remain accurate; no browser-safety or installed artifact qualification added.","inputs":["packages/shared/package.json#/exports"]},
+
+    {"path":"docs/patterns/backend.md","note":"Reviewed all citing pages for additive ./windows-file-security export: explicit Node-only helper leaf, no root-barrel or browser API change. Existing contracts, UI/plugin/theming patterns, dependency authority and non-exhaustive shared entrypoint examples remain accurate; no browser-safety or installed artifact qualification added.","inputs":["packages/shared/package.json#/exports"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Reviewed all citing pages for additive ./windows-file-security export: explicit Node-only helper leaf, no root-barrel or browser API change. Existing contracts, UI/plugin/theming patterns, dependency authority and non-exhaustive shared entrypoint examples remain accurate; no browser-safety or installed artifact qualification added.","inputs":["packages/shared/package.json#/exports"]},
+
+    {"path":"docs/reference/shared.md","note":"Reviewed all citing pages for additive ./windows-file-security export: explicit Node-only helper leaf, no root-barrel or browser API change. Existing contracts, UI/plugin/theming patterns, dependency authority and non-exhaustive shared entrypoint examples remain accurate; no browser-safety or installed artifact qualification added.","inputs":["packages/shared/package.json#/exports"]},
+
+    {"path":"packages/shared/README.md","note":"Reviewed all citing pages for additive ./windows-file-security export: explicit Node-only helper leaf, no root-barrel or browser API change. Existing contracts, UI/plugin/theming patterns, dependency authority and non-exhaustive shared entrypoint examples remain accurate; no browser-safety or installed artifact qualification added.","inputs":["packages/shared/package.json#/exports"]}
+  ]
+}

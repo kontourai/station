@@ -1,0 +1,9 @@
+{
+  "revision": "48f05ec6de45685d16e565c84f0cac9ce215bd5b",
+
+  "notes": [
+    {"path":"docs/design/outside-agent-mcp-r3-evidence.md","note":"Reviewed cited lifecycle behavior tests and affected page claims: real Windows DACL checks replace synthetic mode assertions; child output checks retained bytes plus append; unsafe-parent refusal checks no new file or spawn. Existing proxy/OAuth and provenance claims unchanged. Native final qualification is reported separately; no broad runtime or release inference.","inputs":["packages/cli/src/__tests__/lifecycle.test.ts"]},
+
+    {"path":"docs/reference/outside-agent-oauth.md","note":"Reviewed cited lifecycle behavior tests and affected page claims: real Windows DACL checks replace synthetic mode assertions; child output checks retained bytes plus append; unsafe-parent refusal checks no new file or spawn. Existing proxy/OAuth and provenance claims unchanged. Native final qualification is reported separately; no broad runtime or release inference.","inputs":["packages/cli/src/__tests__/lifecycle.test.ts"]}
+  ]
+}
