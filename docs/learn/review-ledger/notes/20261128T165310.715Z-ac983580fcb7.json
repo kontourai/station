@@ -1,0 +1,7 @@
+{
+  "revision": "e5ed17e38a911815467c204a95c29f971f570b38",
+
+  "notes": [
+    {"path":"docs/design/settings-architecture.md","note":"Shortened approval order help copy under 140 chars in AccountPreferencesSection.tsx; settings-architecture.md remains accurate.","inputs":["src-ui/src/views/settings/AccountPreferencesSection.tsx"]}
+  ]
+}
