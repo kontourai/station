@@ -431,22 +431,13 @@ function inboxRowMenuItems(actions: readonly InboxRowAction[]): RowMenuItem[] {
 function inboxContextActions(
   actions: readonly InboxRowAction[],
   trigger: HTMLButtonElement,
-  doneLabel?: string,
 ): ContextMenuAction[] {
   return inboxRowMenuItems(actions).flatMap((action) => {
     if (action.id === 'open' || action.disabled) return [];
-    const label =
-      action.id === 'done'
-        ? (doneLabel ?? action.label)
-        : action.id === 'snooze'
-          ? 'Unsnooze'
-          : action.id === 'discard-unsent'
-            ? 'Discard unsent draft'
-            : action.label;
     return [
       {
         key: action.id,
-        label,
+        label: action.label,
         tone: action.danger ? 'danger' : undefined,
         onSelect: () => action.onSelect(trigger),
       },
@@ -569,7 +560,6 @@ interface InboxRowProps {
    * Absent offers neither.
    */
   done?: {
-    contextLabel?: string;
     done: boolean;
     pending?: boolean;
     onSelect: (action: HTMLButtonElement) => void;
@@ -1500,11 +1490,7 @@ export function InboxRow({
                 ]
               : []),
             ...copyActions,
-            ...inboxContextActions(
-              actions,
-              rowButtonRef.current,
-              done?.contextLabel,
-            ),
+            ...inboxContextActions(actions, rowButtonRef.current),
             ...(onCloseChat
               ? [
                   {
@@ -1723,11 +1709,7 @@ export function InboxTaskRow({
           actions={[
             pinAction,
             ...copyActions,
-            ...inboxContextActions(
-              actions,
-              rowButtonRef.current,
-              done?.contextLabel,
-            ),
+            ...inboxContextActions(actions, rowButtonRef.current),
           ]}
           onClose={closeContext}
         />
@@ -1811,7 +1793,6 @@ function inboxRowDone(
     return onRestore
       ? {
           done: true,
-          contextLabel: 'Restore to inbox',
           onSelect: (action) => onRestore(item, action),
         }
       : undefined;
@@ -1819,7 +1800,6 @@ function inboxRowDone(
     const isSettled = Object.hasOwn(settled, conversationId);
     return {
       done: isSettled,
-      contextLabel: isSettled ? 'Reopen conversation' : 'Settle conversation',
       pending,
       onSelect: (action) => onSettle(conversationId, !isSettled, action),
     };
@@ -1827,10 +1807,6 @@ function inboxRowDone(
   return onDismiss
     ? {
         done: false,
-        contextLabel:
-          item.controlMode === 'read-only-attached'
-            ? 'Hide from inbox'
-            : 'Dismiss from inbox',
         onSelect: (action) => onDismiss(item, action),
       }
     : undefined;

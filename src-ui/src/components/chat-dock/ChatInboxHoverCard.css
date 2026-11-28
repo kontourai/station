@@ -301,10 +301,8 @@
   margin-inline-start: auto;
 }
 
-@media (pointer: coarse), (max-width: 600px) {
-  .chat-dock-inbox-details__menu .menu-row {
-    min-block-size: var(--touch-target-min, 44px);
-  }
+.chat-dock-inbox-details__menu .menu-row {
+  min-block-size: var(--touch-target-min, 0px);
 }
 
 .chat-dock-inbox-hover-card__id {

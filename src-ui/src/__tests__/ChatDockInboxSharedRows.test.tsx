@@ -1220,7 +1220,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
     fireEvent.contextMenu(
       within(snoozed).getByRole('button', { name: /^Shared row title/ }),
     );
-    expect(screen.getByRole('menuitem', { name: 'Unsnooze' })).toBeTruthy();
+    expect(screen.getByRole('menuitem', { name: 'Wake now' })).toBeTruthy();
     fireEvent.click(screen.getByRole('menuitem', { name: 'Pin to top' }));
     expect(
       screen
