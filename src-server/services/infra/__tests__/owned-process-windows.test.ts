@@ -7,11 +7,14 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
+import { probeExactProcessIdentity } from '@kontourai/station-shared/process-identity';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
   evaluateWindowsRegistryDirTrust,
   forgetOwnedProcess,
+  killWindowsProcesses,
+  listWindowsProcesses,
   type ProcessIdentityProbe,
   recordOwnedProcess,
   resolveOwnedProcessOwner,
@@ -448,12 +451,46 @@ describe.runIf(process.platform === 'win32')(
         expect(isAlive(grandchild)).toBe(true);
 
         const sweepLogs: Array<{ message: string; data?: unknown }> = [];
+        const helperOutcomes: unknown[] = [];
         const result = await sweepOrphanedOwnedProcesses({
           registryDir,
           log: (message, data) => sweepLogs.push({ message, data }),
+          probeIdentity: (pid) => {
+            const probe = probeExactProcessIdentity(pid);
+            helperOutcomes.push({ helper: 'identity', pid, probe });
+            return probe;
+          },
+          listWindowsProcesses: async (log) => {
+            const table = await listWindowsProcesses(log);
+            helperOutcomes.push({
+              helper: 'process-table',
+              entries: table?.length ?? null,
+              engine: table?.find((entry) => entry.pid === engine),
+              grandchild: table?.find((entry) => entry.pid === grandchild),
+            });
+            return table;
+          },
+          killWindowsProcesses: async (pids) => {
+            helperOutcomes.push({ helper: 'taskkill', pids });
+            await killWindowsProcesses(pids);
+            helperOutcomes.push({ helper: 'taskkill', outcome: 'completed' });
+          },
         });
-        const diagnostics = () => JSON.stringify({ record, result, sweepLogs });
-        expect(result.reaped, diagnostics()).toEqual([engine]);
+        const sweepDiagnostics = () =>
+          JSON.stringify(
+            {
+              record,
+              result,
+              sweepLogs,
+              helperOutcomes,
+              registryRecordExists: existsSync(
+                join(registryDir, `engine-${engine}.json`),
+              ),
+            },
+            (_key, value) =>
+              typeof value === 'bigint' ? value.toString() : value,
+          );
+        expect(result.reaped, sweepDiagnostics()).toEqual([engine]);
         for (
           let i = 0;
           i < 200 && (isAlive(engine) || isAlive(grandchild));
@@ -461,11 +498,11 @@ describe.runIf(process.platform === 'win32')(
         ) {
           await new Promise((r) => setTimeout(r, 25));
         }
-        expect(isAlive(engine), diagnostics()).toBe(false);
-        expect(isAlive(grandchild), diagnostics()).toBe(false);
+        expect(isAlive(engine), sweepDiagnostics()).toBe(false);
+        expect(isAlive(grandchild), sweepDiagnostics()).toBe(false);
         expect(
           existsSync(join(registryDir, `engine-${engine}.json`)),
-          diagnostics(),
+          sweepDiagnostics(),
         ).toBe(false);
       } finally {
         for (const pid of [owner.pid, engine, grandchild]) {
