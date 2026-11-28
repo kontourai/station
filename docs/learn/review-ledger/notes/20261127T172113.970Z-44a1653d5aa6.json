@@ -1,0 +1,99 @@
+{
+  "revision": "5c9bb256b87317bb949f9d1af45c226d2a08154c",
+
+  "notes": [
+    {"path":"docs/adr/0017-browser-preview-host.md","note":"Reviewed the coordination wake wiring and its callers. Sender identity reads the recorded Session and prompted title. Approval and browser delivery, operator authentication, and Project admission use their existing paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Reviewed the coordination wake wiring and its callers. Sender identity reads the recorded Session and prompted title. Approval and browser delivery, operator authentication, and Project admission use their existing paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","note":"Reviewed the coordination wake wiring and its callers. Sender identity reads the recorded Session and prompted title. Approval and browser delivery, operator authentication, and Project admission use their existing paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture.md","note":"Reviewed the coordination wake wiring and its callers. Sender identity reads the recorded Session and prompted title. Approval and browser delivery, operator authentication, and Project admission use their existing paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the coordination wake wiring and its callers. Sender identity reads the recorded Session and prompted title. Approval and browser delivery, operator authentication, and Project admission use their existing paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Reviewed the coordination wake wiring and its callers. Sender identity reads the recorded Session and prompted title. Approval and browser delivery, operator authentication, and Project admission use their existing paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"Reviewed the coordination wake wiring and its callers. Sender identity reads the recorded Session and prompted title. Approval and browser delivery, operator authentication, and Project admission use their existing paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-host-spike.md","note":"Reviewed the coordination wake wiring and its callers. Sender identity reads the recorded Session and prompted title. Approval and browser delivery, operator authentication, and Project admission use their existing paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-pane-mvp.md","note":"Reviewed the coordination wake wiring and its callers. Sender identity reads the recorded Session and prompted title. Approval and browser delivery, operator authentication, and Project admission use their existing paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Reviewed the coordination wake wiring and its callers. Sender identity reads the recorded Session and prompted title. Approval and browser delivery, operator authentication, and Project admission use their existing paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/local-bootstrap-token.md","note":"Reviewed the coordination wake wiring and its callers. Sender identity reads the recorded Session and prompted title. Approval and browser delivery, operator authentication, and Project admission use their existing paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"Reviewed the coordination wake wiring and its callers. Sender identity reads the recorded Session and prompted title. Approval and browser delivery, operator authentication, and Project admission use their existing paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/project-membership.md","note":"Reviewed the coordination wake wiring and its callers. Sender identity reads the recorded Session and prompted title. Approval and browser delivery, operator authentication, and Project admission use their existing paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/survey-flow-review.md","note":"Reviewed the coordination wake wiring and its callers. Sender identity reads the recorded Session and prompted title. Approval and browser delivery, operator authentication, and Project admission use their existing paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Reviewed the coordination wake wiring and its callers. Sender identity reads the recorded Session and prompted title. Approval and browser delivery, operator authentication, and Project admission use their existing paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"Reviewed the coordination wake wiring and its callers. Sender identity reads the recorded Session and prompted title. Approval and browser delivery, operator authentication, and Project admission use their existing paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/glossary.md","note":"Reviewed the coordination wake wiring and its callers. Sender identity reads the recorded Session and prompted title. Approval and browser delivery, operator authentication, and Project admission use their existing paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/browser-workspace.md","note":"Reviewed the coordination wake wiring and its callers. Sender identity reads the recorded Session and prompted title. Approval and browser delivery, operator authentication, and Project admission use their existing paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Reviewed the coordination wake wiring and its callers. Sender identity reads the recorded Session and prompted title. Approval and browser delivery, operator authentication, and Project admission use their existing paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"Reviewed the coordination wake wiring and its callers. Sender identity reads the recorded Session and prompted title. Approval and browser delivery, operator authentication, and Project admission use their existing paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"Reviewed the coordination wake wiring and its callers. Sender identity reads the recorded Session and prompted title. Approval and browser delivery, operator authentication, and Project admission use their existing paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Reviewed the coordination wake wiring and its callers. Sender identity reads the recorded Session and prompted title. Approval and browser delivery, operator authentication, and Project admission use their existing paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Reviewed the coordination wake wiring and its callers. Sender identity reads the recorded Session and prompted title. Approval and browser delivery, operator authentication, and Project admission use their existing paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Reviewed the coordination wake wiring and its callers. Sender identity reads the recorded Session and prompted title. Approval and browser delivery, operator authentication, and Project admission use their existing paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/mobile-device-workspace.md","note":"Reviewed the coordination wake wiring and its callers. Sender identity reads the recorded Session and prompted title. Approval and browser delivery, operator authentication, and Project admission use their existing paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"Reviewed the coordination wake wiring and its callers. Sender identity reads the recorded Session and prompted title. Approval and browser delivery, operator authentication, and Project admission use their existing paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Reviewed the coordination wake wiring and its callers. Sender identity reads the recorded Session and prompted title. Approval and browser delivery, operator authentication, and Project admission use their existing paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/walkthroughs.md","note":"Reviewed the coordination wake wiring and its callers. Sender identity reads the recorded Session and prompted title. Approval and browser delivery, operator authentication, and Project admission use their existing paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Reviewed the coordination wake wiring and its callers. Sender identity reads the recorded Session and prompted title. Approval and browser delivery, operator authentication, and Project admission use their existing paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Reviewed the coordination wake wiring and its callers. Sender identity reads the recorded Session and prompted title. Approval and browser delivery, operator authentication, and Project admission use their existing paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-sign-in.png","note":"Reviewed the coordination wake wiring and its callers. Sender identity reads the recorded Session and prompted title. Approval and browser delivery, operator authentication, and Project admission use their existing paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"Reviewed the coordination wake wiring and its callers. Sender identity reads the recorded Session and prompted title. Approval and browser delivery, operator authentication, and Project admission use their existing paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"Reviewed the coordination wake wiring and its callers. Sender identity reads the recorded Session and prompted title. Approval and browser delivery, operator authentication, and Project admission use their existing paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-review.png","note":"Reviewed the coordination wake wiring and its callers. Sender identity reads the recorded Session and prompted title. Approval and browser delivery, operator authentication, and Project admission use their existing paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the coordination wake wiring and its callers. Sender identity reads the recorded Session and prompted title. Approval and browser delivery, operator authentication, and Project admission use their existing paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed the coordination wake wiring and its callers. Sender identity reads the recorded Session and prompted title. Approval and browser delivery, operator authentication, and Project admission use their existing paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Reviewed the coordination wake wiring and its callers. Sender identity reads the recorded Session and prompted title. Approval and browser delivery, operator authentication, and Project admission use their existing paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the coordination wake wiring and its callers. Sender identity reads the recorded Session and prompted title. Approval and browser delivery, operator authentication, and Project admission use their existing paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Reviewed the coordination wake wiring and its callers. Sender identity reads the recorded Session and prompted title. Approval and browser delivery, operator authentication, and Project admission use their existing paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the coordination wake wiring and its callers. Sender identity reads the recorded Session and prompted title. Approval and browser delivery, operator authentication, and Project admission use their existing paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed the coordination wake wiring and its callers. Sender identity reads the recorded Session and prompted title. Approval and browser delivery, operator authentication, and Project admission use their existing paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Reviewed the coordination wake wiring and its callers. Sender identity reads the recorded Session and prompted title. Approval and browser delivery, operator authentication, and Project admission use their existing paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Reviewed the coordination wake wiring and its callers. Sender identity reads the recorded Session and prompted title. Approval and browser delivery, operator authentication, and Project admission use their existing paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/pull-request-guides.md","note":"Reviewed the coordination wake wiring and its callers. Sender identity reads the recorded Session and prompted title. Approval and browser delivery, operator authentication, and Project admission use their existing paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Reviewed the coordination wake wiring and its callers. Sender identity reads the recorded Session and prompted title. Approval and browser delivery, operator authentication, and Project admission use their existing paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/mcp-ui-demo/README.md","note":"Reviewed the coordination wake wiring and its callers. Sender identity reads the recorded Session and prompted title. Approval and browser delivery, operator authentication, and Project admission use their existing paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/station-sessions-mcp/README.md","note":"Reviewed the coordination wake wiring and its callers. Sender identity reads the recorded Session and prompted title. Approval and browser delivery, operator authentication, and Project admission use their existing paths.","inputs":["src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

@@ -162,7 +162,14 @@ describe('the Session tool schemas are strict and carry no approval, model or en
       };
     }[];
     const expected: Record<string, string[]> = {
-      send_to_session: ['mode', 'requestKey', 'sessionId', 'text'],
+      send_to_session: [
+        'mode',
+        'notifyOnAttention',
+        'notifyOnSettle',
+        'requestKey',
+        'sessionId',
+        'text',
+      ],
       interrupt_session: ['requestKey', 'sessionId', 'turnId'],
       wait_session: ['afterEventCursor', 'sessionId', 'timeoutMs', 'until'],
     };
