@@ -5202,6 +5202,16 @@ test('profiles switching between authoritative conversations', async ({
           .filter({ hasText: state })
           .click();
         await expect(menu).toBeHidden();
+        await expect
+          .poll(() => new URL(page.url()).searchParams.get('chat'))
+          .toBe(state === 'Running' ? 'conv-running' : 'conv-review');
+        await expect(
+          page.getByRole('log', { name: 'Conversation transcript' }),
+        ).toContainText(
+          state === 'Running'
+            ? 'Working through the current task.'
+            : 'Review needed before continuing.',
+        );
         if (state === 'Waiting on you') {
           await expect(textarea).toBeEnabled();
           await closeRunSetup(page);
