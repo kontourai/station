@@ -2,8 +2,8 @@ import {
   execFileSync as realExecFileSync,
   execSync as realExecSync,
   spawnSync as realSpawnSync,
-  spawn,
   type SpawnOptions,
+  spawn,
 } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { EventEmitter } from 'node:events';
@@ -1003,6 +1003,12 @@ function writeInstanceState(options: {
     { mode: 0o600 },
   );
   chmodSync(statePath, 0o600);
+  if (process.platform === 'win32') {
+    hardenWindowsPathsTrusted(runFixtureWindowsTrust, [
+      { kind: 'directory', path: stateDir },
+      { kind: 'file', path: statePath },
+    ]);
+  }
 
   return statePath;
 }
@@ -2036,7 +2042,19 @@ describe('lifecycle instance state', () => {
       { kind: 'directory', path: TEST_INSTANCE_STATE_DIR },
       { kind: 'file', path: permissive },
     ]);
+    if (process.platform === 'win32') {
+      hardenWindowsPathsTrusted(runFixtureWindowsTrust, [
+        { kind: 'directory', path: resolve(TEST_INSTANCE_STATE_DIR, '..') },
+      ]);
+      realExecFileSync('icacls', [TEST_INSTANCE_STATE_DIR, '/reset'], {
+        encoding: 'utf8',
+        windowsHide: true,
+      });
+    }
     expect(lifecycle.isRunning()).toBe(true);
+    assertWindowsPathsTrusted(runFixtureWindowsTrust, [
+      { kind: 'directory', path: TEST_INSTANCE_STATE_DIR },
+    ]);
     const original = readFileSync(permissive);
     const identity = statSync(permissive).ino;
     if (process.platform === 'win32') {
@@ -2054,6 +2072,26 @@ describe('lifecycle instance state', () => {
     );
     expect(readFileSync(permissive)).toEqual(original);
     expect(statSync(permissive).ino).toBe(identity);
+
+    if (process.platform === 'win32') {
+      hardenWindowsPathsTrusted(runFixtureWindowsTrust, [
+        { kind: 'file', path: permissive },
+      ]);
+      realExecFileSync(
+        'icacls',
+        [TEST_INSTANCE_STATE_DIR, '/grant', '*S-1-1-0:R'],
+        {
+          encoding: 'utf8',
+          windowsHide: true,
+        },
+      );
+      expect(() => lifecycle.isRunning()).toThrow(/Windows private file/);
+      expect(readFileSync(permissive)).toEqual(original);
+      expect(statSync(permissive).ino).toBe(identity);
+      hardenWindowsPathsTrusted(runFixtureWindowsTrust, [
+        { kind: 'directory', path: TEST_INSTANCE_STATE_DIR },
+      ]);
+    }
 
     rmSync(permissive);
     const target = join(TEST_ROOT, 'outside-instance.json');
@@ -9586,11 +9624,7 @@ describe('lifecycle build + restart ergonomics', () => {
     const spawn = vi
       .fn()
       .mockImplementationOnce(
-        (
-          _command: string,
-          _args: string[],
-          options: SpawnOptions,
-        ) => {
+        (_command: string, _args: string[], options: SpawnOptions) => {
           const child = realSpawnSync(
             process.execPath,
             ['-e', 'process.stdout.write("server stdio descriptor bytes\\n")'],
@@ -9626,6 +9660,13 @@ describe('lifecycle build + restart ergonomics', () => {
     });
     let originalLogDirectoryAcl: string | undefined;
     if (process.platform === 'win32') {
+      hardenWindowsPathsTrusted(runFixtureWindowsTrust, [
+        { kind: 'directory', path: logDirectory },
+      ]);
+      realExecFileSync('icacls', [logDirectory, '/grant', '*S-1-1-0:(RX)'], {
+        encoding: 'utf8',
+        windowsHide: true,
+      });
       originalLogDirectoryAcl = realExecFileSync('icacls', [logDirectory], {
         encoding: 'utf8',
         windowsHide: true,

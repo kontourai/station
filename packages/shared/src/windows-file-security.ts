@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { existsSync } from 'node:fs';
+import { closeSync, existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join, parse, resolve } from 'node:path';
 import { fsyncDirectorySync } from './fs-windows-compat.js';
@@ -10,7 +10,7 @@ import {
 
 type Koffi = typeof import('koffi');
 type NativeFunction = ReturnType<ReturnType<Koffi['load']>['func']>;
-type FileOperation = 'read' | 'append' | 'create';
+type FileOperation = 'read' | 'append' | 'create' | 'log';
 
 let native:
   | { koffi: Koffi; functions: Record<string, NativeFunction>; sid: Buffer }
@@ -27,7 +27,9 @@ function api() {
   const koffi = createRequire(import.meta.url)('koffi') as Koffi;
   const kernel = koffi.load('kernel32.dll');
   const security = koffi.load('advapi32.dll');
+  const runtime = koffi.load(null);
   const functions: Record<string, NativeFunction> = {
+    uv_open_osfhandle: runtime.func('int uv_open_osfhandle(intptr_t handle)'),
     CreateFileW: kernel.func(
       'intptr_t __stdcall CreateFileW(const char16_t *path, uint32_t access, uint32_t share, const void *security, uint32_t disposition, uint32_t flags, intptr_t templateFile)',
     ),
@@ -203,13 +205,72 @@ function assertPrivateHandle(handle: number, requireProtected = true): boolean {
   }
 }
 
+export function assertWindowsPrivateDirectory(directory: string): void {
+  const ancestors = retainAncestors(
+    join(directory, '.station-directory-check'),
+    true,
+  );
+  try {
+    const handle = ancestors[ancestors.length - 1];
+    if (!assertPrivateHandle(handle, false)) {
+      const { functions } = api();
+      const dacl = [null];
+      const descriptor = [null];
+      const readStatus = functions.GetSecurityInfo(
+        handle,
+        1,
+        4,
+        null,
+        null,
+        dacl,
+        null,
+        descriptor,
+      );
+      if (readStatus !== 0)
+        throw new Error(
+          `Windows private directory ACL read failed: ${readStatus}`,
+        );
+      try {
+        const status = functions.SetSecurityInfo(
+          handle,
+          1,
+          0x80000004,
+          null,
+          null,
+          dacl[0],
+          null,
+        );
+        if (status !== 0)
+          throw new Error(
+            `Windows private directory ACL migration failed: ${status}`,
+          );
+      } finally {
+        functions.LocalFree(descriptor[0]);
+      }
+    }
+    assertPrivateHandle(handle);
+  } catch (error) {
+    try {
+      releaseAncestors(ancestors);
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [error, cleanupError],
+        'Windows private directory verification and cleanup failed',
+      );
+    }
+    throw error;
+  }
+  releaseAncestors(ancestors);
+}
+
 export function openWindowsPrivateFile(
   file: string,
   operation: FileOperation,
+  runtimeDescriptor = false,
 ): WindowsPrivateFile {
   const ancestors = retainAncestors(file);
   try {
-    return openPrivateFile(file, operation, ancestors);
+    return openPrivateFile(file, operation, ancestors, runtimeDescriptor);
   } catch (error) {
     try {
       releaseAncestors(ancestors);
@@ -242,7 +303,7 @@ function releaseAncestors(ancestors: number[]): void {
     );
 }
 
-function retainAncestors(file: string): number[] {
+function retainAncestors(file: string, privateDirectory = false): number[] {
   const { functions } = api();
   const paths: string[] = [];
   let current = dirname(resolve(file));
@@ -257,7 +318,11 @@ function retainAncestors(file: string): number[] {
     for (const path of paths) {
       const handle = functions.CreateFileW(
         path,
-        path === dirname(resolve(file)) ? 0x20080 : 0x80,
+        path === dirname(resolve(file))
+          ? privateDirectory
+            ? 0x60080
+            : 0x20080
+          : 0x80,
         1,
         null,
         3,
@@ -296,6 +361,7 @@ function openPrivateFile(
   file: string,
   operation: FileOperation,
   ancestors: number[],
+  runtimeDescriptor: boolean,
 ): WindowsPrivateFile {
   const { koffi, functions, sid } = api();
   assertNoReparse(file);
@@ -320,10 +386,12 @@ function openPrivateFile(
     file,
     operation === 'read'
       ? 0x80060000
-      : operation === 'create'
-        ? 0xc0070000
-        : 0xc0060000,
-    1,
+      : operation === 'log'
+        ? 0x80060004
+        : operation === 'create'
+          ? 0xc0070000
+          : 0xc0060000,
+    runtimeDescriptor ? (operation === 'log' ? 3 : 7) : 1,
     attributes,
     operation === 'read' ? 3 : operation === 'create' ? 1 : 4,
     0x00200000,
@@ -336,6 +404,44 @@ function openPrivateFile(
   try {
     assertNoReparse(file);
     fileInformation(handle);
+    if (operation === 'log') {
+      assertExecutionSafeParent(ancestors, file);
+      const owner = [null];
+      const descriptor = [null];
+      const ownerStatus = functions.GetSecurityInfo(
+        handle,
+        1,
+        1,
+        owner,
+        null,
+        null,
+        null,
+        descriptor,
+      );
+      if (ownerStatus !== 0)
+        throw new Error(
+          `Windows private log owner read failed: ${ownerStatus}`,
+        );
+      try {
+        if (!functions.EqualSid(owner[0], sid))
+          throw new Error(
+            'Windows private log must belong to the current user',
+          );
+        const status = functions.SetSecurityInfo(
+          handle,
+          1,
+          0x80000004,
+          null,
+          null,
+          acl,
+          null,
+        );
+        if (status !== 0)
+          throw new Error(`Windows private log ACL repair failed: ${status}`);
+      } finally {
+        functions.LocalFree(descriptor[0]);
+      }
+    }
     if (!assertPrivateHandle(handle, false)) {
       const status = functions.SetSecurityInfo(
         handle,
@@ -431,8 +537,23 @@ function renamePrivateFile(
   }
 }
 
+function assertExecutionSafeParent(ancestors: number[], file: string): void {
+  try {
+    assertPrivateHandle(ancestors[ancestors.length - 1]);
+  } catch {
+    assertWindowsPathsTrusted(runWindowsTrustCommand, [
+      {
+        path: dirname(resolve(file)),
+        kind: 'directory',
+        policy: 'execution-safe',
+      },
+    ]);
+  }
+}
+
 class WindowsPrivateFile {
   private closed = false;
+  private descriptor: number | undefined;
 
   constructor(
     private readonly handle: number,
@@ -443,6 +564,19 @@ class WindowsPrivateFile {
   private verify(): void {
     if (this.closed) throw new Error('Windows private file handle is closed');
     assertPrivateFileBinding(this.handle, this.file);
+  }
+
+  fileDescriptor(): number {
+    this.verify();
+    if (this.descriptor === undefined) {
+      const descriptor = api().functions.uv_open_osfhandle(
+        this.handle,
+      ) as number;
+      if (descriptor < 0)
+        throw new Error('Windows private file runtime descriptor open failed');
+      this.descriptor = descriptor;
+    }
+    return this.descriptor;
   }
 
   private flush(): void {
@@ -552,17 +686,7 @@ class WindowsPrivateFile {
     )
       throw new Error('Windows private file rename must retain its directory');
     this.verify();
-    try {
-      assertPrivateHandle(this.ancestors[this.ancestors.length - 1]);
-    } catch {
-      assertWindowsPathsTrusted(runWindowsTrustCommand, [
-        {
-          path: dirname(resolve(target)),
-          kind: 'directory',
-          policy: 'execution-safe',
-        },
-      ]);
-    }
+    assertExecutionSafeParent(this.ancestors, target);
     const replace = existsSync(target);
     if (replace) withPrivateFile(target, 'read', () => undefined);
     renamePrivateFile(this.handle, target, replace);
@@ -585,7 +709,9 @@ class WindowsPrivateFile {
   close(): void {
     const { functions } = api();
     if (!this.closed) {
-      if (!functions.CloseHandle(this.handle))
+      if (this.descriptor !== undefined) {
+        closeSync(this.descriptor);
+      } else if (!functions.CloseHandle(this.handle))
         throw new Error(
           `Windows private file close failed: ${functions.GetLastError()}`,
         );
