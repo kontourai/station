@@ -1329,16 +1329,26 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
 
 ### Turn activity and follow-up delivery
 
-During a running turn, the Send mode segment sits before Send. Its 18 px
-crossing-arrows icon opens the Queue and Steer choices. In the compact
-composer the split button color reflects the current mode. Stop remains
-with the Working status when that status is visible.
+During a running turn, the Send mode segment sits before Send with an 18 px
+crossing-arrows icon. When steering is available, tapping it switches between
+**Queue** and **Steer** in one step. When steering is unavailable (or the draft
+holds attachments on a host that queues files), the segment opens the reason
+and leaves Queue selected. In the compact composer the split button color
+reflects the current mode. Stop remains with the Working status when that
+status is visible.
 
 Queue is the initial default. Signed-in users can save Queue or Steer under
-**Settings → Your account preferences → Default send mode**, or save the
-selected mode from the Send mode menu. A change made in the menu applies
-to the current Session until switching Sessions. Unsupported steering and
-drafts with files on a host that queues attachments use Queue for that send.
+**Settings → Your account preferences → Default send mode**. Toggling the mode
+in the composer overrides the saved default for the current Session until
+switching Sessions. Unsupported steering and drafts with files on a host that
+queues attachments use Queue for that send without changing the saved default.
+
+In the reply composer, tapping Send, clearing the draft, or removing an
+attachment keeps an already focused draft ready for typing. Tapping compact
+settings keeps draft focus while the options are open. Opening the same settings
+from a keyboard-focused trigger moves focus into the picker and Escape returns
+it to that trigger. Model and Agent pickers can take focus for search. Closing
+a picker opened by touch from an active draft returns focus to that draft.
 
 The Queue count opens the list from the composer toolbar. Move changes the
 order of waiting messages. Tap a message to edit its full text in the

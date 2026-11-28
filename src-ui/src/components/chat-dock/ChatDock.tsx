@@ -5413,7 +5413,16 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                                     conversationCanMutate &&
                                     !stagedAgentChange.previewChecking &&
                                     !stagedAgentChange.pending
-                                      ? conversationBoundaryDialogs.openExecutionHandoff
+                                      ? (model) => {
+                                          const textarea =
+                                            chatInput.textareaRef.current;
+                                          conversationBoundaryDialogs.openExecutionHandoff(
+                                            model,
+                                            textarea === document.activeElement
+                                              ? textarea
+                                              : null,
+                                          );
+                                        }
                                       : undefined
                                   }
                                   modelsLoading={modelsLoading}
@@ -5444,10 +5453,15 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                                     stagedAgentChange.previewChecking ||
                                     stagedAgentChange.pending
                                       ? undefined
-                                      : () =>
+                                      : () => {
+                                          const textarea =
+                                            chatInput.textareaRef.current;
                                           openConversationHandoff(
-                                            composerAgentTriggerRef.current,
-                                          )
+                                            textarea === document.activeElement
+                                              ? textarea
+                                              : composerAgentTriggerRef.current,
+                                          );
+                                        }
                                   }
                                   agentHandoffTriggerRef={
                                     composerAgentTriggerRef

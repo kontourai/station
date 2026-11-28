@@ -193,17 +193,15 @@ describe('ChatInputArea', () => {
     expect(props.onSend).toHaveBeenCalledWith('steer');
 
     rerender(view(accountSendMode('queue')));
-    fireEvent.click(screen.getByRole('button', { name: 'Send mode: Queue' }));
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Queue for next turn' }),
-    );
+    expect(
+      screen.getByRole('button', { name: 'Send mode: Queue' }),
+    ).toBeTruthy();
     rerender(view(account));
-    fireEvent.click(screen.getByRole('button', { name: 'Send mode: Queue' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Send mode: Steer' }));
+    expect(
+      screen.getByRole('button', { name: 'Send mode: Queue' }),
+    ).toBeTruthy();
     expect(account.save).not.toHaveBeenCalled();
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Save Queue as default' }),
-    );
-    expect(account.save).toHaveBeenCalledWith({ chatDefaultSendMode: 'queue' });
 
     rerender(view(account, 'second'));
     expect(screen.queryByRole('dialog', { name: 'Send mode' })).toBeNull();
@@ -269,9 +267,7 @@ describe('ChatInputArea', () => {
         screen.getByRole('button', { name: 'Send mode: Queue' }),
       ).toBeTruthy();
       await act(async () =>
-        fireEvent.click(
-          screen.getByRole('button', { name: /^Send$/ }),
-        ),
+        fireEvent.click(screen.getByRole('button', { name: /^Send$/ })),
       );
       expect(props.onQueueFollowUp).toHaveBeenCalledOnce();
       expect(props.onSend).not.toHaveBeenCalled();
@@ -319,11 +315,7 @@ describe('ChatInputArea', () => {
       onSend,
     });
     fireEvent.click(screen.getByRole('button', { name: /^Send mode:/ }));
-    fireEvent.click(screen.getByRole('button', { name: 'Steer this turn' }));
     fireEvent.click(screen.getByRole('button', { name: 'Send mode: Steer' }));
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Queue for next turn' }),
-    );
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
     expect(onQueueFollowUp).toHaveBeenCalledOnce();
     expect(onSend).not.toHaveBeenCalled();
@@ -1121,7 +1113,7 @@ describe('ChatInputArea', () => {
     expect(props.onCancel).toHaveBeenCalled();
   });
 
-  test('the Send dropdown selects native steer and keyboard submission follows that choice', () => {
+  test('the Send mode toggle selects native steer and keyboard submission follows that choice', () => {
     const onQueueFollowUp = vi.fn(async () => {});
     const onSend = vi.fn(async () => {});
     renderChatInputArea({
@@ -1131,7 +1123,6 @@ describe('ChatInputArea', () => {
       onSend,
     });
     fireEvent.click(screen.getByRole('button', { name: /^Send mode:/ }));
-    fireEvent.click(screen.getByRole('button', { name: 'Steer this turn' }));
     fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter' });
     expect(onSend).toHaveBeenCalledOnce();
     expect(onQueueFollowUp).not.toHaveBeenCalled();
@@ -1158,7 +1149,7 @@ describe('ChatInputArea', () => {
     },
   );
 
-  test('safe stop-and-send is named distinctly from native steering', () => {
+  test('safe stop-and-send is available through the inline toggle', () => {
     renderChatInputArea({
       turnInFlight: true,
       busyFollowUp: 'steer',
@@ -1167,10 +1158,11 @@ describe('ChatInputArea', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: /^Send mode:/ }));
     expect(
-      screen.getByRole('button', {
-        name: 'Steer when safe',
-      }),
-    ).toBeTruthy();
+      screen
+        .getByRole('button', { name: 'Send mode: Steer' })
+        .getAttribute('aria-pressed'),
+    ).toBe('true');
+    expect(screen.queryByRole('dialog', { name: 'Send mode' })).toBeNull();
   });
 
   test.each([

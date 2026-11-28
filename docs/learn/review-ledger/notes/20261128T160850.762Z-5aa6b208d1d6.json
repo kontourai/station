@@ -1,0 +1,7 @@
+{
+  "revision": "3fec4a691daac2ecf3967754fc466031312322f1",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Verified strict typecheck follow-up (optional chaining on onModelClose and void-returning Playwright addInitScript wrapper) introduces no behavior or documented composer contract changes.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/composer-sizing.browser.test.tsx","src-ui/src/components/chat/ChatInputArea.tsx"]}
+  ]
+}

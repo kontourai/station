@@ -287,7 +287,6 @@ for (const cli of proxyEngines) {
         'Write a long numbered list of 180 original fictional observatory names, one per line. Do not run commands or open files. Begin now.',
       );
     await initial.getByRole('button', { name: 'Start', exact: true }).click();
-    const mode = page.getByRole('dialog', { name: 'Send mode' });
     await expect(
       page.getByRole('button', { name: 'Send mode: Queue' }),
     ).toBeEnabled({ timeout: 90_000 });
@@ -304,12 +303,16 @@ for (const cli of proxyEngines) {
       page.getByRole('button', { name: 'Queue · 1 pending' }),
     ).toBeVisible();
     await page.getByRole('button', { name: 'Send mode: Queue' }).click();
-    await mode.getByRole('button', { name: 'Steer this turn' }).click();
+    await expect(
+      page.getByRole('button', { name: 'Send mode: Steer' }),
+    ).toBeVisible();
     await composer.fill(steerText);
     await steer.click();
     await expect(composer).toHaveValue('');
     await page.getByRole('button', { name: 'Send mode: Steer' }).click();
-    await mode.getByRole('button', { name: 'Queue for next turn' }).click();
+    await expect(
+      page.getByRole('button', { name: 'Send mode: Queue' }),
+    ).toBeVisible();
     await composer.fill(secondQueued);
     await queue.click();
     await expect(
