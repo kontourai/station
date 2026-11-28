@@ -1,0 +1,61 @@
+{
+  "revision": "bd8b067c5172b111f781c7f727ab4b49eb28ec12",
+
+  "notes": [
+    {"path":"docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","note":"Reviewed cited pages for Claude and Codex sessionGrantScope 'all' support (sessionGrantAll on eligible approvals, allow-once answers, person-addressed exclusions, clearing on mode change/session end); unrelated pages make no conflicting session-grant claims.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture.md","note":"Reviewed cited pages for Claude and Codex sessionGrantScope 'all' support (sessionGrantAll on eligible approvals, allow-once answers, person-addressed exclusions, clearing on mode change/session end); unrelated pages make no conflicting session-grant claims.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed cited pages for Claude and Codex sessionGrantScope 'all' support (sessionGrantAll on eligible approvals, allow-once answers, person-addressed exclusions, clearing on mode change/session end); unrelated pages make no conflicting session-grant claims.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed cited pages for Claude and Codex sessionGrantScope 'all' support (sessionGrantAll on eligible approvals, allow-once answers, person-addressed exclusions, clearing on mode change/session end); unrelated pages make no conflicting session-grant claims.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Reviewed cited pages for Claude and Codex sessionGrantScope 'all' support (sessionGrantAll on eligible approvals, allow-once answers, person-addressed exclusions, clearing on mode change/session end); unrelated pages make no conflicting session-grant claims.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/approval-posture-server-ordered.md","note":"Reviewed cited pages for Claude and Codex sessionGrantScope 'all' support (sessionGrantAll on eligible approvals, allow-once answers, person-addressed exclusions, clearing on mode change/session end); unrelated pages make no conflicting session-grant claims.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Reviewed cited pages for Claude and Codex sessionGrantScope 'all' support (sessionGrantAll on eligible approvals, allow-once answers, person-addressed exclusions, clearing on mode change/session end); unrelated pages make no conflicting session-grant claims.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Reviewed cited pages for Claude and Codex sessionGrantScope 'all' support (sessionGrantAll on eligible approvals, allow-once answers, person-addressed exclusions, clearing on mode change/session end); unrelated pages make no conflicting session-grant claims.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"Reviewed cited pages for Claude and Codex sessionGrantScope 'all' support (sessionGrantAll on eligible approvals, allow-once answers, person-addressed exclusions, clearing on mode change/session end); unrelated pages make no conflicting session-grant claims.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/orchestration-decomposition-map.md","note":"Reviewed cited pages for Claude and Codex sessionGrantScope 'all' support (sessionGrantAll on eligible approvals, allow-once answers, person-addressed exclusions, clearing on mode change/session end); unrelated pages make no conflicting session-grant claims.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/portable-project-identity.md","note":"Reviewed cited pages for Claude and Codex sessionGrantScope 'all' support (sessionGrantAll on eligible approvals, allow-once answers, person-addressed exclusions, clearing on mode change/session end); unrelated pages make no conflicting session-grant claims.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed cited pages for Claude and Codex sessionGrantScope 'all' support (sessionGrantAll on eligible approvals, allow-once answers, person-addressed exclusions, clearing on mode change/session end); unrelated pages make no conflicting session-grant claims.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed cited pages for Claude and Codex sessionGrantScope 'all' support (sessionGrantAll on eligible approvals, allow-once answers, person-addressed exclusions, clearing on mode change/session end); unrelated pages make no conflicting session-grant claims.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed cited pages for Claude and Codex sessionGrantScope 'all' support (sessionGrantAll on eligible approvals, allow-once answers, person-addressed exclusions, clearing on mode change/session end); unrelated pages make no conflicting session-grant claims.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"Reviewed cited pages for Claude and Codex sessionGrantScope 'all' support (sessionGrantAll on eligible approvals, allow-once answers, person-addressed exclusions, clearing on mode change/session end); unrelated pages make no conflicting session-grant claims.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"Reviewed cited pages for Claude and Codex sessionGrantScope 'all' support (sessionGrantAll on eligible approvals, allow-once answers, person-addressed exclusions, clearing on mode change/session end); unrelated pages make no conflicting session-grant claims.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Reviewed cited pages for Claude and Codex sessionGrantScope 'all' support (sessionGrantAll on eligible approvals, allow-once answers, person-addressed exclusions, clearing on mode change/session end); unrelated pages make no conflicting session-grant claims.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Reviewed cited pages for Claude and Codex sessionGrantScope 'all' support (sessionGrantAll on eligible approvals, allow-once answers, person-addressed exclusions, clearing on mode change/session end); unrelated pages make no conflicting session-grant claims.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed cited pages for Claude and Codex sessionGrantScope 'all' support (sessionGrantAll on eligible approvals, allow-once answers, person-addressed exclusions, clearing on mode change/session end); unrelated pages make no conflicting session-grant claims.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed cited pages for Claude and Codex sessionGrantScope 'all' support (sessionGrantAll on eligible approvals, allow-once answers, person-addressed exclusions, clearing on mode change/session end); unrelated pages make no conflicting session-grant claims.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed cited pages for Claude and Codex sessionGrantScope 'all' support (sessionGrantAll on eligible approvals, allow-once answers, person-addressed exclusions, clearing on mode change/session end); unrelated pages make no conflicting session-grant claims.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Reviewed cited pages for Claude and Codex sessionGrantScope 'all' support (sessionGrantAll on eligible approvals, allow-once answers, person-addressed exclusions, clearing on mode change/session end); unrelated pages make no conflicting session-grant claims.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed cited pages for Claude and Codex sessionGrantScope 'all' support (sessionGrantAll on eligible approvals, allow-once answers, person-addressed exclusions, clearing on mode change/session end); unrelated pages make no conflicting session-grant claims.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed cited pages for Claude and Codex sessionGrantScope 'all' support (sessionGrantAll on eligible approvals, allow-once answers, person-addressed exclusions, clearing on mode change/session end); unrelated pages make no conflicting session-grant claims.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed cited pages for Claude and Codex sessionGrantScope 'all' support (sessionGrantAll on eligible approvals, allow-once answers, person-addressed exclusions, clearing on mode change/session end); unrelated pages make no conflicting session-grant claims.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Reviewed cited pages for Claude and Codex sessionGrantScope 'all' support (sessionGrantAll on eligible approvals, allow-once answers, person-addressed exclusions, clearing on mode change/session end); unrelated pages make no conflicting session-grant claims.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed cited pages for Claude and Codex sessionGrantScope 'all' support (sessionGrantAll on eligible approvals, allow-once answers, person-addressed exclusions, clearing on mode change/session end); unrelated pages make no conflicting session-grant claims.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Reviewed cited pages for Claude and Codex sessionGrantScope 'all' support (sessionGrantAll on eligible approvals, allow-once answers, person-addressed exclusions, clearing on mode change/session end); unrelated pages make no conflicting session-grant claims.","inputs":["src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}
